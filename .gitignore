@@ -1,0 +1,6 @@
+bin/
+obj/
+tools/platform-tools/
+*.user
+.vs/
+publish/

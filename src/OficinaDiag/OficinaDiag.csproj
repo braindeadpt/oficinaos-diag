@@ -1,0 +1,29 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <UseWPF>true</UseWPF>
+    <AssemblyName>OficinaDiag</AssemblyName>
+    <Version>0.1.0</Version>
+    <Description>USB phone diagnostics — free local scan, Pro reports via oficinaos-cloud</Description>
+    <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="iMobileDevice-net" Version="1.3.17" />
+    <PackageReference Include="QRCoder" Version="1.8.0" />
+  </ItemGroup>
+
+  <!-- bundled adb + on-device test page, copied to output -->
+  <ItemGroup>
+    <Content Include="Tests\wwwroot\**" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="..\..\tools\platform-tools\**"
+             LinkBase="tools\platform-tools" CopyToOutputDirectory="PreserveNewest"
+             CopyToPublishDirectory="PreserveNewest" ExcludeFromSingleFile="true"
+             Condition="Exists('..\..\tools\platform-tools')" />
+  </ItemGroup>
+
+</Project>

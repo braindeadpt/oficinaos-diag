@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
+<title>OficinaOS — teste de ecrã e toque</title>
+<style>
+  html,body{margin:0;height:100%;overflow:hidden;background:#000;font-family:monospace}
+  #stage{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;color:#0f0}
+  #grid{position:fixed;inset:0;display:none;grid-template-columns:repeat(6,1fr);grid-template-rows:repeat(10,1fr)}
+  .cell{border:1px solid #033;background:#000}
+  .cell.hit{background:#0f0}
+  #done{display:none;position:fixed;inset:0;background:#000;color:#0f0;align-items:center;justify-content:center;text-align:center}
+</style>
+</head>
+<body>
+<div id="stage">TOCA PARA COMEÇAR<br><small>teste de cores + toque</small></div>
+<div id="grid"></div>
+<div id="done">✓ TESTE COMPLETO<br><small>podes voltar ao PC</small></div>
+<script>
+const stage = document.getElementById('stage');
+const grid = document.getElementById('grid');
+const colors = ['#f00','#0f0','#00f','#fff','#000','#f0f','#ff0','#0ff'];
+let step = -1;
+const result = { colorsViewed: 0, touchTotal: 60, touchHit: 0, userAgent: navigator.userAgent };
+
+stage.onclick = () => {
+  step++;
+  if (step < colors.length) { stage.style.background = colors[step]; stage.style.color = step===4?'#0f0':'#000'; stage.innerHTML='procura pixeis mortos — toca para avançar'; }
+  else { stage.style.display='none'; startGrid(); }
+};
+
+function startGrid(){
+  grid.style.display='grid';
+  grid.style.background='#000';
+  const hit = new Set();
+  for(let i=0;i<60;i++){
+    const c=document.createElement('div'); c.className='cell'; c.dataset.i=i; grid.appendChild(c);
+  }
+  const mark = (t)=>{
+    const el = document.elementFromPoint(t.clientX, t.clientY);
+    if(el && el.classList.contains('cell')){ el.classList.add('hit'); hit.add(el.dataset.i); }
+  };
+  grid.addEventListener('touchstart',e=>{[...e.touches].forEach(mark)},{passive:true});
+  grid.addEventListener('touchmove',e=>{[...e.touches].forEach(mark)},{passive:true});
+  grid.addEventListener('touchend',()=>{
+    result.touchHit = hit.size;
+    if(hit.size>=55) finish();   // margem para bordas
+  },{passive:true});
+  // fallback para testar com rato
+  grid.onmousemove = e=>{ if(e.buttons) mark(e); };
+  grid.onclick = e=>{ mark(e); if(hit.size>=55) finish(); };
+}
+
+function finish(){
+  result.colorsViewed = colors.length;
+  fetch('/result',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(result)});
+  document.getElementById('done').style.display='flex';
+}
+</script>
+</body>
+</html>
