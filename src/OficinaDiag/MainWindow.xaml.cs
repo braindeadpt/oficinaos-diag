@@ -47,12 +47,14 @@ public partial class MainWindow : Window
 
     private DeviceDetector? _detector;
     private readonly ScanHistory _history = new();
-    private readonly Cloud.CloudClient _cloud = new();
+    private readonly Cloud.DiagConfig _config = Cloud.DiagConfig.Load();
+    private readonly Cloud.CloudClient _cloud;
     private DetectedDevice? _current;
     private DeviceReport? _report;
 
     public MainWindow()
     {
+        _cloud = new Cloud.CloudClient(_config);
         InitializeComponent();
         Resources["StatusTag"] = new StatusTagConverter();
         Resources["StatusBrush"] = new StatusBrushConverter();
@@ -193,11 +195,23 @@ public partial class MainWindow : Window
     private async void Send_Click(object sender, RoutedEventArgs e)
     {
         if (_report is null) return;
-        var code = Microsoft.VisualBasic.Interaction.InputBox(
-            "Código da loja (ex.: LOJA-X7K2):", "Enviar à loja — PRO", "");
-        if (string.IsNullOrWhiteSpace(code)) return;
-        var (ok, msg) = await _cloud.SendToShopAsync(code, _report);
+        var dlg = new SendDialog { Owner = this };
+        if (dlg.ShowDialog() != true) return;
+        Log($"> a enviar à loja {dlg.ShopCode}…");
+        var (ok, msg) = await _cloud.SendToShopAsync(
+            dlg.ShopCode, _report, dlg.CustomerName, dlg.CustomerPhone, dlg.CustomerEmail);
         Log(ok ? $"> {msg}" : $"! envio falhou: {msg}");
+    }
+
+    private void Config_Click(object sender, RoutedEventArgs e)
+    {
+        var url = Microsoft.VisualBasic.Interaction.InputBox(
+            "URL do servidor OficinaOS Cloud:", "Configuração", _config.CloudUrl);
+        if (string.IsNullOrWhiteSpace(url)) return;
+        _config.CloudUrl = url.Trim();
+        _config.Save();
+        _cloud.BaseUri = new Uri(_config.CloudUrl.TrimEnd('/') + "/");
+        Log($"> cloud: {_config.CloudUrl}");
     }
 
     private async void Ai_Click(object sender, RoutedEventArgs e)

@@ -1,0 +1,50 @@
+<Window x:Class="OficinaDiag.SendDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Enviar à loja" Width="420" SizeToContent="Height"
+        WindowStartupLocation="CenterOwner" ResizeMode="NoResize"
+        Background="#0a0f0a" Foreground="#33ff33"
+        FontFamily="Cascadia Mono, Consolas">
+    <Window.Resources>
+        <Style TargetType="TextBlock">
+            <Setter Property="Foreground" Value="#7fd77f"/>
+            <Setter Property="Margin" Value="0,10,0,3"/>
+        </Style>
+        <Style TargetType="TextBox">
+            <Setter Property="Background" Value="#0d1f0d"/>
+            <Setter Property="Foreground" Value="#33ff33"/>
+            <Setter Property="BorderBrush" Value="#1d4a1d"/>
+            <Setter Property="Padding" Value="6,4"/>
+            <Setter Property="CaretBrush" Value="#33ff33"/>
+        </Style>
+        <Style TargetType="Button">
+            <Setter Property="Background" Value="#0d1f0d"/>
+            <Setter Property="Foreground" Value="#33ff33"/>
+            <Setter Property="BorderBrush" Value="#1d4a1d"/>
+            <Setter Property="Padding" Value="14,6"/>
+        </Style>
+    </Window.Resources>
+    <StackPanel Margin="20">
+        <TextBlock FontSize="14" Foreground="#33ff33" Margin="0,0,0,4"
+                   Text="ENVIAR DIAGNÓSTICO À LOJA"/>
+        <TextBlock TextWrapping="Wrap" Margin="0,0,0,4"
+                   Text="A loja deu-te um código de 6 letras (ex.: 54424B). Os teus dados ficam associados ao pedido na app da loja."/>
+
+        <TextBlock Text="código da loja *"/>
+        <TextBox x:Name="ShopCodeBox" MaxLength="8" CharacterCasing="Upper"/>
+
+        <TextBlock Text="o teu nome *"/>
+        <TextBox x:Name="NameBox" MaxLength="200"/>
+
+        <TextBlock Text="o teu telefone *"/>
+        <TextBox x:Name="PhoneBox" MaxLength="50"/>
+
+        <TextBlock Text="email (opcional)"/>
+        <TextBox x:Name="EmailBox" MaxLength="200"/>
+
+        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,16,0,0">
+            <Button Content="[ ENVIAR ]" IsDefault="True" Click="Send_Click"/>
+            <Button Content="[ cancelar ]" IsCancel="True" Margin="10,0,0,0"/>
+        </StackPanel>
+    </StackPanel>
+</Window>

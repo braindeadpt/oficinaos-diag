@@ -19,13 +19,35 @@ public static class ReportBuilder
 
     public static string ToJson(DeviceReport r) => JsonSerializer.Serialize(r, JsonOpts);
 
-    /// <summary>Payload for cloud /reports/diagnostic and /intake.</summary>
+    /// <summary>Payload for cloud /reports/diagnostic (AI report, shop-side).</summary>
     public static string ToCloudJson(DeviceReport r)
     {
         var payload = new
         {
             lang = "pt",
             device = new { brand = r.Device.Brand, model = r.Device.Model, os = r.Device.Os, osVersion = r.Device.OsVersion },
+            results = r.Results,
+            notes = r.Notes,
+        };
+        return JsonSerializer.Serialize(payload, JsonOpts);
+    }
+
+    /// <summary>Payload for cloud POST /intake/:shopCode (customer → shop).</summary>
+    public static string ToIntakeJson(DeviceReport r, string name, string phone, string? email)
+    {
+        var payload = new
+        {
+            customerName = name,
+            customerPhone = phone,
+            customerEmail = email,
+            device = new
+            {
+                brand = r.Device.Brand,
+                model = r.Device.Model,
+                os = r.Device.Os,
+                osVersion = r.Device.OsVersion,
+                serial = r.Device.Serial,
+            },
             results = r.Results,
             notes = r.Notes,
         };

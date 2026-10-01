@@ -14,23 +14,34 @@ public sealed class CloudClient
 {
     private static readonly HttpClient Http = new() { Timeout = TimeSpan.FromSeconds(30) };
 
-    public Uri BaseUri { get; set; } = new("https://oficinaos-cloud.example.invalid/"); // definido nas settings
+    public Uri BaseUri { get; set; }
+
+    public CloudClient(DiagConfig config)
+    {
+        BaseUri = new Uri(config.CloudUrl.TrimEnd('/') + "/");
+    }
 
     /// <summary>
     /// Customer-facing: POST a report to a shop by its public shop code.
     /// Needs the /intake/:shopCode endpoint on the cloud (unauthenticated,
-    /// rate-limited, code-gated).
+    /// gated by the shop's diag-intake module).
     /// </summary>
-    public async Task<(bool ok, string message)> SendToShopAsync(string shopCode, DeviceReport report)
+    public async Task<(bool ok, string message)> SendToShopAsync(
+        string shopCode, DeviceReport report, string name, string phone, string? email)
     {
         try
         {
             var res = await Http.PostAsync(
                 new Uri(BaseUri, $"intake/{Uri.EscapeDataString(shopCode.Trim().ToUpperInvariant())}"),
-                new StringContent(Reports.ReportBuilder.ToCloudJson(report), Encoding.UTF8, "application/json"));
-            return res.IsSuccessStatusCode
-                ? (true, "Relatório enviado à loja.")
-                : (false, $"Servidor respondeu {(int)res.StatusCode} — {await res.Content.ReadAsStringAsync()}");
+                new StringContent(Reports.ReportBuilder.ToIntakeJson(report, name, phone, email), Encoding.UTF8, "application/json"));
+            if (res.IsSuccessStatusCode)
+                return (true, "Relatório enviado à loja — eles veem-no na app.");
+            var body = await res.Content.ReadAsStringAsync();
+            if ((int)res.StatusCode == 402)
+                return (false, "Esta loja não aceita diagnósticos remotos (módulo inativo).");
+            if ((int)res.StatusCode == 404)
+                return (false, "Código de loja inválido — confirma com a loja.");
+            return (false, $"Servidor respondeu {(int)res.StatusCode} — {body}");
         }
         catch (Exception ex) { return (false, ex.Message); }
     }

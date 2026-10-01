@@ -125,6 +125,8 @@
                             Click="Send_Click" IsEnabled="False">[ →LOJA (PRO) ]</Button>
                     <Button Style="{StaticResource TermButton}" x:Name="AiButton"
                             Click="Ai_Click" IsEnabled="False">[ IA (PRO) ]</Button>
+                    <Button Style="{StaticResource TermButton}" x:Name="ConfigButton"
+                            Click="Config_Click" Margin="20,0,0,0">[ ⚙ CLOUD ]</Button>
                 </StackPanel>
             </Border>
         </Grid>
