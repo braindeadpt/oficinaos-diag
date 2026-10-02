@@ -217,11 +217,13 @@ public partial class MainWindow : Window
             FileName = $"diag-{_report.Device.Serial ?? "device"}-{_report.CollectedAt:yyyyMMdd-HHmm}",
         };
         if (dlg.ShowDialog() != true) return;
+        var isHtml = !dlg.FileName.EndsWith(".json", StringComparison.OrdinalIgnoreCase);
         File.WriteAllText(dlg.FileName,
-            dlg.FileName.EndsWith(".json", StringComparison.OrdinalIgnoreCase)
-                ? ReportBuilder.ToJson(_report)
-                : ReportBuilder.ToHtml(_report));
+            isHtml ? ReportBuilder.ToHtml(_report) : ReportBuilder.ToJson(_report));
         Log($"> relatório guardado: {dlg.FileName}");
+        // HTML é para ver/partilhar — abre já no browser predefinido.
+        if (isHtml)
+            Process.Start(new ProcessStartInfo(dlg.FileName) { UseShellExecute = true });
     }
 
     private async void Send_Click(object sender, RoutedEventArgs e)
