@@ -68,8 +68,12 @@ public partial class MainWindow : Window
     private void OnLoaded(object sender, RoutedEventArgs e)
     {
         // nunca nascer maior que a área útil do ecrã (scaling/ecrãs pequenos)
-        MaxWidth = SystemParameters.WorkArea.Width;
-        MaxHeight = SystemParameters.WorkArea.Height;
+        var wa = SystemParameters.WorkArea;
+        MaxWidth = wa.Width;
+        MaxHeight = wa.Height;
+        // CenterScreen posiciona antes do clamp — re-centra dentro da work area
+        Left = wa.Left + Math.Max(0, (wa.Width - Width) / 2);
+        Top = wa.Top + Math.Max(0, (wa.Height - Height) / 2);
         Log("> boot sequence…");
         Log("> oficinaos-diag — scan USB grátis · relatórios Pro via cloud");
         if (!File.Exists(_adbPath))

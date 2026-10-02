@@ -28,8 +28,14 @@ public sealed partial class BenchWindow : Window
         Func<Task>? loadOn = null, Func<Task>? loadOff = null)
     {
         InitializeComponent();
-        MaxWidth = SystemParameters.WorkArea.Width;
-        MaxHeight = SystemParameters.WorkArea.Height;
+        Loaded += (_, _) =>
+        {
+            var wa = SystemParameters.WorkArea;
+            MaxWidth = wa.Width;
+            MaxHeight = wa.Height;
+            Left = wa.Left + Math.Max(0, (wa.Width - Width) / 2);
+            Top = wa.Top + Math.Max(0, (wa.Height - Height) / 2);
+        };
         _probe = probe;
         _loadOn = loadOn;
         _loadOff = loadOff;
