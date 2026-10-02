@@ -13,7 +13,7 @@ public sealed class ScopeView : FrameworkElement
     private static readonly Pen GridPen = new(new SolidColorBrush(Color.FromRgb(0x0d, 0x2a, 0x0d)), 1);
     private static readonly Pen AmpPen = new(new SolidColorBrush(Color.FromRgb(0x33, 0xff, 0x33)), 1.6);
     private static readonly Pen VoltPen = new(new SolidColorBrush(Color.FromRgb(0x7f, 0xd7, 0x7f)), 1);
-    private static readonly Pen TempPen = new(new SolidColorBrush(Color.FromRgb(0xff, 0xd2, 0x3f)), 0.8);
+    private static readonly Pen TempPen = new(new SolidColorBrush(Color.FromRgb(0xff, 0xd2, 0x3f)), 1.2);
 
     private readonly List<PowerSample> _samples = new();
     private double _windowSec = 90;
@@ -48,19 +48,17 @@ public sealed class ScopeView : FrameworkElement
         var t1 = Math.Max(_samples[^1].T, t0 + _windowSec);
         double X(double t) => (t - t0) / (t1 - t0) * w;
 
-        DrawSeries(dc, h, X, s => s.Milliamps, AmpPen);
-        DrawSeries(dc, h, X, s => s.Volts * 1000, VoltPen);
-        DrawSeries(dc, h, X, s => s.TempC * 50, TempPen);
+        // bandas fixas — instrumento, não auto-escala que dança
+        DrawSeries(dc, h, X, s => s.Milliamps, AmpPen, 0, 3000);
+        DrawSeries(dc, h, X, s => s.Volts * 1000, VoltPen, 3200, 4600);
+        DrawSeries(dc, h, X, s => s.TempC, TempPen, 20, 50);
     }
 
     private void DrawSeries(DrawingContext dc, double h, Func<double, double> x,
-        Func<PowerSample, double?> pick, Pen pen)
+        Func<PowerSample, double?> pick, Pen pen, double lo, double hi)
     {
         var pts = _samples.Select(s => (x(s.T), pick(s))).Where(p => p.Item2 is { }).ToList();
         if (pts.Count < 2) return;
-        var min = pts.Min(p => p.Item2!.Value);
-        var max = pts.Max(p => p.Item2!.Value);
-        if (max - min < 1) { min -= 1; max += 1; }
         var geo = new StreamGeometry();
         using (var ctx = geo.Open())
         {
@@ -71,6 +69,6 @@ public sealed class ScopeView : FrameworkElement
         geo.Freeze();
         dc.DrawGeometry(null, pen, geo);
 
-        double Y(double v) => h - 6 - (v - min) / (max - min) * (h - 12);
+        double Y(double v) => h - 6 - Math.Clamp((v - lo) / (hi - lo), 0, 1) * (h - 12);
     }
 }
