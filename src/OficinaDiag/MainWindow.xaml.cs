@@ -81,6 +81,35 @@ public partial class MainWindow : Window
             TestButton.IsEnabled = false;
         });
         ScanButton.IsEnabled = true; // permite tentar mesmo sem evento
+        _ = CheckForUpdateAsync();
+    }
+
+    private Cloud.UpdateChecker.UpdateInfo? _update;
+
+    private async Task CheckForUpdateAsync()
+    {
+        var current = System.Reflection.Assembly.GetExecutingAssembly().GetName().Version
+            ?? new Version(0, 0, 0);
+        var info = await Cloud.UpdateChecker.CheckAsync(current);
+        if (info is null) return;
+        _update = info;
+        UpdateButton.Content = $"[ ↓ ATUALIZAR {info.Tag} ]";
+        UpdateButton.Visibility = Visibility.Visible;
+        Log($"> nova versão {info.Tag} disponível — carrega ATUALIZAR");
+    }
+
+    private async void Update_Click(object sender, RoutedEventArgs e)
+    {
+        if (_update is null) return;
+        UpdateButton.IsEnabled = false;
+        Log($"> a descarregar {_update.Tag}…");
+        var (ok, msg) = await Cloud.UpdateChecker.DownloadAndStageAsync(
+            _update, AppContext.BaseDirectory);
+        Log(ok ? $"> {msg}" : $"! atualização falhou: {msg}");
+        if (ok)
+            Application.Current.Shutdown();
+        else
+            UpdateButton.IsEnabled = true;
     }
 
     private void Log(string line)

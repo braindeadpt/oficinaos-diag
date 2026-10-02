@@ -128,6 +128,9 @@
                             Click="Send_Click" IsEnabled="False">[ →LOJA (PRO) ]</Button>
                     <Button Style="{StaticResource TermButton}" x:Name="AiButton"
                             Click="Ai_Click" IsEnabled="False">[ IA (PRO) ]</Button>
+                    <Button Style="{StaticResource TermButton}" x:Name="UpdateButton"
+                            Click="Update_Click" Visibility="Collapsed"
+                            Foreground="#ffd23f" BorderBrush="#ffd23f">[ ↓ ATUALIZAR ]</Button>
                     <Button Style="{StaticResource TermButton}" x:Name="LogButton"
                             Click="LogSend_Click" Margin="20,0,0,0">[ ENVIAR LOG ]</Button>
                     <Button Style="{StaticResource TermButton}" x:Name="ConfigButton"
