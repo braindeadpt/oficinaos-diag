@@ -56,8 +56,6 @@ public partial class MainWindow : Window
     {
         _cloud = new Cloud.CloudClient(_config);
         InitializeComponent();
-        Resources["StatusTag"] = new StatusTagConverter();
-        Resources["StatusBrush"] = new StatusBrushConverter();
         Loaded += OnLoaded;
     }
 
@@ -89,6 +87,7 @@ public partial class MainWindow : Window
     {
         Console.AppendText(line + Environment.NewLine);
         Console.ScrollToEnd();
+        OficinaDiag.Log.AppLog.Write(line);
     }
 
     private async void Scan_Click(object sender, RoutedEventArgs e)
@@ -201,6 +200,34 @@ public partial class MainWindow : Window
         var (ok, msg) = await _cloud.SendToShopAsync(
             dlg.ShopCode, _report, dlg.CustomerName, dlg.CustomerPhone, dlg.CustomerEmail);
         Log(ok ? $"> {msg}" : $"! envio falhou: {msg}");
+    }
+
+    private async void LogSend_Click(object sender, RoutedEventArgs e)
+    {
+        const int maxChars = 150_000; // servidor aceita até 200k — enviamos só a cauda
+        try
+        {
+            var path = OficinaDiag.Log.AppLog.FilePath;
+            if (!File.Exists(path)) { Log("! ainda não há log para enviar"); return; }
+            string tail;
+            using (var fs = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
+            {
+                var skip = Math.Max(0, fs.Length - maxChars);
+                fs.Seek(skip, SeekOrigin.Begin);
+                using var sr = new StreamReader(fs);
+                tail = await sr.ReadToEndAsync();
+                if (skip > 0) tail = "[… início cortado …]\n" + tail;
+            }
+            var hint = _report is not null
+                ? $"{_report.Platform} {_report.Device.Brand} {_report.Device.Model} {_report.Device.Os} {_report.Device.OsVersion}".Trim()
+                : _current?.Label;
+            LogButton.IsEnabled = false;
+            Log("> a enviar log de diagnóstico à cloud…");
+            var (ok, msg) = await _cloud.SendLogAsync(tail, _report?.ToolVersion ?? "0.1.0", hint);
+            Log(ok ? $"> {msg}" : $"! envio do log falhou: {msg}");
+        }
+        catch (Exception ex) { Log($"! envio do log falhou: {ex.Message}"); }
+        finally { LogButton.IsEnabled = true; }
     }
 
     private void Config_Click(object sender, RoutedEventArgs e)

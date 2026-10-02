@@ -28,7 +28,7 @@ public sealed class DeviceIdentity
 public sealed class DeviceReport
 {
     public string Tool { get; set; } = "oficinaos-diag";
-    public string ToolVersion { get; set; } = "0.1.0";
+    public string ToolVersion { get; set; } = "0.1.1";
     public DateTimeOffset CollectedAt { get; set; } = DateTimeOffset.UtcNow;
 
     public string Platform { get; set; } = "unknown"; // android | ios

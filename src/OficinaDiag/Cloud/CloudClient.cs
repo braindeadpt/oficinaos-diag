@@ -47,6 +47,33 @@ public sealed class CloudClient
     }
 
     /// <summary>
+    /// Opt-in support upload: sends the tail of the local diag.log so we can
+    /// debug customer issues. Anonymous (no auth) — the server caps size and
+    /// stores it only for our analysis.
+    /// </summary>
+    public async Task<(bool ok, string message)> SendLogAsync(
+        string logTail, string appVersion, string? deviceHint)
+    {
+        try
+        {
+            var payload = JsonSerializer.Serialize(new
+            {
+                appVersion,
+                deviceHint,
+                log = logTail,
+            });
+            var res = await Http.PostAsync(
+                new Uri(BaseUri, "diag-logs"),
+                new StringContent(payload, Encoding.UTF8, "application/json"));
+            if (res.IsSuccessStatusCode)
+                return (true, "Log enviado — obrigado, ajuda-nos a corrigir.");
+            var body = await res.Content.ReadAsStringAsync();
+            return (false, $"Servidor respondeu {(int)res.StatusCode} — {body}");
+        }
+        catch (Exception ex) { return (false, ex.Message); }
+    }
+
+    /// <summary>
     /// Technician-facing: AI report via the shop's cloud token (Pro module
     /// ai-reports). The token lives in the app's Settings once paired.
     /// </summary>

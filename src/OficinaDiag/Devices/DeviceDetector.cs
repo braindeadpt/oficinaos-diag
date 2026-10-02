@@ -47,8 +47,13 @@ public sealed class DeviceDetector : IDisposable
                 using var p = Process.Start(psi);
                 if (p is not null)
                 {
-                    var output = p.StandardOutput.ReadToEnd();
-                    p.WaitForExit(5000);
+                    var readTask = p.StandardOutput.ReadToEndAsync();
+                    if (!p.WaitForExit(5000))
+                    {
+                        try { p.Kill(); } catch { }
+                        return found;
+                    }
+                    var output = readTask.GetAwaiter().GetResult();
                     foreach (Match m in Regex.Matches(output, @"^([\w.:@-]+)\tdevice$", RegexOptions.Multiline))
                         found.Add(new DetectedDevice(DeviceKind.Android, m.Groups[1].Value, "Android"));
                     foreach (Match m in Regex.Matches(output, @"^([\w.:@-]+)\tunauthorized$", RegexOptions.Multiline))

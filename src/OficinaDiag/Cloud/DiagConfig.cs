@@ -14,7 +14,7 @@ public sealed class DiagConfig
 
     public string CloudUrl { get; set; } =
         Environment.GetEnvironmentVariable("OFICINAOS_CLOUD_URL")
-        ?? "http://192.168.1.118:4100";
+        ?? "https://cloud.oficinaos.app";
 
     public static DiagConfig Load()
     {

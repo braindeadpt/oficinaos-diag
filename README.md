@@ -4,6 +4,15 @@ Ferramenta Windows de diagnóstico de telemóveis por USB — visual terminal re
 scan local gratuito e relatórios Pro via [oficinaos-cloud] para lojas aderentes ao
 [OficinaOS](https://github.com/braindeadpt/OficinaOS).
 
+## Descarregar (testadores)
+
+**[oficinaos-diag-win-x64.zip — última versão](https://github.com/braindeadpt/oficinaos-diag/releases/latest/download/oficinaos-diag-win-x64.zip)**
+
+1. Descompacta o zip inteiro (não tires o exe da pasta — precisa dos ficheiros ao lado)
+2. Corre `OficinaDiag.exe` — se o Windows avisar, vê [SmartScreen](#aviso-do-windows-smartscreen)
+3. **Android**: ativa «Depuração USB» nas opções de programador do telefone e liga por cabo
+4. **iPhone**: precisa do driver USB da Apple (iTunes ou app «Apple Devices» instalada); aceita «Confiar neste computador» no telefone. Se o Windows abrir a app Fotos para importar, fecha-a antes do scan
+
 ## O que faz
 
 ### Grátis — sempre, sem conta, sem servidor
@@ -45,6 +54,25 @@ dotnet publish src/OficinaDiag -r win-x64 --self-contained `
 
 O resultado é `publish\OficinaDiag.exe` + `tools\platform-tools\` ao lado —
 portátil, basta copiar a pasta.
+
+## Aviso do Windows (SmartScreen)
+
+Na primeira execução o Windows mostra «o Windows protegeu o seu PC» — é normal:
+o exe não tem assinatura de código, por isso o SmartScreen não tem reputação
+dele. Carrega **«Mais informações» → «Executar mesmo assim»** (só pergunta uma
+vez por ficheiro). Não é malware — é só um programa caseiro sem certificado.
+
+Para distribuir a lojas sem o aviso é preciso assinar o exe (code-signing cert
+~€100–500/ano ou Azure Trusted Signing ~$10/mês) — fazer quando o Pro sair.
+
+## Log de depuração
+
+Tudo o que aparece na consola da app + erros fica em
+`%APPDATA%\OficinaDiag\diag.log`. Se algo falhar, manda esse ficheiro — ou usa o
+botão **[ ENVIAR LOG ]** na app, que envia a cauda do log ao nosso servidor
+(`cloud.oficinaos.app`) para análise. É sempre opt-in: nada é enviado sem o
+clique, e o log contém apenas linhas de diagnóstico da app (sem fotos, contactos
+ou dados do telefone além do que o scan já mostra).
 
 ## Privacidade
 

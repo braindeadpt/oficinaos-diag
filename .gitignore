@@ -4,3 +4,5 @@ tools/platform-tools/
 *.user
 .vs/
 publish/
+oficinaos-diag-*.zip
+out/

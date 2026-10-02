@@ -1,3 +1,6 @@
+using System.Diagnostics;
+using System.IO;
+using System.Xml.Linq;
 using iMobileDevice;
 using iMobileDevice.iDevice;
 using iMobileDevice.Lockdown;
@@ -57,7 +60,7 @@ public sealed class IosCollector
         var r = new DeviceReport { Platform = "ios" };
         r.Device.Serial = udid;
 
-        await Task.Run(() =>
+        var collect = Task.Run(() =>
         {
             if (_idevice.idevice_new(out var device, udid) != iDeviceError.Success)
             {
@@ -91,14 +94,22 @@ public sealed class IosCollector
                     r.Set("device.sim", "info", GetValue(client, null, "SIMStatus"));
                     r.Set("device.wifi", "info", GetValue(client, null, "WiFiAddress"));
 
-                    // Storage
-                    if (ulong.TryParse(GetValue(client, null, "TotalDiskCapacity"), out var total))
+                    // Storage — o espaço de dados vive no domínio disk_usage;
+                    // TotalDiskCapacity no domínio nulo serve de fallback.
+                    if (ulong.TryParse(
+                            GetValue(client, "com.apple.disk_usage", "TotalDataCapacity")
+                            ?? GetValue(client, null, "TotalDiskCapacity"), out var total))
                     {
-                        ulong.TryParse(GetValue(client, null, "TotalDataAvailable"), out var free);
+                        ulong.TryParse(GetValue(client, "com.apple.disk_usage", "TotalDataAvailable")
+                            ?? GetValue(client, null, "TotalDataAvailable"), out var free);
                         var pctFree = total > 0 ? free * 100.0 / total : 0;
                         r.Set("storage", pctFree < 10 ? "warn" : "pass",
                             $"{free / 1_073_741_824.0:0.#} GB livres de {total / 1_073_741_824.0:0.#} GB");
                     }
+
+                    var imei = GetValue(client, null, "InternationalMobileEquipmentIdentity");
+                    if (imei is not null)
+                        r.Set("identity.imei", "info", imei);
 
                     // Battery — com.apple.mobile.battery domain
                     var battLevel = GetValue(client, "com.apple.mobile.battery", "BatteryCurrentCapacity");
@@ -113,8 +124,175 @@ public sealed class IosCollector
 
                     r.Set("scan", "pass", "completo", "Recolha via libimobiledevice");
                 }
+
+                // Bateria a sério: ciclos + capacidade vs design vivem na
+                // IORegistry (AppleSmartBattery) — só acessível via
+                // diagnostics_relay, não pelo lockdownd.
+                CollectBatteryHealth(r, udid);
+
+                // MobileGestalt: part number, cor, região, ecrã — os dados que
+                // uma loja precisa para grading de usados.
+                CollectGestalt(r, udid);
             }
         });
+
+        // O handshake lockdownd pode bloquear para sempre quando outra app do
+        // Windows (Fotos/AutoPlay) tem o iPhone ocupado — timeout defensivo.
+        if (await Task.WhenAny(collect, Task.Delay(TimeSpan.FromSeconds(30))) != collect)
+            r.Set("scan", "fail", null,
+                "Timeout — fecha a janela de importação de fotos do Windows e tenta de novo");
+
         return r;
+    }
+
+    /// <summary>idevicediagnostics.exe bundled ao lado do exe — ponte para a IORegistry.</summary>
+    private static string? RunTool(string udid, string args, int timeoutMs = 15000)
+    {
+        var exe = Path.Combine(AppContext.BaseDirectory, "idevicediagnostics.exe");
+        if (!File.Exists(exe)) return null;
+        try
+        {
+            using var p = Process.Start(new ProcessStartInfo(exe, $"-u {udid} {args}")
+            {
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+                CreateNoWindow = true,
+            });
+            if (p is null) return null;
+            var stdout = p.StandardOutput.ReadToEndAsync();
+            if (!p.WaitForExit(timeoutMs))
+            {
+                try { p.Kill(); } catch { }
+                return null;
+            }
+            return stdout.Result;
+        }
+        catch { return null; }
+    }
+
+    /// <summary>Achata todos os &lt;dict&gt; aninhados de um plist XML → pares key/valor a string.</summary>
+    private static Dictionary<string, string> ParsePlistDict(string xml)
+    {
+        var dict = new Dictionary<string, string>();
+        try
+        {
+            foreach (var d in XDocument.Parse(xml).Descendants("dict"))
+            {
+                var nodes = d.Elements().ToList();
+                for (var i = 0; i + 1 < nodes.Count; i += 2)
+                {
+                    if (nodes[i].Name.LocalName != "key") break;
+                    var v = nodes[i + 1];
+                    // ignora containers — só scalars
+                    if (v.Name.LocalName is "dict" or "array") continue;
+                    dict[nodes[i].Value] = v.Name.LocalName is "true" or "false"
+                        ? v.Name.LocalName
+                        : v.Value;
+                }
+            }
+        }
+        catch { }
+        return dict;
+    }
+
+    private static bool Truthy(string? v) => v is "true" or "1";
+
+    private void CollectBatteryHealth(DeviceReport r, string udid)
+    {
+        var xml = RunTool(udid, "ioregentry AppleSmartBattery");
+        if (xml is null) return;
+        var io = ParsePlistDict(xml);
+        if (io.Count == 0) return;
+
+        if (io.TryGetValue("CycleCount", out var cycles) && int.TryParse(cycles, out var c))
+            r.Set("battery.cycles", c >= 800 ? "warn" : "info", c.ToString(),
+                "a Apple garante ≥80% de capacidade até ~500–1000 ciclos conforme o modelo");
+
+        // Capacidade real vs design = saúde da bateria
+        var maxCap = io.TryGetValue("NominalChargeCapacity", out var ncc) ? ncc
+            : io.TryGetValue("AppleRawMaxCapacity", out var arm) ? arm : null;
+        var design = io.TryGetValue("DesignCapacity", out var dc) ? dc : null;
+        if (maxCap is not null && design is not null
+            && int.TryParse(maxCap, out var max) && int.TryParse(design, out var des) && des > 0)
+        {
+            var health = max * 100.0 / des;
+            r.Set("battery.health", health < 75 ? "fail" : health < 85 ? "warn" : "pass",
+                $"{health:0}%", $"{max}/{des} mAh — carga real vs fábrica");
+        }
+
+        // Temperatura: "Temperature" (gerações antigas, centésimos de °C) ou
+        // "AverageBattSkinTemp" (iOS recente, já em °C)
+        var rawTemp = io.TryGetValue("Temperature", out var t1) ? t1
+            : io.TryGetValue("AverageBattSkinTemp", out var t2) ? t2 : null;
+        if (rawTemp is not null && double.TryParse(rawTemp, out var tC))
+        {
+            if (tC > 150) tC /= 100; // escala antiga em centésimos
+            r.Set("battery.temp", tC > 40 ? "warn" : "info",
+                $"{tC:0.#} °C", tC > 40 ? "quente — afeta a saúde a longo prazo" : null);
+        }
+
+        if (io.TryGetValue("Voltage", out var volt) && int.TryParse(volt, out var mV))
+            r.Set("battery.voltage", "info", $"{mV} mV");
+
+        if (io.TryGetValue("InstantAmperage", out var amp) && long.TryParse(amp, out var mA))
+        {
+            // IsCharging aparece como <false/> no topo e <integer>0 em ChargerData.
+            var charging = Truthy(io.TryGetValue("IsCharging", out var ch) ? ch : null);
+            r.Set("battery.current", "info",
+                $"{Math.Abs(mA)} mA — {(charging ? "a carregar" : "a descarregar")}",
+                charging ? null : "valor alto a descarregar parado sugere consumo anómalo");
+        }
+
+        // Carregador ligado: potência negociada (AdapterDetails.Watts)
+        if (Truthy(io.TryGetValue("ExternalConnected", out var ec) ? ec : null)
+            && io.TryGetValue("Watts", out var watts) && int.TryParse(watts, out var w))
+            r.Set("battery.charger", "info", $"{w} W",
+                io.TryGetValue("Description", out var desc) ? desc : null);
+
+        if (io.TryGetValue("Serial", out var batSerial) && batSerial.Length > 0)
+            r.Set("battery.serial", "info", batSerial,
+                "série da célula — compara com o histórico para detetar bateria trocada");
+
+        if (io.TryGetValue("ManufactureDate", out var mfg) && mfg.Length > 0)
+            r.Set("battery.mfg", "info", mfg, "data de fabrico da bateria");
+    }
+
+    /// <summary>MobileGestalt via idevicediagnostics — specs que o lockdownd não expõe.</summary>
+    private void CollectGestalt(DeviceReport r, string udid)
+    {
+        var xml = RunTool(udid,
+            "mobilegestalt RegulatoryModelNumber ModelNumber DeviceColor DeviceEnclosureColor " +
+            "RegionInfo BluetoothAddress MainScreenHeight MainScreenWidth MainScreenScale TelephonyCapability");
+        if (xml is null) return;
+        var mg = ParsePlistDict(xml);
+        if (mg.Count == 0) return;
+
+        if (mg.TryGetValue("RegulatoryModelNumber", out var regModel) && regModel.Length > 0)
+            r.Set("identity.regmodel", "info", regModel, "modelo regulatório (A-num) — garante a peça certa");
+
+        if (mg.TryGetValue("ModelNumber", out var partNo) && partNo.Length > 0)
+            r.Set("identity.partno", "info", partNo,
+                "part number Apple — codifica capacidade, cor e região do aparelho");
+
+        if (mg.TryGetValue("RegionInfo", out var region) && region.Length > 0)
+            r.Set("identity.region", "info", region, "região de venda — afeta garantia e bandas");
+
+        var color = (mg.TryGetValue("DeviceColor", out var dc2) ? dc2 : null)
+                    ?? (mg.TryGetValue("DeviceEnclosureColor", out var ec) ? ec : null);
+        if (!string.IsNullOrWhiteSpace(color))
+            r.Set("identity.color", "info", color);
+
+        if (mg.TryGetValue("BluetoothAddress", out var bt) && bt.Length > 0)
+            r.Set("device.bluetooth", "info", bt);
+
+        if (mg.TryGetValue("MainScreenHeight", out var sh) && mg.TryGetValue("MainScreenWidth", out var sw)
+            && mg.TryGetValue("MainScreenScale", out var scale))
+            r.Set("screen.specs", "info", $"{sw}×{sh} pt @{scale}x",
+                "resolução lógica do ecrã — refere o modelo no iFixit");
+
+        if (mg.TryGetValue("TelephonyCapability", out var telephony))
+            r.Set("device.telephony", "info",
+                telephony == "true" ? "SIM/móvel" : "Wi-Fi only (iPad)");
     }
 }
