@@ -22,10 +22,15 @@ jobs:
         run: ./tools/fetch-tools.ps1
 
       - name: Publish single-file exe
+        # The tag IS the version — embed it so the exe's self-update check
+        # can never disagree with the release it's running.
         run: >-
           dotnet publish src/OficinaDiag/OficinaDiag.csproj
           -c Release -r win-x64 --self-contained true
-          /p:PublishSingleFile=true -o out
+          /p:PublishSingleFile=true
+          /p:Version=${VERSION#v} -o out
+        env:
+          VERSION: ${{ github.ref_name }}
 
       - name: Package
         shell: pwsh

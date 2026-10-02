@@ -7,7 +7,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <UseWPF>true</UseWPF>
     <AssemblyName>OficinaDiag</AssemblyName>
-    <Version>0.1.5</Version>
+    <Version>0.1.9</Version>
     <Description>USB phone diagnostics — free local scan, Pro reports via oficinaos-cloud</Description>
     <ApplicationIcon>Assets\app.ico</ApplicationIcon>
     <Product>OficinaOS</Product>
