@@ -20,13 +20,14 @@ public static class ReportBuilder
     public static string ToJson(DeviceReport r) => JsonSerializer.Serialize(r, JsonOpts);
 
     /// <summary>Payload for cloud /reports/diagnostic (AI report, shop-side).</summary>
-    public static string ToCloudJson(DeviceReport r)
+    public static string ToCloudJson(DeviceReport r, string lang = "pt")
     {
         var payload = new
         {
-            lang = "pt",
+            lang,
             device = new { brand = r.Device.Brand, model = r.Device.Model, os = r.Device.Os, osVersion = r.Device.OsVersion },
             results = r.Results,
+            logs = r.LogsText,
             notes = r.Notes,
         };
         return JsonSerializer.Serialize(payload, JsonOpts);
@@ -87,6 +88,10 @@ public static class ReportBuilder
                 $"<td>{System.Net.WebUtility.HtmlEncode(c.Detail ?? "")}</td></tr>");
         }
         sb.AppendLine("</table>");
+        if (!string.IsNullOrWhiteSpace(r.LogsText))
+            sb.AppendLine($"<h1 style=\"font-size:1em\">LOGS DE CRASH/PANIC</h1>" +
+                $"<pre style=\"font-size:.75em;white-space:pre-wrap;max-height:300px;overflow:auto\">" +
+                $"{System.Net.WebUtility.HtmlEncode(r.LogsText)}</pre>");
         if (!string.IsNullOrWhiteSpace(r.Notes))
             sb.AppendLine($"<h1 style=\"font-size:1em\">NOTAS</h1><p>{System.Net.WebUtility.HtmlEncode(r.Notes)}</p>");
         sb.AppendLine("<div class=\"footer\">oficinaos-diag · open source (MIT) · relatório gerado localmente</div></body></html>");

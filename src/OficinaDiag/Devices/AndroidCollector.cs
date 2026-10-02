@@ -129,7 +129,43 @@ public sealed class AndroidCollector
         if (!string.IsNullOrWhiteSpace(uptime))
             r.Raw["uptime"] = uptime;
 
+        // Logs de crash/ANR — o buffer -b crash do logcat guarda falhas de apps;
+        // o dropbox acumula crashes/ANRs/WTFs contados por tag. São quase sempre
+        // software (informativo) — falhas repetidas de componentes de sistema
+        // é que sugerem hardware.
+        await CollectLogsAsync(r, serial);
+
         r.Set("scan", "pass", "completo", $"Recolha via ADB em {(r.Device.Model ?? "dispositivo")}");
         return r;
+    }
+
+    private async Task CollectLogsAsync(DeviceReport r, string serial)
+    {
+        var crashBuf = await AdbAsync(serial, "logcat -d -b crash -t 150", 10000);
+        var appCrashes = crashBuf?.Split('\n')
+            .Count(l => l.Contains("FATAL EXCEPTION")) ?? 0;
+
+        var drop = await AdbAsync(serial,
+            "shell dumpsys dropbox 2>/dev/null | grep -oE \"(data_app_crash|data_app_anr|data_app_wtf|system_app_crash|system_server_anr)\" | sort | uniq -c", 10000);
+        var anrs = 0; var sysCrashes = 0;
+        if (drop is not null)
+        {
+            anrs = drop.Split('\n')
+                .Where(l => l.Contains("anr"))
+                .Sum(l => int.TryParse(l.Trim().Split(' ')[0], out var n) ? n : 0);
+            sysCrashes = drop.Split('\n')
+                .Where(l => l.Contains("system_"))
+                .Sum(l => int.TryParse(l.Trim().Split(' ')[0], out var n) ? n : 0);
+        }
+
+        if (crashBuf is not null && crashBuf.Length > 0)
+            r.LogsText = crashBuf.Length > 40_000 ? crashBuf[^40_000..] : crashBuf;
+
+        r.Set("logs.crashes",
+            sysCrashes > 3 ? "warn" : "info",
+            $"{appCrashes} app crashes · {anrs} ANRs · {sysCrashes} de sistema",
+            sysCrashes > 3
+                ? "falhas repetidas de componentes de sistema — investigar"
+                : "crashes de apps = software, informativo — não é defeito de hardware");
     }
 }

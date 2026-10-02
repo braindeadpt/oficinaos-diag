@@ -135,6 +135,10 @@ public sealed class IosCollector
                 // MobileGestalt: part number, cor, região, ecrã — os dados que
                 // uma loja precisa para grading de usados.
                 CollectGestalt(r, udid);
+
+                // Panic/crash logs do dispositivo — kernel panics apontam a
+                // componente de hardware a falhar; crashes de apps são info.
+                CollectCrashLogs(r, udid);
             }
         });
 
@@ -296,5 +300,88 @@ public sealed class IosCollector
         if (mg.TryGetValue("TelephonyCapability", out var telephony))
             r.Set("device.telephony", "info",
                 telephony == "true" ? "SIM/móvel" : "Wi-Fi only (iPad)");
+    }
+
+    /// <summary>
+    /// idevicecrashreport -e -k: copia os logs para uma pasta temp sem apagar
+    /// nada no telefone do cliente. panic-full (bug_type 309) = kernel panic —
+    /// o panicString costuma nomear o componente de hardware a falhar.
+    /// </summary>
+    private void CollectCrashLogs(DeviceReport r, string udid)
+    {
+        var exe = Path.Combine(AppContext.BaseDirectory, "idevicecrashreport.exe");
+        if (!File.Exists(exe)) return;
+        var dir = Path.Combine(Path.GetTempPath(), $"oficinadiag-crash-{Guid.NewGuid():N}");
+        try
+        {
+            Directory.CreateDirectory(dir);
+            using var p = Process.Start(new ProcessStartInfo(exe, $"-e -k -u {udid} \"{dir}\"")
+            {
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+                CreateNoWindow = true,
+            });
+            if (p is null) return;
+            p.StandardOutput.ReadToEndAsync();
+            if (!p.WaitForExit(25_000)) { try { p.Kill(); } catch { } return; }
+
+            var files = Directory.EnumerateFiles(dir, "*", SearchOption.AllDirectories)
+                .OrderByDescending(File.GetLastWriteTimeUtc).Take(60).ToList();
+            if (files.Count == 0)
+            {
+                r.Set("logs.panics", "pass", "0", "sem panic/crash logs no dispositivo");
+                return;
+            }
+
+            var panics = new List<string>();
+            var jetsam = 0;
+            var crashes = 0;
+            var sb = new System.Text.StringBuilder();
+            foreach (var f in files)
+            {
+                var name = Path.GetFileName(f);
+                string text;
+                try
+                {
+                    using var sr = new StreamReader(f);
+                    var buf = new char[50_000];
+                    text = new string(buf, 0, sr.Read(buf));
+                }
+                catch { continue; }
+
+                var bugType = System.Text.RegularExpressions.Regex
+                    .Match(text, "\"bug_type\"\\s*:\\s*\"?(\\d+)").Groups[1].Value;
+                var isPanic = bugType == "309"
+                    || name.Contains("panic", StringComparison.OrdinalIgnoreCase);
+                var isJetsam = name.Contains("jetsam", StringComparison.OrdinalIgnoreCase);
+
+                if (isPanic)
+                {
+                    var ps = System.Text.RegularExpressions.Regex
+                        .Match(text, "panicString\"?\\s*[:=]\\s*\"?([^\"\\n]+)")
+                        .Groups[1].Value.Trim();
+                    panics.Add($"{name}: {(ps.Length > 0 ? ps : "panicString não extraído")}");
+                }
+                else if (isJetsam) jetsam++;
+                else crashes++;
+
+                if (sb.Length < 40_000)
+                    sb.AppendLine($"--- {name} ---\n{(text.Length > 600 ? text[..600] : text)}");
+            }
+            r.LogsText = sb.Length > 0 ? sb.ToString() : null;
+
+            r.Set("logs.panics", panics.Count == 0 ? "pass" : "warn",
+                panics.Count.ToString(),
+                panics.Count == 0
+                    ? "sem kernel panics"
+                    : $"kernel panic recente — possível falha de hardware: {panics[0]}"
+                        + (panics.Count > 1 ? $" (+{panics.Count - 1})" : ""));
+            if (crashes + jetsam > 0)
+                r.Set("logs.crashes", "info", $"{crashes} apps · {jetsam} jetsam",
+                    "crashes de apps = software; jetsam = pressão de memória, não defeito");
+        }
+        catch { }
+        finally { try { Directory.Delete(dir, true); } catch { } }
     }
 }

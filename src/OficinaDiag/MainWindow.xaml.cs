@@ -247,8 +247,12 @@ public partial class MainWindow : Window
         var token = Microsoft.VisualBasic.Interaction.InputBox(
             "Token da loja (oficinaos-cloud):", "Relatório IA — PRO", "");
         if (string.IsNullOrWhiteSpace(token)) return;
+        var lang = (Microsoft.VisualBasic.Interaction.InputBox(
+            "Idioma do relatório (pt/en/fr/es):", "Relatório IA — PRO", "pt") ?? "pt")
+            .Trim().ToLowerInvariant();
+        if (lang is not ("pt" or "en" or "fr" or "es")) lang = "pt";
         Log("> a gerar relatório IA…");
-        var (ok, text) = await _cloud.GenerateAiReportAsync(token, _report);
+        var (ok, text) = await _cloud.GenerateAiReportAsync(token, _report, lang);
         if (!ok) { Log($"! IA falhou: {text}"); return; }
         var dlg = new SaveFileDialog { Filter = "Relatório IA|*.md", FileName = $"ai-report-{_report.CollectedAt:yyyyMMdd-HHmm}.md" };
         if (dlg.ShowDialog() == true) { File.WriteAllText(dlg.FileName, text); Log($"> relatório IA guardado: {dlg.FileName}"); }

@@ -77,13 +77,14 @@ public sealed class CloudClient
     /// Technician-facing: AI report via the shop's cloud token (Pro module
     /// ai-reports). The token lives in the app's Settings once paired.
     /// </summary>
-    public async Task<(bool ok, string reportOrError)> GenerateAiReportAsync(string shopToken, DeviceReport report)
+    public async Task<(bool ok, string reportOrError)> GenerateAiReportAsync(
+        string shopToken, DeviceReport report, string lang = "pt")
     {
         try
         {
             using var req = new HttpRequestMessage(HttpMethod.Post, new Uri(BaseUri, "reports/diagnostic"))
             {
-                Content = new StringContent(Reports.ReportBuilder.ToCloudJson(report), Encoding.UTF8, "application/json"),
+                Content = new StringContent(Reports.ReportBuilder.ToCloudJson(report, lang), Encoding.UTF8, "application/json"),
             };
             req.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", shopToken);
             var res = await Http.SendAsync(req);

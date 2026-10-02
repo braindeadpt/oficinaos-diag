@@ -28,7 +28,7 @@ public sealed class DeviceIdentity
 public sealed class DeviceReport
 {
     public string Tool { get; set; } = "oficinaos-diag";
-    public string ToolVersion { get; set; } = "0.1.1";
+    public string ToolVersion { get; set; } = "0.1.2";
     public DateTimeOffset CollectedAt { get; set; } = DateTimeOffset.UtcNow;
 
     public string Platform { get; set; } = "unknown"; // android | ios
@@ -40,6 +40,12 @@ public sealed class DeviceReport
     /// <summary>Raw key/value grabs kept for debugging — never sent to the AI.</summary>
     [JsonIgnore]
     public Dictionary<string, string> Raw { get; } = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Tail dos logs de crash/panic do dispositivo — enviado à IA para
+    /// interpretação (iOS panics = suspeita de hardware; app crashes = info).
+    /// </summary>
+    public string? LogsText { get; set; }
 
     public string? Notes { get; set; }
 
