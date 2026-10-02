@@ -78,6 +78,7 @@ public partial class MainWindow : Window
         Top = wa.Top + Math.Max(0, (wa.Height - Height) / 2);
         var ver = System.Reflection.Assembly.GetExecutingAssembly().GetName().Version?.ToString(3);
         Title = $"OFICINA-OS // DIAG v{ver}";
+        HeaderTitle.Text = $"█▓▒░ OFICINA-OS // DIAG v{ver}";
         Log($"> ecrã útil {wa.Width:0}x{wa.Height:0} · janela {Width:0}x{Height:0} @{Left:0},{Top:0}");
         Log("> boot sequence…");
         Log("> oficinaos-diag — scan USB grátis · relatórios Pro via cloud");
