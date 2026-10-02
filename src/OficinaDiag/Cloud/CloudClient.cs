@@ -29,13 +29,13 @@ public sealed class CloudClient
     /// gated by the shop's diag-intake module).
     /// </summary>
     public async Task<(bool ok, string message)> SendToShopAsync(
-        string shopCode, DeviceReport report, string name, string phone, string? email, string? aiReport)
+        string shopCode, DeviceReport report, string name, string phone, string? email, string? aiReport, string? purpose)
     {
         try
         {
             var res = await Http.PostAsync(
                 new Uri(BaseUri, $"intake/{Uri.EscapeDataString(shopCode.Trim().ToUpperInvariant())}"),
-                new StringContent(Reports.ReportBuilder.ToIntakeJson(report, name, phone, email, aiReport), Encoding.UTF8, "application/json"));
+                new StringContent(Reports.ReportBuilder.ToIntakeJson(report, name, phone, email, aiReport, purpose), Encoding.UTF8, "application/json"));
             if (res.IsSuccessStatusCode)
                 return (true, "Relatório enviado à loja — eles veem-no na app.");
             var body = await res.Content.ReadAsStringAsync();

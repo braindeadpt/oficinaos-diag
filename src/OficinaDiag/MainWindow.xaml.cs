@@ -232,7 +232,7 @@ public partial class MainWindow : Window
         Log($"> a enviar à loja {dlg.ShopCode}…");
         var (ok, msg) = await _cloud.SendToShopAsync(
             dlg.ShopCode, _report, dlg.CustomerName, dlg.CustomerPhone, dlg.CustomerEmail,
-            _lastAiReport);
+            _lastAiReport, dlg.Purpose);
         Log(ok ? $"> {msg}" : $"! envio falhou: {msg}");
     }
 

@@ -42,6 +42,12 @@
         <TextBlock Text="email (opcional)"/>
         <TextBox x:Name="EmailBox" MaxLength="200"/>
 
+        <TextBlock Text="motivo do envio"/>
+        <RadioButton x:Name="PurposeRepair" IsChecked="True" Foreground="#33ff33"
+                     Margin="0,2,0,0" Content="Reparação — a loja avalia o problema"/>
+        <RadioButton x:Name="PurposeSale" Foreground="#33ff33"
+                     Margin="0,4,0,0" Content="Vender o telemóvel — pedir orçamento à loja"/>
+
         <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,16,0,0">
             <Button Content="[ ENVIAR ]" IsDefault="True" Click="Send_Click"/>
             <Button Content="[ cancelar ]" IsCancel="True" Margin="10,0,0,0"/>
