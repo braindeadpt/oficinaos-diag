@@ -123,6 +123,8 @@
                 <StackPanel Orientation="Horizontal">
                     <Button Style="{StaticResource TermButton}" x:Name="ScanButton"
                             Click="Scan_Click">[ SCAN ]</Button>
+                    <Button Style="{StaticResource TermButton}" x:Name="BenchButton"
+                            Click="Bench_Click" IsEnabled="False">[ SCAN+ ]</Button>
                     <Button Style="{StaticResource TermButton}" x:Name="TestButton"
                             Click="Test_Click" IsEnabled="False">[ ECRÃ+TOQUE ]</Button>
                     <Button Style="{StaticResource TermButton}" x:Name="ExportButton"

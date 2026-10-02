@@ -210,7 +210,9 @@ public sealed class IosCollector
         int? pct = io.TryGetValue("BatteryCurrentCapacity", out var p) && int.TryParse(p, out var lv)
             ? lv : null;
         bool? charging = io.TryGetValue("IsCharging", out var ch) ? Truthy(ch) : null;
-        return new LiveTelemetry(mA, volts, tempC, pct, charging);
+        double? negW = io.TryGetValue("Watts", out var w) && int.TryParse(w, out var wv) && wv > 0
+            ? wv : null;
+        return new LiveTelemetry(mA, volts, tempC, pct, charging, negW);
     }
 
     /// <summary>Achata todos os &lt;dict&gt; aninhados de um plist XML → pares key/valor a string.</summary>

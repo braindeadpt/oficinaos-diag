@@ -78,6 +78,7 @@ public partial class MainWindow : Window
             _current = d;
             StatusText.Text = $"{d.Label} detetado";
             ScanButton.IsEnabled = true;
+            BenchButton.IsEnabled = true;
             StartTelemetry(d);
         });
         _detector.Detached += d => Dispatcher.Invoke(() =>
@@ -88,6 +89,7 @@ public partial class MainWindow : Window
             TelemetryText.Text = "";
             _telemetryCts?.Cancel();
             TestButton.IsEnabled = false;
+            BenchButton.IsEnabled = false;
         });
         ScanButton.IsEnabled = true; // permite tentar mesmo sem evento
         _ = CheckForUpdateAsync();
@@ -246,6 +248,39 @@ public partial class MainWindow : Window
             }
         }
         catch (Exception ex) { Log($"! teste falhou: {ex.Message}"); }
+    }
+
+    /// <summary>SCAN+ — sessão guiada de potência na janela bancada.</summary>
+    private void Bench_Click(object sender, RoutedEventArgs e)
+    {
+        if (_current is null)
+        {
+            Log("! nenhum dispositivo — liga um telefone por USB");
+            return;
+        }
+        var d = _current;
+        Func<Task<LiveTelemetry?>> probe = d.Kind == DeviceKind.Android
+            ? () => new AndroidCollector(_adbPath).ProbeAsync(d.Id.TrimEnd('!'))
+            : () => new IosCollector().ProbeAsync(d.Id);
+
+        _busy = true; // ticker pausa durante a sessão
+        var bench = new BenchWindow(d.Label, probe) { Owner = this };
+        var saved = bench.ShowDialog() == true;
+        _busy = false;
+
+        if (!saved || bench.Result is not { } res) return;
+        if (_report is null)
+        {
+            _report = new DeviceReport
+            {
+                Platform = d.Kind == DeviceKind.Android ? "android" : "ios",
+                Device = { Serial = d.Id },
+            };
+        }
+        res.ApplyTo(_report);
+        RefreshResults();
+        ExportButton.IsEnabled = SendButton.IsEnabled = AiButton.IsEnabled = true;
+        Log($"> SCAN+ gravado: {res.ChargeValue} · {res.SampleCount} amostras");
     }
 
     private void RefreshResults()
