@@ -3,8 +3,6 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:local="clr-namespace:OficinaDiag"
         Title="OFICINA-OS // BANCADA" Height="620" Width="920"
-        MaxWidth="{DynamicResource {x:Static SystemParameters.WorkAreaWidthKey}}"
-        MaxHeight="{DynamicResource {x:Static SystemParameters.WorkAreaHeightKey}}"
         MinWidth="640" MinHeight="440"
         Background="#050a05" WindowStartupLocation="CenterOwner">
     <Window.Resources>
@@ -79,7 +77,7 @@
             <!-- instrução guiada -->
             <Border Grid.Row="1" Padding="16,8">
                 <TextBlock x:Name="Instr" FontFamily="Consolas" FontSize="14" Foreground="#ffd23f"
-                           Text="retira o carregador se estiver ligado · carrega INICIAR"/>
+                           Text="cabo ligado ao PC · telemóvel quieto · carrega INICIAR"/>
             </Border>
 
             <!-- scope -->

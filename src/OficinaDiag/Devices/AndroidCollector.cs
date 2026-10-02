@@ -178,6 +178,10 @@ public sealed class AndroidCollector
         return r;
     }
 
+    /// <summary>Shell livre — usado pela bancada para aplicar/retirar carga (ecrã, brilho).</summary>
+    public Task<string?> ShellAsync(string serial, string cmd, int timeoutMs = 8000)
+        => AdbAsync(serial, $"shell {cmd}", timeoutMs);
+
     /// <summary>Leitura instantânea para o ticker — um só adb por tick.</summary>
     public async Task<LiveTelemetry?> ProbeAsync(string serial)
     {

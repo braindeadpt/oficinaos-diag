@@ -1,6 +1,6 @@
 namespace OficinaDiag.Devices;
 
-/// <summary>Uma amostra da sessão de potência [SCAN+]. Phase: 1=repouso, 2=à espera do carregador, 3=carga.</summary>
+/// <summary>Uma amostra da sessão de potência [SCAN+]. Phase: 1=base, 2=carga de trabalho, 3=recuperação.</summary>
 public sealed record PowerSample(double T, int Phase, int? Milliamps, double? Volts,
     double? TempC, int? Percent, bool? Charging, double? NegotiatedWatts);
 
@@ -11,8 +11,8 @@ public sealed class PowerSessionResult
     public required string ChargeValue { get; init; }
     public required string ChargeDetail { get; init; }
     public double? RealWatts { get; init; }
-    public double? NegotiatedWatts { get; init; }
     public int? InternalResistanceMohm { get; init; }
+    public int? VoltageSagMv { get; init; }
     public double? MaxTempC { get; init; }
     public int SampleCount { get; init; }
     public int DurationSec { get; init; }
@@ -21,106 +21,99 @@ public sealed class PowerSessionResult
     public void ApplyTo(DeviceReport r)
     {
         r.Set("power.charge", ChargeStatus, ChargeValue, ChargeDetail);
-        if (NegotiatedWatts is { } neg && RealWatts is { } real)
-        {
-            var limited = real < neg * 0.5;
-            r.Set("power.charger", limited ? "warn" : "info",
-                $"{neg:0} W negociados → {real:0.#} W reais",
-                limited ? "o cabo/porta está a limitar o carregamento" : "o carregador entrega o que negocia");
-        }
         if (InternalResistanceMohm is { } ir)
             r.Set("power.resistance", ir > 400 ? "warn" : "info", $"{ir} mΩ",
                 ir > 400
                     ? "célula envelhecida — previsível desligar antes dos 10–15%"
-                    : "estimativa ΔV/ΔI na transição repouso→carga");
+                    : "ΔV/ΔI sob carga de ecrã — dentro do saudável");
+        if (VoltageSagMv is { } sag && InternalResistanceMohm is null)
+            r.Set("power.resistance", sag > 150 ? "warn" : "info", $"{sag} mV de queda",
+                "sag de tensão sob carga — resistência interna indeterminada neste driver");
         if (MaxTempC is { } t)
             r.Set("power.temp", t > 42 ? "warn" : "info", $"{t:0.#} °C",
-                t > 42 ? "aqueceu durante o teste de carga" : null);
+                t > 42 ? "aqueceu durante o teste" : null);
         r.Set("power.session", "info", $"{SampleCount} amostras · {DurationSec}s",
-            "sessão SCAN+ — repouso + carga guiada");
+            "sessão SCAN+ — base · carga de ecrã · recuperação");
     }
 }
 
 public static class PowerAnalyzer
 {
-    /// <summary>Analisa as amostras: fase 1 = repouso, fase 3 = carga.</summary>
+    /// <summary>
+    /// Corrente líquida com sinal: + a carregar, − a descarregar.
+    /// Drivers Android sem sinal ficam positivos — o IR pode ficar indeterminado.
+    /// </summary>
+    private static double? NetMa(PowerSample s) => s.Milliamps is { } m
+        ? s.Charging == false ? -m : m
+        : null;
+
+    /// <summary>Analisa: fase 1 = base (cabo PC, ~2.5W), fase 2 = ecrã+câmara ligada, fase 3 = recuperação.</summary>
     public static PowerSessionResult Analyze(List<PowerSample> samples)
     {
-        var rest = samples.Where(s => s.Phase == 1).ToList();
-        var charge = samples.Where(s => s.Phase == 3 && s.Milliamps is > 0).ToList();
+        var baseSamples = samples.Where(s => s.Phase == 1).ToList();
+        var load = samples.Where(s => s.Phase == 2).ToList();
         var maxTemp = samples.Where(s => s.TempC is { }).Select(s => s.TempC!.Value)
             .DefaultIfEmpty().Max();
         var dur = (int)(samples.LastOrDefault()?.T ?? 0);
 
-        if (charge.Count < 3)
-            return new PowerSessionResult
-            {
-                ChargeStatus = "fail",
-                ChargeValue = "sem carga",
-                ChargeDetail = "o telemóvel não aceitou carga durante o teste — porta, cabo ou carregador",
-                MaxTempC = maxTemp > 0 ? maxTemp : null,
-                SampleCount = samples.Count,
-                DurationSec = dur,
-            };
+        // Carga via porta do PC — honestamente é só isso que o cabo de dados permite medir
+        var charging = samples.Where(s => s.Phase != 2 && s.Milliamps is > 30 && s.Charging != false).ToList();
+        double? realW = null;
+        var withW = charging.Where(s => s.Volts is { }).ToList();
+        if (withW.Count > 2)
+            realW = withW.Average(s => s.Volts!.Value * s.Milliamps!.Value / 1000.0);
+        var avgMa = charging.Count > 0 ? charging.Average(s => s.Milliamps ?? 0) : 0;
 
-        // Watts reais = média de V·I durante a carga
-        var withW = charge.Where(s => s.Volts is { } && s.Milliamps is { }).ToList();
-        double? realW = withW.Count > 0
-            ? withW.Average(s => s.Volts!.Value * s.Milliamps!.Value / 1000.0) : null;
-        var negW = charge.Where(s => s.NegotiatedWatts is > 0)
-            .Select(s => s.NegotiatedWatts!.Value).DefaultIfEmpty().Max();
-        var avgMa = charge.Average(s => s.Milliamps ?? 0);
-        var peakMa = charge.Max(s => s.Milliamps ?? 0);
-
-        // Resistência interna ≈ salto de tensão / corrente na transição repouso→carga
+        // Resistência interna: ΔV/ΔI na transição base→carga de trabalho.
+        // Sob carga o telemóvel puxa mais da bateria → tensão afunda I·R.
         int? irMohm = null;
-        var restV = rest.Where(s => s.Volts is { }).TakeLast(5).ToList();
-        var earlyCharge = charge.Take(5).Where(s => s.Volts is { } && s.Milliamps is > 100).ToList();
-        if (restV.Count >= 3 && earlyCharge.Count >= 2)
+        int? sagMv = null;
+        var baseTail = baseSamples.Where(s => s.Volts is { } && s.Milliamps is { }).TakeLast(5).ToList();
+        var loadHead = load.Skip(1).Where(s => s.Volts is { } && s.Milliamps is { }).Take(5).ToList();
+        if (baseTail.Count >= 3 && loadHead.Count >= 2)
         {
-            var vRest = restV.Average(s => s.Volts!.Value);
-            var vChg = earlyCharge.Average(s => s.Volts!.Value);
-            var iChg = earlyCharge.Average(s => s.Milliamps!.Value) / 1000.0;
-            var ir = (vChg - vRest) / iChg * 1000;
-            if (ir is > 20 and < 2000) irMohm = (int)ir;
+            var vBase = baseTail.Average(s => s.Volts!.Value);
+            var vLoad = loadHead.Average(s => s.Volts!.Value);
+            var iBase = baseTail.Select(s => NetMa(s) ?? 0).Average();
+            var iLoad = loadHead.Select(s => NetMa(s) ?? 0).Average();
+            sagMv = (int)((vBase - vLoad) * 1000);
+            var dI = (iBase - iLoad) / 1000.0; // A — positivo quando a bateria passa a dar mais
+            var ir = vBase - vLoad;            // V — sag positivo
+            if (dI > 0.15 && ir > 0.010)
+            {
+                var mohm = ir / dI * 1000;
+                if (mohm is > 20 and < 2000) irMohm = (int)mohm;
+            }
         }
 
-        // Veredicto do caminho de carga
+        // Veredicto do caminho de carga (porta USB do PC — 2.5W é o normal)
         string status, detail;
-        if (realW is null)
-        {
-            status = "info";
-            detail = $"carga detetada a ~{avgMa:0} mA — sem tensão para calcular watts";
-        }
-        else if (maxTemp > 40 && realW < 8)
+        if (charging.Count == 0)
         {
             status = "warn";
-            detail = $"só {realW:0.#} W e bateria a {maxTemp:0.#} °C — provável recusa de carga rápida por temperatura";
+            detail = "não entra carga pela porta — cabo sem dados+power, porta suja ou circuito de carga morto";
         }
-        else if (negW > 0 && realW < negW * 0.5)
+        else if (realW is { } rw)
         {
-            status = "warn";
-            detail = $"negocia {negW:0} W mas entrega {realW:0.#} W — cabo, porta ou carregador limitam";
-        }
-        else if (realW < 4)
-        {
-            status = "warn";
-            detail = $"carga fraca ({realW:0.#} W · pico {peakMa} mA) — porta suja, cabo mau ou carregador fraco";
+            status = rw < 0.8 ? "warn" : "info";
+            detail = rw < 0.8
+                ? $"só {rw:0.#} W nem pela porta do PC — suspeita de porta/cabo"
+                : $"{rw:0.#} W via porta USB do PC — caminho de carga íntegro (carregador de parede não medido)";
         }
         else
         {
-            status = "pass";
-            detail = $"{realW:0.#} W reais a entrar (pico {peakMa} mA)";
+            status = "info";
+            detail = $"aceita carga (~{avgMa:0} mA) via porta do PC";
         }
 
         return new PowerSessionResult
         {
             ChargeStatus = status,
-            ChargeValue = realW is { } rw ? $"{rw:0.#} W" : $"{avgMa:0} mA",
+            ChargeValue = realW is { } rw2 ? $"{rw2:0.#} W" : $"{avgMa:0} mA",
             ChargeDetail = detail,
             RealWatts = realW,
-            NegotiatedWatts = negW > 0 ? negW : null,
             InternalResistanceMohm = irMohm,
+            VoltageSagMv = sagMv,
             MaxTempC = maxTemp > 0 ? maxTemp : null,
             SampleCount = samples.Count,
             DurationSec = dur,

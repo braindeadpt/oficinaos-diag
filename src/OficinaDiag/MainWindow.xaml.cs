@@ -67,6 +67,9 @@ public partial class MainWindow : Window
 
     private void OnLoaded(object sender, RoutedEventArgs e)
     {
+        // nunca nascer maior que a área útil do ecrã (scaling/ecrãs pequenos)
+        MaxWidth = SystemParameters.WorkArea.Width;
+        MaxHeight = SystemParameters.WorkArea.Height;
         Log("> boot sequence…");
         Log("> oficinaos-diag — scan USB grátis · relatórios Pro via cloud");
         if (!File.Exists(_adbPath))
@@ -259,12 +262,29 @@ public partial class MainWindow : Window
             return;
         }
         var d = _current;
-        Func<Task<LiveTelemetry?>> probe = d.Kind == DeviceKind.Android
-            ? () => new AndroidCollector(_adbPath).ProbeAsync(d.Id.TrimEnd('!'))
-            : () => new IosCollector().ProbeAsync(d.Id);
+        Func<Task<LiveTelemetry?>> probe;
+        Func<Task>? loadOn = null, loadOff = null;
+        if (d.Kind == DeviceKind.Android)
+        {
+            var adb = new AndroidCollector(_adbPath);
+            var serial = d.Id.TrimEnd('!');
+            probe = () => adb.ProbeAsync(serial);
+            // carga de trabalho automática: ecrã acordado + brilho máximo
+            loadOn = async () => await adb.ShellAsync(serial,
+                "input keyevent KEYCODE_WAKEUP; svc power stayon true; " +
+                "settings put system screen_brightness_mode 0; " +
+                "settings put system screen_brightness 255");
+            loadOff = async () => await adb.ShellAsync(serial,
+                "settings put system screen_brightness_mode 1; " +
+                "svc power stayon false; input keyevent KEYCODE_SLEEP");
+        }
+        else
+        {
+            probe = () => new IosCollector().ProbeAsync(d.Id);
+        }
 
         _busy = true; // ticker pausa durante a sessão
-        var bench = new BenchWindow(d.Label, probe) { Owner = this };
+        var bench = new BenchWindow(d.Label, probe, loadOn, loadOff) { Owner = this };
         var saved = bench.ShowDialog() == true;
         _busy = false;
 
