@@ -71,6 +71,8 @@ public partial class MainWindow : Window
         var wa = SystemParameters.WorkArea;
         MaxWidth = wa.Width;
         MaxHeight = wa.Height;
+        if (Width > wa.Width) Width = wa.Width;
+        if (Height > wa.Height) Height = wa.Height;
         // CenterScreen posiciona antes do clamp — re-centra dentro da work area
         Left = wa.Left + Math.Max(0, (wa.Width - Width) / 2);
         Top = wa.Top + Math.Max(0, (wa.Height - Height) / 2);
