@@ -34,13 +34,14 @@ public static class ReportBuilder
     }
 
     /// <summary>Payload for cloud POST /intake/:shopCode (customer → shop).</summary>
-    public static string ToIntakeJson(DeviceReport r, string name, string phone, string? email)
+    public static string ToIntakeJson(DeviceReport r, string name, string phone, string? email, string? aiReport)
     {
         var payload = new
         {
             customerName = name,
             customerPhone = phone,
             customerEmail = email,
+            aiReport,
             device = new
             {
                 brand = r.Device.Brand,

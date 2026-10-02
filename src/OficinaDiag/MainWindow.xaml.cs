@@ -51,6 +51,9 @@ public partial class MainWindow : Window
     private readonly Cloud.CloudClient _cloud;
     private DetectedDevice? _current;
     private DeviceReport? _report;
+    // Último relatório IA gerado para _report — viaja no envio à loja para a
+    // loja o ver no pedido sem gastar outra geração.
+    private string? _lastAiReport;
 
     public MainWindow()
     {
@@ -130,6 +133,7 @@ public partial class MainWindow : Window
                 Log("! nenhum dispositivo — liga um telefone por USB (ADB debug / Confiar)");
                 return;
             }
+            _lastAiReport = null;
             _report = _current.Kind == DeviceKind.Android
                 ? await new AndroidCollector(_adbPath).CollectAsync(_current.Id.TrimEnd('!'))
                 : await new IosCollector().CollectAsync(_current.Id);
@@ -227,7 +231,8 @@ public partial class MainWindow : Window
         if (dlg.ShowDialog() != true) return;
         Log($"> a enviar à loja {dlg.ShopCode}…");
         var (ok, msg) = await _cloud.SendToShopAsync(
-            dlg.ShopCode, _report, dlg.CustomerName, dlg.CustomerPhone, dlg.CustomerEmail);
+            dlg.ShopCode, _report, dlg.CustomerName, dlg.CustomerPhone, dlg.CustomerEmail,
+            _lastAiReport);
         Log(ok ? $"> {msg}" : $"! envio falhou: {msg}");
     }
 
@@ -283,6 +288,7 @@ public partial class MainWindow : Window
         Log("> a gerar relatório IA…");
         var (ok, text) = await _cloud.GenerateAiReportAsync(token, _report, lang);
         if (!ok) { Log($"! IA falhou: {text}"); return; }
+        _lastAiReport = text;
         var dlg = new SaveFileDialog { Filter = "Relatório IA|*.md", FileName = $"ai-report-{_report.CollectedAt:yyyyMMdd-HHmm}.md" };
         if (dlg.ShowDialog() == true) { File.WriteAllText(dlg.FileName, text); Log($"> relatório IA guardado: {dlg.FileName}"); }
     }
