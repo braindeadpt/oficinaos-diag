@@ -3,6 +3,9 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:local="clr-namespace:OficinaDiag"
         Title="OFICINA-OS // BANCADA" Height="620" Width="920"
+        MaxWidth="{DynamicResource {x:Static SystemParameters.WorkAreaWidthKey}}"
+        MaxHeight="{DynamicResource {x:Static SystemParameters.WorkAreaHeightKey}}"
+        MinWidth="640" MinHeight="440"
         Background="#050a05" WindowStartupLocation="CenterOwner">
     <Window.Resources>
         <Style x:Key="TermButton" TargetType="Button">

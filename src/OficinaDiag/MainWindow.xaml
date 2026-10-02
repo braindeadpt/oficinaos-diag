@@ -3,6 +3,9 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:local="clr-namespace:OficinaDiag"
         Title="OFICINA-OS // DIAG" Height="640" Width="960"
+        MaxWidth="{DynamicResource {x:Static SystemParameters.WorkAreaWidthKey}}"
+        MaxHeight="{DynamicResource {x:Static SystemParameters.WorkAreaHeightKey}}"
+        MinWidth="700" MinHeight="480"
         Background="#050a05" WindowStartupLocation="CenterScreen">
     <Window.Resources>
         <local:StatusTagConverter x:Key="StatusTag"/>
