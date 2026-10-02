@@ -103,8 +103,9 @@ public sealed class AndroidCollector
             if (cols.Length >= 6)
             {
                 var pctUsed = cols[^2];
-                r.Set("storage", int.TryParse(pctUsed.TrimEnd('%'), out var u) && u > 90 ? "warn" : "pass",
-                    $"{pctUsed} usado", $"livre: {cols[^3]} KB");
+                // "info": disco cheio é uso normal do cliente, não defeito
+                r.Set("storage", "info",
+                    $"{pctUsed} usado", $"livre: {cols[^3]} KB — utilização normal, não é defeito de hardware");
             }
         }
 

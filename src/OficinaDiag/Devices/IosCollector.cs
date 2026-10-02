@@ -102,9 +102,11 @@ public sealed class IosCollector
                     {
                         ulong.TryParse(GetValue(client, "com.apple.disk_usage", "TotalDataAvailable")
                             ?? GetValue(client, null, "TotalDataAvailable"), out var free);
-                        var pctFree = total > 0 ? free * 100.0 / total : 0;
-                        r.Set("storage", pctFree < 10 ? "warn" : "pass",
-                            $"{free / 1_073_741_824.0:0.#} GB livres de {total / 1_073_741_824.0:0.#} GB");
+                        // Sempre "info": espaço usado é dados do utilizador,
+                        // não defeito de hardware — contexto, não achado.
+                        r.Set("storage", "info",
+                            $"{free / 1_073_741_824.0:0.#} GB livres de {total / 1_073_741_824.0:0.#} GB",
+                            "utilização normal — não é defeito de hardware");
                     }
 
                     var imei = GetValue(client, null, "InternationalMobileEquipmentIdentity");
