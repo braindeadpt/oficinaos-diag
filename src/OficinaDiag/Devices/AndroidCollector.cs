@@ -40,6 +40,19 @@ public sealed class AndroidCollector
     private static string? Match(string? text, string pattern) =>
         text is null ? null : Regex.Match(text, pattern).Groups[1].Value.Trim();
 
+    /// <summary>
+    /// `service call iphonesubinfo` devolve um Parcel com o IMEI em ASCII
+    /// intercalado com nulos — extrai os dígitos das colunas '....'.
+    /// </summary>
+    private static string? ParseImei(string? parcel)
+    {
+        if (parcel is null) return null;
+        var digits = string.Concat(
+            Regex.Matches(parcel, @"'([^']*)'")
+                .Select(m => new string(m.Groups[1].Value.Where(char.IsDigit).ToArray())));
+        return digits.Length is >= 14 and <= 17 ? digits[..15] : null;
+    }
+
     public async Task<DeviceReport> CollectAsync(string serial)
     {
         var r = new DeviceReport { Platform = "android" };
@@ -53,6 +66,22 @@ public sealed class AndroidCollector
         r.Set("identity.serial", "info", serial);
         r.Set("os.version", "info", $"{r.Device.Os} {r.Device.OsVersion}",
             $"SDK {await PropAsync(serial, "ro.build.version.sdk")}, patch {await PropAsync(serial, "ro.build.version.security_patch")}");
+        r.Set("identity.fingerprint", "info", await PropAsync(serial, "ro.build.fingerprint"),
+            "build exata do firmware — útil para confirmar stock vs ROM modificado");
+        r.Set("device.baseband", "info", await PropAsync(serial, "gsm.version.baseband"),
+            "firmware do modem — afeta rede/SIM");
+
+        // SIM/carrier — estado de leitura do cartão e operadora detetada
+        var simState = await PropAsync(serial, "gsm.sim.state");
+        var carrier = await PropAsync(serial, "gsm.operator.alpha");
+        r.Set("device.sim", simState == "READY" ? "pass" : "info", simState,
+            string.IsNullOrWhiteSpace(carrier) ? null : $"operadora: {carrier}");
+
+        // IMEI — service call funciona no shell de muitos dispositivos;
+        // quando o fabricante bloqueia, sai como "info" sem quebrar o scan.
+        var imei = ParseImei(await AdbAsync(serial, "shell service call iphonesubinfo 1"));
+        if (imei is not null)
+            r.Set("identity.imei", "info", imei);
 
         // Bootloader / tamper indicators
         var vbState = await PropAsync(serial, "ro.boot.verifiedbootstate");
@@ -66,6 +95,16 @@ public sealed class AndroidCollector
         var su = await AdbAsync(serial, "shell which su");
         if (!string.IsNullOrWhiteSpace(su))
             r.Set("security.root", "warn", "su encontrado", "O equipamento pode ter root");
+
+        // SELinux + encriptação — flags de segurança para avaliação de retoma
+        var selinux = (await AdbAsync(serial, "shell getenforce"))?.Trim();
+        if (!string.IsNullOrWhiteSpace(selinux))
+            r.Set("security.selinux", selinux == "Enforcing" ? "pass" : "warn", selinux,
+                selinux == "Enforcing" ? "proteção de kernel ativa" : "SELinux desativado — software modificado");
+        var crypto = await PropAsync(serial, "ro.crypto.state");
+        if (!string.IsNullOrWhiteSpace(crypto))
+            r.Set("security.crypto", crypto == "encrypted" ? "pass" : "info", crypto,
+                "dados do utilizador encriptados em repouso");
 
         // Battery — dumpsys gives level/temp/health flag; sysfs may give cycles & capacity
         var batt = await AdbAsync(serial, "shell dumpsys battery");

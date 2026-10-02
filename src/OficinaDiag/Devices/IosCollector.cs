@@ -93,6 +93,16 @@ public sealed class IosCollector
                         "Activated = o equipamento está funcional");
                     r.Set("device.sim", "info", GetValue(client, null, "SIMStatus"));
                     r.Set("device.wifi", "info", GetValue(client, null, "WiFiAddress"));
+                    r.Set("security.password", "info", GetValue(client, null, "PasswordProtected"),
+                        "true = código de desbloqueio definido");
+
+                    // Modem — o domínio interno expõe baseband e ICCID (SIM físico)
+                    var baseband = GetValue(client, "com.apple.mobile.internal", "BasebandVersion");
+                    if (baseband is not null)
+                        r.Set("device.baseband", "info", baseband, "firmware do modem — afeta rede/SIM");
+                    var iccid = GetValue(client, null, "IntegratedCircuitCardIdentity");
+                    if (iccid is not null)
+                        r.Set("identity.iccid", "info", iccid, "nº do cartão SIM físico");
 
                     // Storage — o espaço de dados vive no domínio disk_usage;
                     // TotalDiskCapacity no domínio nulo serve de fallback.
