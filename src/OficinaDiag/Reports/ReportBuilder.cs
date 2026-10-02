@@ -99,4 +99,33 @@ public static class ReportBuilder
         sb.AppendLine("<div class=\"footer\">oficinaos-diag · open source (MIT) · relatório gerado localmente</div></body></html>");
         return sb.ToString();
     }
+
+    /// <summary>
+    /// Renders the AI-generated markdown report as a self-contained HTML file
+    /// with the same retro style — printable/handable to the customer.
+    /// </summary>
+    public static string AiReportToHtml(DeviceReport r, string markdown)
+    {
+        var body = Markdig.Markdown.ToHtml(markdown);
+        return $$"""
+        <!DOCTYPE html><html lang="pt"><head><meta charset="utf-8">
+        <title>OficinaDiag — relatório IA</title><style>
+        body{background:#0a0f0a;color:#33ff33;font-family:'Cascadia Mono',Consolas,monospace;max-width:760px;margin:2em auto;padding:0 1em}
+        h1{border-bottom:1px solid #33ff33;padding-bottom:.4em}
+        h2,h3{color:#7fd77f;font-size:1em;margin-top:1.6em}
+        .meta{color:#7fd77f;font-size:.85em;margin-bottom:2em}
+        table{width:100%;border-collapse:collapse}
+        td,th{border:1px solid #1d4a1d;padding:.4em .7em;text-align:left;font-size:.9em}
+        th{background:#0d1f0d}
+        li{margin:.3em 0}
+        .footer{margin-top:3em;font-size:.75em;color:#4a7a4a}
+        @media print{body{background:#fff;color:#000}.meta,.footer,h2,h3{color:#555}th{background:#eee} }
+        </style></head><body>
+        <h1>OFICINA-OS // RELATÓRIO IA</h1>
+        <div class="meta">{{System.Net.WebUtility.HtmlEncode(r.Device.Brand)}} {{System.Net.WebUtility.HtmlEncode(r.Device.Model)}} · {{System.Net.WebUtility.HtmlEncode(r.Device.Os)}} {{System.Net.WebUtility.HtmlEncode(r.Device.OsVersion)}} · s/n {{System.Net.WebUtility.HtmlEncode(r.Device.Serial)}}<br>
+        gerado {{r.CollectedAt:dd-MM-yyyy HH:mm}} UTC · tool v{{r.ToolVersion}} · via OficinaOS Cloud</div>
+        {{body}}
+        <div class="footer">oficinaos-diag · relatório gerado por IA — valida sempre com inspeção física</div></body></html>
+        """;
+    }
 }

@@ -291,8 +291,14 @@ public partial class MainWindow : Window
         var (ok, text) = await _cloud.GenerateAiReportAsync(token, _report, lang);
         if (!ok) { Log($"! IA falhou: {text}"); return; }
         _lastAiReport = text;
-        var dlg = new SaveFileDialog { Filter = "Relatório IA|*.md", FileName = $"ai-report-{_report.CollectedAt:yyyyMMdd-HHmm}.md" };
-        if (dlg.ShowDialog() == true) { File.WriteAllText(dlg.FileName, text); Log($"> relatório IA guardado: {dlg.FileName}"); }
+        // Guarda em HTML renderizado (entregável ao cliente) e abre no browser.
+        var dlg = new SaveFileDialog { Filter = "Relatório IA|*.html", FileName = $"ai-report-{_report.CollectedAt:yyyyMMdd-HHmm}.html" };
+        if (dlg.ShowDialog() == true)
+        {
+            File.WriteAllText(dlg.FileName, ReportBuilder.AiReportToHtml(_report, text));
+            Log($"> relatório IA guardado: {dlg.FileName}");
+            Process.Start(new ProcessStartInfo(dlg.FileName) { UseShellExecute = true });
+        }
     }
 
     protected override void OnClosing(CancelEventArgs e)
