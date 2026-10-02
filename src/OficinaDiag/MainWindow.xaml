@@ -70,6 +70,9 @@
                     <TextBlock x:Name="StatusText" VerticalAlignment="Center" Margin="20,0,0,0"
                                FontFamily="Consolas" FontSize="12" Foreground="#7fd77f"
                                Text="a vigiar USB…"/>
+                    <!-- instrumento vivo: corrente/tensão/temp/carga enquanto há dispositivo -->
+                    <TextBlock x:Name="TelemetryText" VerticalAlignment="Center" Margin="20,0,0,0"
+                               FontFamily="Consolas" FontSize="12" Foreground="#4a9a4a" Text=""/>
                 </StackPanel>
             </Border>
 

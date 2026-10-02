@@ -54,6 +54,9 @@ public partial class MainWindow : Window
     // Último relatório IA gerado para _report — viaja no envio à loja para a
     // loja o ver no pedido sem gastar outra geração.
     private string? _lastAiReport;
+    // Ticker do header — leitura ambiente da bateria enquanto há dispositivo.
+    private CancellationTokenSource? _telemetryCts;
+    private bool _busy;
 
     public MainWindow()
     {
@@ -75,16 +78,60 @@ public partial class MainWindow : Window
             _current = d;
             StatusText.Text = $"{d.Label} detetado";
             ScanButton.IsEnabled = true;
+            StartTelemetry(d);
         });
         _detector.Detached += d => Dispatcher.Invoke(() =>
         {
             Log($"> dispositivo removido: {d.Label}");
             if (_current?.Id == d.Id) _current = null;
             StatusText.Text = "a vigiar USB…";
+            TelemetryText.Text = "";
+            _telemetryCts?.Cancel();
             TestButton.IsEnabled = false;
         });
         ScanButton.IsEnabled = true; // permite tentar mesmo sem evento
         _ = CheckForUpdateAsync();
+    }
+
+    /// <summary>
+    /// Poll de telemetria a cada 4s enquanto o dispositivo está ligado —
+    /// pausa durante scan/testes para não colidir com as leituras do coletor.
+    /// </summary>
+    private void StartTelemetry(DetectedDevice d)
+    {
+        _telemetryCts?.Cancel();
+        var cts = _telemetryCts = new CancellationTokenSource();
+        _ = Task.Run(async () =>
+        {
+            while (!cts.IsCancellationRequested)
+            {
+                try
+                {
+                    if (_current?.Id == d.Id && !_busy)
+                    {
+                        var t = d.Kind == DeviceKind.Android
+                            ? await new AndroidCollector(_adbPath).ProbeAsync(d.Id.TrimEnd('!'))
+                            : await new IosCollector().ProbeAsync(d.Id);
+                        var text = FormatTelemetry(t);
+                        Dispatcher.Invoke(() => TelemetryText.Text = text);
+                    }
+                }
+                catch { }
+                try { await Task.Delay(4000, cts.Token); } catch { return; }
+            }
+        });
+    }
+
+    private static string FormatTelemetry(LiveTelemetry? t)
+    {
+        if (t is null) return "";
+        var parts = new List<string>();
+        if (t.Milliamps is { } mA)
+            parts.Add($"{mA}mA{(t.Charging == true ? "↑" : t.Charging == false ? "↓" : "")}");
+        if (t.Volts is { } v) parts.Add($"{v:0.00}V");
+        if (t.TempC is { } c) parts.Add($"{c:0.#}°C");
+        if (t.Percent is { } p) parts.Add($"batt {p}%");
+        return string.Join(" · ", parts);
     }
 
     private Cloud.UpdateChecker.UpdateInfo? _update;
@@ -125,6 +172,7 @@ public partial class MainWindow : Window
     private async void Scan_Click(object sender, RoutedEventArgs e)
     {
         ScanButton.IsEnabled = false;
+        _busy = true;
         Log("> scan a correr…");
         try
         {
@@ -153,7 +201,7 @@ public partial class MainWindow : Window
             ExportButton.IsEnabled = TestButton.IsEnabled = SendButton.IsEnabled = AiButton.IsEnabled = true;
         }
         catch (Exception ex) { Log($"! erro: {ex.Message}"); }
-        finally { ScanButton.IsEnabled = true; }
+        finally { ScanButton.IsEnabled = true; _busy = false; }
     }
 
     private void Test_Click(object sender, RoutedEventArgs e)

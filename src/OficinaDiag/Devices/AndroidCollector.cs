@@ -178,6 +178,38 @@ public sealed class AndroidCollector
         return r;
     }
 
+    /// <summary>Leitura instantânea para o ticker — um só adb por tick.</summary>
+    public async Task<LiveTelemetry?> ProbeAsync(string serial)
+    {
+        var o = await AdbAsync(serial,
+            "shell cat /sys/class/power_supply/battery/current_now " +
+            "/sys/class/power_supply/battery/voltage_now " +
+            "/sys/class/power_supply/battery/temp " +
+            "/sys/class/power_supply/battery/capacity 2>/dev/null", 5000);
+        if (o is null) return null;
+        var l = o.Split('\n', StringSplitOptions.RemoveEmptyEntries)
+                 .Select(s => s.Trim()).ToArray();
+        if (l.Length == 0) return null;
+
+        int? mA = null; double? volts = null; double? tempC = null; int? pct = null;
+        bool? charging = null;
+        if (l.Length > 0 && long.TryParse(l[0], out var cur))
+        {
+            // drivers variam: µA ou mA — acima de ~20A assume µA
+            var norm = Math.Abs(cur) > 20000 ? cur / 1000 : cur;
+            mA = (int)Math.Abs(norm);
+            // drivers com sinal: negativo a descarregar; sem sinal fica incerto
+            charging = cur < 0 ? false : cur > 0 ? true : null;
+        }
+        if (l.Length > 1 && double.TryParse(l[1], out var uv))
+            volts = uv > 100000 ? uv / 1_000_000 : uv / 1000; // µV ou mV
+        if (l.Length > 2 && double.TryParse(l[2], out var tp))
+            tempC = tp > 150 ? tp / 10 : tp; // décimos de °C
+        if (l.Length > 3 && int.TryParse(l[3], out var cp))
+            pct = cp;
+        return new LiveTelemetry(mA, volts, tempC, pct, charging);
+    }
+
     private async Task CollectLogsAsync(DeviceReport r, string serial)
     {
         var crashBuf = await AdbAsync(serial, "logcat -d -b crash -t 150", 10000);

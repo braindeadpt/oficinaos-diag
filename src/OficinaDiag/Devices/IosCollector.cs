@@ -191,6 +191,28 @@ public sealed class IosCollector
         catch { return null; }
     }
 
+    /// <summary>Leitura instantânea para o ticker — AppleSmartBattery só.</summary>
+    public async Task<LiveTelemetry?> ProbeAsync(string udid)
+    {
+        var xml = await Task.Run(() => RunTool(udid, "ioregentry AppleSmartBattery", 8000));
+        if (xml is null) return null;
+        var io = ParsePlistDict(xml);
+        if (io.Count == 0) return null;
+
+        int? mA = io.TryGetValue("InstantAmperage", out var a) && long.TryParse(a, out var m)
+            ? (int)Math.Abs(m) : null;
+        double? volts = io.TryGetValue("Voltage", out var v) && int.TryParse(v, out var mv)
+            ? mv / 1000.0 : null;
+        var rawTemp = io.TryGetValue("Temperature", out var t1) ? t1
+            : io.TryGetValue("AverageBattSkinTemp", out var t2) ? t2 : null;
+        double? tempC = rawTemp is not null && double.TryParse(rawTemp, out var tc)
+            ? (tc > 150 ? tc / 100 : tc) : null;
+        int? pct = io.TryGetValue("BatteryCurrentCapacity", out var p) && int.TryParse(p, out var lv)
+            ? lv : null;
+        bool? charging = io.TryGetValue("IsCharging", out var ch) ? Truthy(ch) : null;
+        return new LiveTelemetry(mA, volts, tempC, pct, charging);
+    }
+
     /// <summary>Achata todos os &lt;dict&gt; aninhados de um plist XML → pares key/valor a string.</summary>
     private static Dictionary<string, string> ParsePlistDict(string xml)
     {

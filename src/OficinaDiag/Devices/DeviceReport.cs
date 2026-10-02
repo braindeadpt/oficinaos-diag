@@ -11,6 +11,9 @@ public sealed class CheckResult
     public string? Detail { get; set; }
 }
 
+/// <summary>Ambient battery readout for the header ticker — polled while a device is connected.</summary>
+public sealed record LiveTelemetry(int? Milliamps, double? Volts, double? TempC, int? Percent, bool? Charging);
+
 /// <summary>Device identity block — mirrors the cloud /reports/diagnostic contract.</summary>
 public sealed class DeviceIdentity
 {
