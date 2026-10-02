@@ -28,7 +28,7 @@ jobs:
           dotnet publish src/OficinaDiag/OficinaDiag.csproj
           -c Release -r win-x64 --self-contained true
           /p:PublishSingleFile=true
-          /p:Version=${VERSION#v} -o out
+          /p:Version=$($env:VERSION.TrimStart('v')) -o out
         env:
           VERSION: ${{ github.ref_name }}
 
