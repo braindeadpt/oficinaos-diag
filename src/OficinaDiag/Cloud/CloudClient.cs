@@ -12,7 +12,9 @@ namespace OficinaDiag.Cloud;
 /// </summary>
 public sealed class CloudClient
 {
-    private static readonly HttpClient Http = new() { Timeout = TimeSpan.FromSeconds(30) };
+    // 150s: AI reports carry crash logs and the LLM needs thinking time —
+    // 30s was hit in the field. The other calls answer in ms anyway.
+    private static readonly HttpClient Http = new() { Timeout = TimeSpan.FromSeconds(150) };
 
     public Uri BaseUri { get; set; }
 
@@ -92,6 +94,10 @@ public sealed class CloudClient
             if (!res.IsSuccessStatusCode) return (false, $"{(int)res.StatusCode} — {body}");
             using var doc = JsonDocument.Parse(body);
             return (true, doc.RootElement.GetProperty("report").GetString() ?? "");
+        }
+        catch (TaskCanceledException)
+        {
+            return (false, "O servidor de IA demorou demasiado a responder — tenta outra vez.");
         }
         catch (Exception ex) { return (false, ex.Message); }
     }
