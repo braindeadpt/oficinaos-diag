@@ -91,13 +91,17 @@ public sealed class IosCollector
 
                     r.Set("device.activation", "pass", GetValue(client, null, "ActivationState"),
                         "Activated = o equipamento está funcional");
-                    r.Set("device.sim", "info", GetValue(client, null, "SIMStatus"));
+                    r.Set("device.sim", "info",
+                        GetValue(client, null, "SIMStatus")
+                            ?.Replace("kCTSIMSupportSIMStatus", ""));
                     r.Set("device.wifi", "info", GetValue(client, null, "WiFiAddress"));
                     r.Set("security.password", "info", GetValue(client, null, "PasswordProtected"),
                         "true = código de desbloqueio definido");
 
-                    // Modem — o domínio interno expõe baseband e ICCID (SIM físico)
-                    var baseband = GetValue(client, "com.apple.mobile.internal", "BasebandVersion");
+                    // Modem — o domínio interno expõe a baseband; fallback ao
+                    // domínio nulo para iOS que a rejeitem no interno.
+                    var baseband = GetValue(client, "com.apple.mobile.internal", "BasebandVersion")
+                        ?? GetValue(client, null, "BasebandVersion");
                     if (baseband is not null)
                         r.Set("device.baseband", "info", baseband, "firmware do modem — afeta rede/SIM");
                     var iccid = GetValue(client, null, "IntegratedCircuitCardIdentity");
@@ -262,7 +266,7 @@ public sealed class IosCollector
 
         // Carregador ligado: potência negociada (AdapterDetails.Watts)
         if (Truthy(io.TryGetValue("ExternalConnected", out var ec) ? ec : null)
-            && io.TryGetValue("Watts", out var watts) && int.TryParse(watts, out var w))
+            && io.TryGetValue("Watts", out var watts) && int.TryParse(watts, out var w) && w > 0)
             r.Set("battery.charger", "info", $"{w} W",
                 io.TryGetValue("Description", out var desc) ? desc : null);
 
@@ -360,10 +364,9 @@ public sealed class IosCollector
                 }
                 catch { continue; }
 
-                var bugType = System.Text.RegularExpressions.Regex
-                    .Match(text, "\"bug_type\"\\s*:\\s*\"?(\\d+)").Groups[1].Value;
-                var isPanic = bugType == "309"
-                    || name.Contains("panic", StringComparison.OrdinalIgnoreCase);
+                // Kernel panics são panic-full/panic-base-*.ips — bug_type 309
+                // aparece em TODOS os .ips de crash de app, não distingue nada.
+                var isPanic = name.StartsWith("panic", StringComparison.OrdinalIgnoreCase);
                 var isJetsam = name.Contains("jetsam", StringComparison.OrdinalIgnoreCase);
 
                 if (isPanic)
