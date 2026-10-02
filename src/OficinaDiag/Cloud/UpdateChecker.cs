@@ -53,10 +53,14 @@ public sealed class UpdateChecker
 
             // UTF-8 BOM so Windows PowerShell 5.1 reads accented paths correctly.
             var ps1Path = Path.Combine(Path.GetTempPath(), $"oficinaos-diag-update-{info.Tag}.ps1");
+            var logPath = Path.Combine(Path.GetTempPath(), "oficinaos-diag-update.log");
             var script = string.Join(Environment.NewLine, new[]
             {
                 "Start-Sleep -Seconds 3",
-                $"tar -xf '{zipPath}' -C '{appDir}'",
+                $"$log = '{logPath}'",
+                $"\"update {info.Tag} @ $(Get-Date -Format o)\" | Out-File $log",
+                $"tar -xf '{zipPath}' -C '{appDir}' 2>&1 | Out-File $log -Append",
+                $"\"exit=$LASTEXITCODE\" | Out-File $log -Append",
                 $"Start-Process '{Path.Combine(appDir, "OficinaDiag.exe")}'",
                 $"Remove-Item '{zipPath}' -ErrorAction SilentlyContinue",
                 "Remove-Item $MyInvocation.MyCommand.Path -ErrorAction SilentlyContinue",
