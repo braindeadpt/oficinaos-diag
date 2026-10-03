@@ -1,6 +1,7 @@
 ﻿using System.ComponentModel;
 using System.Globalization;
 using System.IO;
+using System.Text.Json;
 using System.Windows;
 using System.Windows.Data;
 using System.Windows.Media;
@@ -234,10 +235,42 @@ public partial class MainWindow : Window
                     _report.Set("test.touch", h >= t - 5 ? "pass" : "fail",
                         $"{h}/{t} zonas", "grelha de toque preenchida no telefone");
                 }
-                _report?.Set("test.screen", "pass", "cores ok",
+                _report.Set("test.screen", "pass", "cores ok",
                     "utilizador confirmou as cores — dead pixels seriam visíveis");
-                Log("> resultados do teste de ecrã recebidos do telefone");
-                Scan_Click(sender, e: null!); // refresh visual
+
+                // Sensores — a página mede por browser APIs; "no-data" significa
+                // que o browser não respondeu, não que o hardware falhou.
+                if (data.TryGetValue("sensors", out var sensors)
+                    && sensors.ValueKind == JsonValueKind.Object)
+                {
+                    var names = new (string Key, string Label)[]
+                    {
+                        ("accel", "acelerómetro"), ("gyro", "giroscópio"),
+                        ("orient", "orientação"), ("light", "luz ambiente"),
+                        ("multitouch", "multi-toque"),
+                    };
+                    foreach (var (key, label) in names)
+                    {
+                        if (!sensors.TryGetProperty(key, out var s)) continue;
+                        var state = s.GetString();
+                        if (state is null) continue;
+                        _report.Set($"sensor.{key}",
+                            state == "ok" ? "pass" : state == "no-data" ? "warn" : "skipped",
+                            state == "ok" ? "a responder" : state == "no-data" ? "sem leitura" : "browser não expõe",
+                            state == "no-data"
+                                ? $"o browser não devolveu dados do {label} — re-testar ou verificar hardware"
+                                : $"leitura via browser ({label})");
+                    }
+                }
+                if (data.TryGetValue("vibrate", out var vib) && vib.ValueKind == JsonValueKind.String)
+                {
+                    var v = vib.GetString();
+                    if (v == "ok")
+                        _report.Set("sensor.vibrate", "pass", "vibrou", "utilizador confirmou vibração no telefone");
+                    else if (v == "no-data")
+                        _report.Set("sensor.vibrate", "fail", "não vibrou", "utilizador não sentiu vibração — verificar motor");
+                }
+                Log("> resultados do teste no telefone recebidos (ecrã, toque, sensores)");
                 RefreshResults();
                 server.Dispose();
             });

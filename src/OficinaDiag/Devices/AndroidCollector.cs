@@ -62,7 +62,19 @@ public sealed class AndroidCollector
         r.Device.Os = "Android";
         r.Device.OsVersion = await PropAsync(serial, "ro.build.version.release");
 
-        r.Set("identity.model", "info", r.Device.Model);
+        // Nome comercial — prop de marketing do fabricante, senão tabela de códigos
+        foreach (var prop in ModelNameTable.MarketingProps)
+        {
+            var name = ModelNameTable.Clean(await PropAsync(serial, prop), r.Device.Model);
+            if (name is not null) { r.Device.MarketingName = name; break; }
+        }
+        r.Device.MarketingName ??= ModelNameTable.Lookup(r.Device.Model);
+
+        r.Set("identity.model", "info",
+            r.Device.MarketingName ?? r.Device.Model,
+            r.Device.MarketingName is not null
+                ? $"código: {r.Device.Model}"
+                : "modelo por código — sem nome comercial conhecido");
         r.Set("identity.serial", "info", serial);
         r.Set("os.version", "info", $"{r.Device.Os} {r.Device.OsVersion}",
             $"SDK {await PropAsync(serial, "ro.build.version.sdk")}, patch {await PropAsync(serial, "ro.build.version.security_patch")}");
@@ -106,7 +118,8 @@ public sealed class AndroidCollector
             r.Set("security.crypto", crypto == "encrypted" ? "pass" : "info", crypto,
                 "dados do utilizador encriptados em repouso");
 
-        // Battery — dumpsys gives level/temp/health flag; sysfs may give cycles & capacity
+        // Battery — dumpsys gives level/temp/health/charge-state; sysfs may
+        // give cycles & capacity; batterystats gives the learned estimate.
         var batt = await AdbAsync(serial, "shell dumpsys battery");
         var level = Match(batt, @"level: (\d+)");
         var temp = Match(batt, @"temperature: (\d+)");
@@ -118,12 +131,49 @@ public sealed class AndroidCollector
             temp is null ? null : $"{t / 10:0.#}°C");
         r.Set("battery.health", healthText == "good" ? "pass" : "warn", healthText);
 
+        // Estado de carga + fonte — "a carregar por USB a X%" distingue
+        // porta lenta de carregador de parede quando o cliente diz "não carrega".
+        var battStatus = Match(batt, @"status: (\d+)");
+        var battStatusText = battStatus switch
+        {
+            "2" => "a carregar", "3" => "a descarregar",
+            "4" => "sem carga", "5" => "cheia", _ => null,
+        };
+        var plugged = Match(batt, @"plugged: (\d+)");
+        var pluggedText = plugged switch
+        {
+            "1" => "AC", "2" => "USB", "4" => "wireless", _ => null,
+        };
+        if (battStatusText is not null)
+            r.Set("battery.status", "info", battStatusText,
+                pluggedText is null ? null : $"fonte: {pluggedText}");
+
+        var voltage = Match(batt, @"voltage: (\d+)");
+        if (double.TryParse(voltage, out var mv))
+            r.Set("battery.voltage",
+                mv is < 3400 or > 4400 ? "warn" : "info", $"{mv / 1000:0.00} V",
+                mv is < 3400 or > 4400
+                    ? "fora da faixa normal 3.4–4.4V"
+                    : null);
+
+        var tech = Match(batt, @"technology: (.+)");
+        if (!string.IsNullOrWhiteSpace(tech))
+            r.Set("battery.technology", "info", tech);
+
+        // Carga restante medida pelo fuel gauge (µAh) — dado bruto, serve de
+        // referência para degradacao entre scans (histórico local).
+        var chargeCounter = Match(batt, @"Charge counter: (\d+)");
+        if (long.TryParse(chargeCounter, out var cc) && cc > 0)
+            r.Set("battery.charge_now", "info", $"{cc / 1000} mAh",
+                "carga atual medida pelo fuel gauge");
+
         // Cycle count + real capacity where the vendor exposes it (Samsung, Pixel…)
         var cycles = (await AdbAsync(serial, "shell cat /sys/class/power_supply/battery/cycle_count"))?.Trim();
         var chargeFull = (await AdbAsync(serial, "shell cat /sys/class/power_supply/battery/charge_full"))?.Trim();
         var chargeDesign = (await AdbAsync(serial, "shell cat /sys/class/power_supply/battery/charge_full_design"))?.Trim();
         if (int.TryParse(cycles, out var c))
-            r.Set("battery.cycles", c > 800 ? "warn" : "info", c.ToString());
+            r.Set("battery.cycles", c > 800 ? "warn" : "info", c.ToString(),
+                c > 800 ? "acima de ~800 ciclos a degradação é esperada" : null);
         if (double.TryParse(chargeFull, NumberStyles.Float, CultureInfo.InvariantCulture, out var cf)
             && double.TryParse(chargeDesign, NumberStyles.Float, CultureInfo.InvariantCulture, out var cd) && cd > 0)
         {
@@ -131,6 +181,18 @@ public sealed class AndroidCollector
             r.Set("battery.capacity", pct >= 80 ? "pass" : pct >= 60 ? "warn" : "fail",
                 $"{pct:0}%",
                 $"Capacidade real {cf:0} / design {cd:0} — {(pct < 80 ? "bateria degradada" : "saúde boa")}");
+        }
+
+        // Capacidade aprendida pelo Android (batterystats) — fallback quando o
+        // fabricante não expõe charge_full no sysfs.
+        var stats = await AdbAsync(serial, "shell dumpsys batterystats | grep -m1 -i \"capacity\"", 10000);
+        var learned = Match(stats, @"capacity:\s*([\d.,]+)");
+        if (learned is not null && double.TryParse(
+                learned.Replace(',', '.'), NumberStyles.Float,
+                CultureInfo.InvariantCulture, out var learnedMah) && learnedMah > 0)
+        {
+            r.Set("battery.capacity_learned", "info", $"{learnedMah:0} mAh",
+                "estimativa aprendida pelo Android — compara com a capacidade de design");
         }
 
         // Storage

@@ -20,6 +20,8 @@ public sealed class DeviceIdentity
 {
     public string? Brand { get; set; }
     public string? Model { get; set; }
+    /// <summary>Nome de marketing resolvido (prop ou tabela) — "Galaxy S23 Ultra" em vez de "SM-S918B".</summary>
+    public string? MarketingName { get; set; }
     public string? Os { get; set; }
     public string? OsVersion { get; set; }
     public string? Serial { get; set; }

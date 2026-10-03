@@ -3,36 +3,65 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
-<title>OficinaOS — teste de ecrã e toque</title>
+<title>OficinaOS — teste de ecrã, toque e sensores</title>
 <style>
   html,body{margin:0;height:100%;overflow:hidden;background:#000;font-family:monospace}
-  #stage{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;color:#0f0}
+  #stage{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;color:#0f0;text-align:center;padding:12px}
   #grid{position:fixed;inset:0;display:none;grid-template-columns:repeat(6,1fr);grid-template-rows:repeat(10,1fr)}
   .cell{border:1px solid #033;background:#000}
   .cell.hit{background:#0f0}
+  #sensors{display:none;position:fixed;inset:0;background:#000;color:#0f0;flex-direction:column;padding:16px;overflow-y:auto}
+  #sensors h2{margin:0 0 10px;font-size:15px}
+  .srow{display:flex;justify-content:space-between;border-bottom:1px solid #033;padding:8px 2px;font-size:13px}
+  .srow .st{min-width:110px;text-align:right}
+  .ok{color:#3f3}.warn{color:#fd3}.no{color:#f55}
+  #sensors button{background:#020;border:1px solid #0f0;color:#0f0;font:inherit;font-size:15px;padding:12px;margin:10px 0}
+  #sensors button:active{background:#030}
   #done{display:none;position:fixed;inset:0;background:#000;color:#0f0;align-items:center;justify-content:center;text-align:center}
 </style>
 </head>
 <body>
-<div id="stage">TOCA PARA COMEÇAR<br><small>teste de cores + toque</small></div>
+<div id="stage">TOCA PARA COMEÇAR<br><small>teste de cores + toque + sensores</small></div>
 <div id="grid"></div>
+<div id="sensors">
+  <h2>SENSORES — abana e inclina o telefone</h2>
+  <div class="srow"><span>Acelerómetro</span><span class="st" id="s-accel">…</span></div>
+  <div class="srow"><span>Giroscópio</span><span class="st" id="s-gyro">…</span></div>
+  <div class="srow"><span>Orientação (bússola)</span><span class="st" id="s-orient">…</span></div>
+  <div class="srow"><span>Luz ambiente</span><span class="st" id="s-light">…</span></div>
+  <div class="srow"><span>Multi-toque</span><span class="st" id="s-touch">…</span></div>
+  <div class="srow"><span>Bateria (API)</span><span class="st" id="s-batt">…</span></div>
+  <button id="vibBtn">VIBRAR — sentiste?</button>
+  <div id="vibAsk" style="display:none">
+    <button id="vibYes">SIM, vibrou</button>
+    <button id="vibNo">NÃO vibrou</button>
+  </div>
+  <button id="permBtn" style="display:none">PERMITIR SENSORES (iPhone)</button>
+  <button id="endBtn">TERMINAR TESTE</button>
+</div>
 <div id="done">✓ TESTE COMPLETO<br><small>podes voltar ao PC</small></div>
 <script>
 const stage = document.getElementById('stage');
 const grid = document.getElementById('grid');
 const colors = ['#f00','#0f0','#00f','#fff','#000','#f0f','#ff0','#0ff'];
 let step = -1;
-const result = { colorsViewed: 0, touchTotal: 60, touchHit: 0, userAgent: navigator.userAgent };
+const result = {
+  colorsViewed: 0, touchTotal: 60, touchHit: 0,
+  userAgent: navigator.userAgent,
+  maxTouchPoints: navigator.maxTouchPoints || 0,
+  sensors: {}, vibrate: null, batteryApi: null
+};
 
+/* ── fase 1: cores ── */
 stage.onclick = () => {
   step++;
   if (step < colors.length) { stage.style.background = colors[step]; stage.style.color = step===4?'#0f0':'#000'; stage.innerHTML='procura pixeis mortos — toca para avançar'; }
   else { stage.style.display='none'; startGrid(); }
 };
 
+/* ── fase 2: grelha de toque ── */
 function startGrid(){
   grid.style.display='grid';
-  grid.style.background='#000';
   const hit = new Set();
   for(let i=0;i<60;i++){
     const c=document.createElement('div'); c.className='cell'; c.dataset.i=i; grid.appendChild(c);
@@ -44,17 +73,107 @@ function startGrid(){
   grid.addEventListener('touchstart',e=>{[...e.touches].forEach(mark)},{passive:true});
   grid.addEventListener('touchmove',e=>{[...e.touches].forEach(mark)},{passive:true});
   grid.addEventListener('touchend',()=>{
-    result.touchHit = hit.size;
-    if(hit.size>=55) finish();   // margem para bordas
+    if(hit.size>=55) startSensors(hit.size);
   },{passive:true});
-  // fallback para testar com rato
   grid.onmousemove = e=>{ if(e.buttons) mark(e); };
-  grid.onclick = e=>{ mark(e); if(hit.size>=55) finish(); };
+  grid.onclick = e=>{ mark(e); if(hit.size>=55) startSensors(hit.size); };
 }
+
+/* ── fase 3: sensores ── */
+function setSt(id, val, cls){
+  const el=document.getElementById(id); el.textContent=val; el.className='st '+(cls||'');
+}
+function probe(name, ctor){
+  try{
+    const s=new ctor(); let got=false;
+    s.onreading=()=>{ if(!got){got=true; s.stop();
+      result.sensors[name]='ok'; setSt('s-'+name,'OK','ok'); }};
+    s.onerror=()=>{ result.sensors[name]='unavailable'; setSt('s-'+name,'não exposto','no'); };
+    s.start();
+    setTimeout(()=>{ if(!got && !result.sensors[name]){ try{s.stop()}catch(e){}
+      result.sensors[name]='no-data'; setSt('s-'+name,'sem leitura','warn'); } }, 5000);
+  }catch(e){
+    result.sensors[name]='unavailable'; setSt('s-'+name,'não exposto','no');
+  }
+}
+
+function startSensors(touchHit){
+  grid.style.display='none';
+  const panel=document.getElementById('sensors');
+  panel.style.display='flex';
+  result.touchHit = touchHit;
+
+  // iOS 13+ — os eventos de movimento precisam de permissão por gesto
+  if(typeof DeviceMotionEvent!=='undefined' && typeof DeviceMotionEvent.requestPermission==='function'){
+    document.getElementById('permBtn').style.display='block';
+  }
+
+  /* devicemotion cobre accel+gyro na maioria dos Androids; Generic Sensor API
+     (Accelerometer/Gyroscope/…) exige HTTPS em alguns browsers — LAN é HTTP,
+     por isso tentamos ambos e marcamos "não exposto" quando a API não existe. */
+  let motionSeen=false, orientSeen=false;
+  window.addEventListener('devicemotion', e=>{
+    if(motionSeen) return;
+    if(e.acceleration && (e.acceleration.x!==null||e.acceleration.y!==null)){
+      motionSeen=true; result.sensors.accel='ok'; setSt('s-accel','OK','ok');
+    }
+    if(e.rotationRate && (e.rotationRate.alpha!==null||e.rotationRate.beta!==null)){
+      if(result.sensors.gyro!=='ok'){ result.sensors.gyro='ok'; setSt('s-gyro','OK','ok'); }
+    }
+  });
+  window.addEventListener('deviceorientation', e=>{
+    if(orientSeen) return;
+    if(e.alpha!==null||e.beta!==null||e.gamma!==null){
+      orientSeen=true; result.sensors.orient='ok'; setSt('s-orient','OK','ok');
+    }
+  });
+
+  if(typeof Accelerometer!=='undefined' && !motionSeen) probe('accel',Accelerometer);
+  if(typeof Gyroscope!=='undefined') probe('gyro',Gyroscope);
+  if(typeof AbsoluteOrientationSensor!=='undefined' || typeof RelativeOrientationSensor!=='undefined'){
+    probe('orient', typeof AbsoluteOrientationSensor!=='undefined'?AbsoluteOrientationSensor:RelativeOrientationSensor);
+  }
+  if(typeof AmbientLightSensor!=='undefined') probe('light',AmbientLightSensor);
+  else { result.sensors.light='unavailable'; setSt('s-light','não exposto','no'); }
+
+  setTimeout(()=>{
+    if(!result.sensors.accel){ result.sensors.accel='no-data'; setSt('s-accel','sem leitura','warn'); }
+    if(!result.sensors.gyro){ result.sensors.gyro='no-data'; setSt('s-gyro','sem leitura','warn'); }
+    if(!result.sensors.orient){ result.sensors.orient='no-data'; setSt('s-orient','sem leitura','warn'); }
+    if(!result.sensors.light){ result.sensors.light='no-data'; setSt('s-light','sem leitura','warn'); }
+  }, 6000);
+
+  setSt('s-touch', result.maxTouchPoints+' pontos', result.maxTouchPoints>=2?'ok':'warn');
+  if(result.maxTouchPoints<2) result.sensors.multitouch='no-data'; else result.sensors.multitouch='ok';
+
+  if(navigator.getBattery){
+    navigator.getBattery().then(b=>{
+      result.batteryApi={level:Math.round(b.level*100),charging:b.charging};
+      setSt('s-batt',Math.round(b.level*100)+'%'+(b.charging?' ⚡':''),'ok');
+    }).catch(()=>{ setSt('s-batt','não exposto','no'); });
+  } else { setSt('s-batt','não exposto','no'); }
+}
+
+document.getElementById('permBtn').onclick=()=>{
+  Promise.all([
+    typeof DeviceMotionEvent!=='undefined'&&DeviceMotionEvent.requestPermission?DeviceMotionEvent.requestPermission():Promise.resolve('granted'),
+    typeof DeviceOrientationEvent!=='undefined'&&DeviceOrientationEvent.requestPermission?DeviceOrientationEvent.requestPermission():Promise.resolve('granted')
+  ]).catch(()=>{});
+  document.getElementById('permBtn').style.display='none';
+};
+document.getElementById('vibBtn').onclick=()=>{
+  if(navigator.vibrate){ navigator.vibrate(300); document.getElementById('vibAsk').style.display='block'; }
+  else { result.vibrate='unavailable'; document.getElementById('vibBtn').textContent='vibração não exposta'; }
+};
+document.getElementById('vibYes').onclick=()=>{ result.vibrate='ok'; document.getElementById('vibAsk').style.display='none'; document.getElementById('vibBtn').textContent='VIBROU ✓'; };
+document.getElementById('vibNo').onclick=()=>{ result.vibrate='no-data'; document.getElementById('vibAsk').style.display='none'; document.getElementById('vibBtn').textContent='NÃO vibrou'; };
+
+document.getElementById('endBtn').onclick=()=>{ finish(); };
 
 function finish(){
   result.colorsViewed = colors.length;
   fetch('/result',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(result)});
+  document.getElementById('sensors').style.display='none';
   document.getElementById('done').style.display='flex';
 }
 </script>

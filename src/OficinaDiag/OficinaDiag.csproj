@@ -25,6 +25,7 @@
   <!-- bundled adb + on-device test page, copied to output -->
   <ItemGroup>
     <Content Include="Tests\wwwroot\**" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Data\models.json" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <Content Include="..\..\tools\platform-tools\**" LinkBase="tools\platform-tools" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" ExcludeFromSingleFile="true" Condition="Exists('..\..\tools\platform-tools')" />
   </ItemGroup>
 
