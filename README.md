@@ -4,6 +4,11 @@ Ferramenta Windows de diagnóstico de telemóveis por USB — visual terminal re
 scan local gratuito e relatórios Pro via [oficinaos-cloud] para lojas aderentes ao
 [OficinaOS](https://github.com/braindeadpt/OficinaOS).
 
+> **Ecossistema:** este é 1 de 4 repos (app da loja `reparilo`, `oficinaos-cloud`,
+> `oficinaos-website`, esta ferramenta). O mapa canónico — fluxos de dados, IDs de
+> módulos, onde mora cada peça — está em
+> [`reparilo/docs/ecosystem.md`](https://github.com/braindeadpt/OficinaOS/blob/main/docs/ecosystem.md).
+
 ## Descarregar (testadores)
 
 **[oficinaos-diag-win-x64.zip — última versão](https://github.com/braindeadpt/oficinaos-diag/releases/latest/download/oficinaos-diag-win-x64.zip)**
