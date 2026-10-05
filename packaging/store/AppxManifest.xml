@@ -2,12 +2,10 @@
 <!--
   MSIX manifest for the Microsoft Store build of OficinaOS Diag.
 
-  BEFORE PACKAGING: replace the two REPLACE_ values in <Identity> with the
-  values Partner Center shows under "App identity" after reserving the app
-  name (see docs/microsoft-store.md):
-    - Name      → "Package/Identity/Name"      (e.g. 12345Foo.OficinaOSDiag)
-    - Publisher → "Package/Identity/Publisher" (e.g. CN=ABCDEF12-3456-...)
-  Also update <PublisherDisplayName> to the legal name shown in the Store.
+  Identity values below come from Partner Center → OficinaOS Diag →
+  "Identidade do Produto" (Store ID 9P2BM91SFKFM). If the app is ever
+  re-reserved under a different account, update them from the new
+  "App identity" page before packaging (see docs/microsoft-store.md).
 -->
 <Package
   xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10"
@@ -17,13 +15,13 @@
   IgnorableNamespaces="uap uap10 rescap">
 
   <Identity
-    Name="REPLACE_PACKAGE_IDENTITY_NAME"
-    Publisher="REPLACE_PUBLISHER_DN"
+    Name="PedroPovoas.OficinaOSDiag"
+    Publisher="CN=9DE6B7C0-63A2-4A16-870C-7EABA33F242F"
     Version="0.1.9.0" />
 
   <Properties>
     <DisplayName>OficinaOS Diag</DisplayName>
-    <PublisherDisplayName>REPLACE_PUBLISHER_DISPLAY_NAME</PublisherDisplayName>
+    <PublisherDisplayName>Pedro Povoas</PublisherDisplayName>
     <Logo>Assets\StoreLogo.png</Logo>
   </Properties>
 

@@ -1,4 +1,4 @@
-# build-store.ps1 — builds the MSIX package for Microsoft Store submission.
+﻿# build-store.ps1 — builds the MSIX package for Microsoft Store submission.
 #
 # Prereqs: .NET 8 SDK, Windows SDK (makeappx.exe — found automatically below),
 # tools\fetch-tools.ps1 already run (platform-tools present), and the two
@@ -25,7 +25,7 @@ if ((Get-Content $manifest -Raw) -match "REPLACE_") {
 
 # --- 1. publish (self-contained single file + platform-tools alongside) -----
 Write-Host "==> dotnet publish" -ForegroundColor Cyan
-dotnet publish (Join-Path $root "src\OficinaDiag") -r win-x64 --self-contained `
+dotnet publish (Join-Path $root "src\OficinaDiag\OficinaDiag.csproj") -r win-x64 --self-contained `
     -c $Configuration -p:PublishSingleFile=true -o $publishDir
 if ($LASTEXITCODE -ne 0) { throw "dotnet publish failed" }
 
@@ -68,8 +68,12 @@ if ($LASTEXITCODE -ne 0) { throw "makeappx failed" }
 
 # --- 6. wrap as .msixupload (plain zip containing the .msix) ------------------
 $upload = Join-Path $outDir "OficinaOSDiag_${msixVersion}_x64.msixupload"
+$zip = "$upload.zip"
 if (Test-Path $upload) { Remove-Item $upload -Force }
-Compress-Archive -Path $msix -DestinationPath $upload -CompressionLevel Optimal
+if (Test-Path $zip) { Remove-Item $zip -Force }
+# Compress-Archive only accepts a .zip destination — zip then rename.
+Compress-Archive -Path $msix -DestinationPath $zip -CompressionLevel Optimal
+Rename-Item $zip $upload
 
 Write-Host ""
 Write-Host "Done:" -ForegroundColor Green
