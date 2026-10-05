@@ -67,8 +67,9 @@ o exe não tem assinatura de código, por isso o SmartScreen não tem reputaçã
 dele. Carrega **«Mais informações» → «Executar mesmo assim»** (só pergunta uma
 vez por ficheiro). Não é malware — é só um programa caseiro sem certificado.
 
-Para distribuir a lojas sem o aviso é preciso assinar o exe (code-signing cert
-~€100–500/ano ou Azure Trusted Signing ~$10/mês) — fazer quando o Pro sair.
+Para acabar com o aviso há duas vias: Microsoft Store (grátis, assinatura
+Microsoft — pipeline pronta em [`docs/microsoft-store.md`](docs/microsoft-store.md))
+ou assinatura de código do exe (~€100–500/ano ou Azure Trusted Signing ~$10/mês).
 
 ## Log de depuração
 
