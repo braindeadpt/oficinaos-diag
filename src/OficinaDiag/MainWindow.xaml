@@ -136,6 +136,8 @@
                             Click="Send_Click" IsEnabled="False">[ →LOJA (PRO) ]</Button>
                     <Button Style="{StaticResource TermButton}" x:Name="AiButton"
                             Click="Ai_Click" IsEnabled="False">[ IA (PRO) ]</Button>
+                    <Button Style="{StaticResource TermButton}" x:Name="InsuranceButton"
+                            Click="Insurance_Click" IsEnabled="False">[ SEGURADORA ]</Button>
                     <Button Style="{StaticResource TermButton}" x:Name="UpdateButton"
                             Click="Update_Click" Visibility="Collapsed"
                             Foreground="#ffd23f" BorderBrush="#ffd23f">[ ↓ ATUALIZAR ]</Button>

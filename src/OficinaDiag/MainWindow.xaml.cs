@@ -214,7 +214,8 @@ public partial class MainWindow : Window
 
             _history.Add(_report);
             Log($"> scan completo: {_report.Results.Count} checks");
-            ExportButton.IsEnabled = TestButton.IsEnabled = SendButton.IsEnabled = AiButton.IsEnabled = true;
+            ExportButton.IsEnabled = TestButton.IsEnabled = SendButton.IsEnabled =
+                AiButton.IsEnabled = InsuranceButton.IsEnabled = true;
         }
         catch (Exception ex) { Log($"! erro: {ex.Message}"); }
         finally { ScanButton.IsEnabled = true; _busy = false; }
@@ -342,7 +343,8 @@ public partial class MainWindow : Window
         }
         res.ApplyTo(_report);
         RefreshResults();
-        ExportButton.IsEnabled = SendButton.IsEnabled = AiButton.IsEnabled = true;
+        ExportButton.IsEnabled = SendButton.IsEnabled = AiButton.IsEnabled =
+            InsuranceButton.IsEnabled = true;
         Log($"> SCAN+ gravado: {res.ChargeValue} · {res.SampleCount} amostras");
     }
 
@@ -370,6 +372,24 @@ public partial class MainWindow : Window
         // HTML é para ver/partilhar — abre já no browser predefinido.
         if (isHtml)
             Process.Start(new ProcessStartInfo(dlg.FileName) { UseShellExecute = true });
+    }
+
+    /// <summary>Relatório formal A4 para seguradora — dano + estado + carimbo da loja.</summary>
+    private void Insurance_Click(object sender, RoutedEventArgs e)
+    {
+        if (_report is null) return;
+        var dlg = new InsuranceDialog(_config) { Owner = this };
+        if (dlg.ShowDialog() != true || dlg.Form is not { } form) return;
+        var save = new SaveFileDialog
+        {
+            Filter = "Relatório seguradora|*.html",
+            FileName = $"seguradora-{_report.Device.Serial ?? "device"}-{_report.CollectedAt:yyyyMMdd-HHmm}.html",
+        };
+        if (save.ShowDialog() != true) return;
+        File.WriteAllText(save.FileName, ReportBuilder.ToInsuranceHtml(_report, form));
+        Log($"> relatório de seguradora guardado: {save.FileName}");
+        // Abre já no browser — daí é imprimir ou gravar em PDF.
+        Process.Start(new ProcessStartInfo(save.FileName) { UseShellExecute = true });
     }
 
     private async void Send_Click(object sender, RoutedEventArgs e)

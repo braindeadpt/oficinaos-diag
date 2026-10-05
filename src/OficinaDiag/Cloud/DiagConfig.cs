@@ -16,6 +16,13 @@ public sealed class DiagConfig
         Environment.GetEnvironmentVariable("OFICINAOS_CLOUD_URL")
         ?? "https://cloud.oficinaos.app";
 
+    // Identidade da loja — carimbo do relatório para seguradora.
+    // Guardada localmente; pedida na 1ª emissão e pré-preenchida depois.
+    public string? ShopName { get; set; }
+    public string? ShopNif { get; set; }
+    public string? ShopPhone { get; set; }
+    public string? ShopAddress { get; set; }
+
     public static DiagConfig Load()
     {
         try
