@@ -1,7 +1,7 @@
-<Window x:Class="OficinaDiag.SendDialog"
+<Window x:Class="OficinaDiag.SettingsDialog"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="Send to shop" Width="420" SizeToContent="Height"
+        Title="Settings" Width="400" SizeToContent="Height"
         WindowStartupLocation="CenterOwner" ResizeMode="NoResize"
         Background="{DynamicResource BgBrush}" Foreground="{DynamicResource FgBrush}"
         FontFamily="{DynamicResource UiFont}">
@@ -17,34 +17,31 @@
             <Setter Property="Padding" Value="6,4"/>
             <Setter Property="CaretBrush" Value="{DynamicResource FgBrush}"/>
         </Style>
+        <Style TargetType="RadioButton">
+            <Setter Property="Foreground" Value="{DynamicResource FgBrush}"/>
+            <Setter Property="Margin" Value="0,2,0,0"/>
+        </Style>
         <Style TargetType="Button" BasedOn="{StaticResource TermButton}"/>
     </Window.Resources>
     <StackPanel Margin="20">
         <TextBlock x:Name="HeaderText" FontSize="14" Foreground="{DynamicResource FgBrush}"
                    Margin="0,0,0,4"/>
-        <TextBlock x:Name="DescText" TextWrapping="Wrap" Margin="0,0,0,4"/>
 
-        <TextBlock x:Name="CodeLabel"/>
-        <TextBox x:Name="ShopCodeBox" MaxLength="8" CharacterCasing="Upper"/>
+        <TextBlock x:Name="LangLabel"/>
+        <RadioButton x:Name="LangPt" Content="Português"/>
+        <RadioButton x:Name="LangEn" Content="English"/>
 
-        <TextBlock x:Name="NameLabel"/>
-        <TextBox x:Name="NameBox" MaxLength="200"/>
+        <TextBlock x:Name="ThemeLabel"/>
+        <RadioButton x:Name="ThemeTerminal"/>
+        <RadioButton x:Name="ThemeWin95"/>
+        <RadioButton x:Name="ThemeFluent"/>
 
-        <TextBlock x:Name="PhoneLabel"/>
-        <TextBox x:Name="PhoneBox" MaxLength="50"/>
-
-        <TextBlock x:Name="EmailLabel"/>
-        <TextBox x:Name="EmailBox" MaxLength="200"/>
-
-        <TextBlock x:Name="PurposeLabel"/>
-        <RadioButton x:Name="PurposeRepair" IsChecked="True" Foreground="{DynamicResource FgBrush}"
-                     Margin="0,2,0,0"/>
-        <RadioButton x:Name="PurposeSale" Foreground="{DynamicResource FgBrush}"
-                     Margin="0,4,0,0"/>
+        <TextBlock x:Name="CloudLabel"/>
+        <TextBox x:Name="CloudBox" MaxLength="300"/>
 
         <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,16,0,0">
-            <Button x:Name="SendBtn" IsDefault="True" Click="Send_Click"/>
-            <Button x:Name="CancelBtn" IsCancel="True" Margin="10,0,0,0"/>
+            <Button x:Name="SaveBtn" IsDefault="True" Click="Save_Click"/>
+            <Button x:Name="CancelBtn" IsCancel="True"/>
         </StackPanel>
     </StackPanel>
 </Window>

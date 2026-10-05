@@ -2,47 +2,12 @@
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:local="clr-namespace:OficinaDiag"
-        Title="OFICINA-OS // BANCADA" Height="620" Width="920"
+        Title="OFICINA-OS // BENCH" Height="620" Width="920"
         MinWidth="640" MinHeight="440"
-        Background="#050a05" WindowStartupLocation="CenterOwner">
-    <Window.Resources>
-        <Style x:Key="TermButton" TargetType="Button">
-            <Setter Property="Background" Value="Transparent"/>
-            <Setter Property="Foreground" Value="#33ff33"/>
-            <Setter Property="BorderBrush" Value="#33ff33"/>
-            <Setter Property="BorderThickness" Value="1"/>
-            <Setter Property="FontFamily" Value="Consolas"/>
-            <Setter Property="FontSize" Value="13"/>
-            <Setter Property="Padding" Value="14,7"/>
-            <Setter Property="Cursor" Value="Hand"/>
-            <Setter Property="Margin" Value="0,0,8,0"/>
-            <Setter Property="Template">
-                <Setter.Value>
-                    <ControlTemplate TargetType="Button">
-                        <Border x:Name="bd" Background="{TemplateBinding Background}"
-                                BorderBrush="{TemplateBinding BorderBrush}"
-                                BorderThickness="{TemplateBinding BorderThickness}"
-                                Padding="{TemplateBinding Padding}">
-                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                        </Border>
-                        <ControlTemplate.Triggers>
-                            <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="bd" Property="Background" Value="#123312"/>
-                            </Trigger>
-                            <Trigger Property="IsEnabled" Value="False">
-                                <Setter Property="Foreground" Value="#2a5a2a"/>
-                                <Setter Property="BorderBrush" Value="#2a5a2a"/>
-                            </Trigger>
-                        </ControlTemplate.Triggers>
-                    </ControlTemplate>
-                </Setter.Value>
-            </Setter>
-        </Style>
-    </Window.Resources>
-
+        Background="{DynamicResource BgBrush}" WindowStartupLocation="CenterOwner">
     <Grid>
-        <!-- scanlines: CRT phosphor overlay -->
-        <Rectangle IsHitTestVisible="False" Opacity="0.07">
+        <!-- scanlines: CRT phosphor overlay — só o tema terminal as expõe -->
+        <Rectangle IsHitTestVisible="False" Opacity="{DynamicResource ScanlineOpacity}">
             <Rectangle.Fill>
                 <DrawingBrush TileMode="Tile" Viewport="0,0,4,4" ViewportUnits="Absolute">
                     <DrawingBrush.Drawing>
@@ -65,56 +30,61 @@
             </Grid.RowDefinitions>
 
             <!-- header -->
-            <Border Grid.Row="0" BorderBrush="#1d4a1d" BorderThickness="0,0,0,1" Padding="16,10">
+            <Border Grid.Row="0" BorderBrush="{DynamicResource LineBrush}" BorderThickness="0,0,0,1"
+                    Background="{DynamicResource HeaderBgBrush}" Padding="16,10">
                 <StackPanel Orientation="Horizontal">
-                    <TextBlock FontFamily="Consolas" FontSize="16" FontWeight="Bold" Foreground="#33ff33"
-                               Text="▓ BANCADA — sessão de potência"/>
+                    <TextBlock x:Name="HeaderText" FontFamily="{DynamicResource MonoFont}" FontSize="16"
+                               FontWeight="Bold" Foreground="{DynamicResource HeaderFgBrush}"/>
                     <TextBlock x:Name="DeviceLabel" VerticalAlignment="Center" Margin="20,0,0,0"
-                               FontFamily="Consolas" FontSize="12" Foreground="#7fd77f"/>
+                               FontFamily="{DynamicResource UiFont}" FontSize="12"
+                               Foreground="{DynamicResource HeaderDimBrush}"/>
                 </StackPanel>
             </Border>
 
             <!-- instrução guiada -->
             <Border Grid.Row="1" Padding="16,8">
-                <TextBlock x:Name="Instr" FontFamily="Consolas" FontSize="14" Foreground="#ffd23f"
-                           Text="cabo ligado ao PC · telemóvel quieto · carrega INICIAR"/>
+                <TextBlock x:Name="Instr" FontFamily="{DynamicResource UiFont}" FontSize="14"
+                           Foreground="{DynamicResource WarnBrush}"/>
             </Border>
 
             <!-- scope -->
-            <Border Grid.Row="2" Margin="16,4" BorderBrush="#1d4a1d" BorderThickness="1" Padding="6">
+            <Border Grid.Row="2" Margin="16,4" BorderBrush="{DynamicResource LineBrush}"
+                    BorderThickness="1" Padding="6" Background="{DynamicResource PanelBrush}">
                 <Grid>
                     <local:ScopeView x:Name="Scope"/>
                     <TextBlock VerticalAlignment="Top" HorizontalAlignment="Right" Margin="6"
-                               FontFamily="Consolas" FontSize="11">
-                        <Run Text="— mA" Foreground="#33ff33"/><Run Text="   "/>
-                        <Run Text="— mV" Foreground="#7fd77f"/><Run Text="   "/>
-                        <Run Text="— temp" Foreground="#ffd23f"/>
+                               FontFamily="{DynamicResource MonoFont}" FontSize="11">
+                        <Run Text="— mA" Foreground="{DynamicResource FgBrush}"/><Run Text="   "/>
+                        <Run Text="— mV" Foreground="{DynamicResource DimBrush}"/><Run Text="   "/>
+                        <Run x:Name="TempLegend" Foreground="{DynamicResource WarnBrush}"/>
                     </TextBlock>
                 </Grid>
             </Border>
 
             <!-- leitura viva -->
             <Border Grid.Row="3" Padding="16,4">
-                <TextBlock x:Name="Live" FontFamily="Consolas" FontSize="15" Foreground="#33ff33"
-                           Text="—"/>
+                <TextBlock x:Name="Live" FontFamily="{DynamicResource MonoFont}" FontSize="15"
+                           Foreground="{DynamicResource FgBrush}" Text="—"/>
             </Border>
 
             <!-- veredicto -->
             <Border Grid.Row="4" Padding="16,4">
-                <TextBlock x:Name="Verdict" FontFamily="Consolas" FontSize="12.5"
-                           Foreground="#7fd77f" TextWrapping="Wrap" Text=""/>
+                <TextBlock x:Name="Verdict" FontFamily="{DynamicResource UiFont}" FontSize="12.5"
+                           Foreground="{DynamicResource DimBrush}" TextWrapping="Wrap" Text=""/>
             </Border>
 
             <!-- ações -->
-            <Border Grid.Row="5" BorderBrush="#1d4a1d" BorderThickness="0,1,0,0" Padding="16,10">
+            <Border Grid.Row="5" BorderBrush="{DynamicResource LineBrush}" BorderThickness="0,1,0,0" Padding="16,10">
                 <StackPanel Orientation="Horizontal">
-                    <Button Style="{StaticResource TermButton}" x:Name="StartBtn"
-                            Click="Start_Click">[ INICIAR ]</Button>
-                    <Button Style="{StaticResource TermButton}" x:Name="DoneBtn"
-                            Click="Done_Click" IsEnabled="False">[ GRAVAR+FECHAR ]</Button>
-                    <Button Style="{StaticResource TermButton}" Click="Close_Click">[ FECHAR ]</Button>
+                    <Button Style="{DynamicResource TermButton}" x:Name="StartBtn"
+                            Click="Start_Click"/>
+                    <Button Style="{DynamicResource TermButton}" x:Name="DoneBtn"
+                            Click="Done_Click" IsEnabled="False"/>
+                    <Button Style="{DynamicResource TermButton}" x:Name="CloseBtn"
+                            Click="Close_Click"/>
                     <TextBlock x:Name="Elapsed" VerticalAlignment="Center" Margin="16,0,0,0"
-                               FontFamily="Consolas" FontSize="12" Foreground="#4a9a4a"/>
+                               FontFamily="{DynamicResource MonoFont}" FontSize="12"
+                               Foreground="{DynamicResource FaintBrush}"/>
                 </StackPanel>
             </Border>
         </Grid>

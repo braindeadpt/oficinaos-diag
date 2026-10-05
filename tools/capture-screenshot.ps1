@@ -12,6 +12,7 @@ public static class Win32 {
   [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr hWnd, out RECT lpRect);
   [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr hWnd);
   [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
+  [DllImport("user32.dll")] public static extern bool PrintWindow(IntPtr hWnd, System.IntPtr hdcBlt, uint nFlags);
 }
 public struct RECT { public int Left; public int Top; public int Right; public int Bottom; }
 '@
@@ -31,7 +32,11 @@ $w = $r.Right - $r.Left; $h = $r.Bottom - $r.Top
 Write-Host "window: $w x $h"
 $bmp = New-Object System.Drawing.Bitmap $w, $h
 $g = [System.Drawing.Graphics]::FromImage($bmp)
-$g.CopyFromScreen($r.Left, $r.Top, 0, 0, $bmp.Size)
+# PrintWindow captura a janela mesmo tapada por outras — PW_RENDERFULLCONTENT(2) para WPF
+$hdc = $g.GetHdc()
+$ok = [Win32]::PrintWindow($hwnd, $hdc, 2)
+$g.ReleaseHdc($hdc)
+if (-not $ok) { $g.CopyFromScreen($r.Left, $r.Top, 0, 0, $bmp.Size) }
 $dir = Split-Path $OutFile
 if ($dir) { New-Item -ItemType Directory -Force $dir | Out-Null }
 $bmp.Save((Join-Path (Get-Location) $OutFile), [System.Drawing.Imaging.ImageFormat]::Png)

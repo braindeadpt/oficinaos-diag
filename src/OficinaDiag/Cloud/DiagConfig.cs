@@ -16,6 +16,10 @@ public sealed class DiagConfig
         Environment.GetEnvironmentVariable("OFICINAOS_CLOUD_URL")
         ?? "https://cloud.oficinaos.app";
 
+    // Preferências de UI — escolhidas no diálogo Opções.
+    public string? Language { get; set; }  // "pt" | "en" — null = auto (idioma do Windows)
+    public string? Theme { get; set; }     // "terminal" | "win95" | "fluent"
+
     // Identidade da loja — carimbo do relatório para seguradora.
     // Guardada localmente; pedida na 1ª emissão e pré-preenchida depois.
     public string? ShopName { get; set; }

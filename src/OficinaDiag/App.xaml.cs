@@ -9,6 +9,11 @@ public partial class App : Application
 {
     protected override void OnStartup(StartupEventArgs e)
     {
+        // tema + idioma antes de qualquer janela — DynamicResource resolve no load
+        var cfg = Cloud.DiagConfig.Load();
+        ThemeManager.Apply(cfg.Theme ?? ThemeManager.Terminal);
+        L10n.Set(cfg.Language ?? L10n.AutoDetect());
+
         Log.AppLog.Write("> oficinaos-diag arrancou");
 
         DispatcherUnhandledException += (_, args) =>
@@ -28,5 +33,6 @@ public partial class App : Application
         };
 
         base.OnStartup(e);
+        new MainWindow().Show();
     }
 }

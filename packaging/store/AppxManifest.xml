@@ -17,7 +17,7 @@
   <Identity
     Name="PedroPovoas.OficinaOSDiag"
     Publisher="CN=9DE6B7C0-63A2-4A16-870C-7EABA33F242F"
-    Version="0.1.9.0" />
+    Version="0.1.10.0" />
 
   <Properties>
     <DisplayName>OficinaOS Diag</DisplayName>

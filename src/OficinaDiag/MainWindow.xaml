@@ -4,47 +4,15 @@
         xmlns:local="clr-namespace:OficinaDiag"
         Title="OFICINA-OS // DIAG" Height="640" Width="960"
         MinWidth="700" MinHeight="480"
-        Background="#050a05" WindowStartupLocation="CenterScreen">
+        Background="{DynamicResource BgBrush}" WindowStartupLocation="CenterScreen">
     <Window.Resources>
         <local:StatusTagConverter x:Key="StatusTag"/>
         <local:StatusBrushConverter x:Key="StatusBrush"/>
-        <Style x:Key="TermButton" TargetType="Button">
-            <Setter Property="Background" Value="Transparent"/>
-            <Setter Property="Foreground" Value="#33ff33"/>
-            <Setter Property="BorderBrush" Value="#33ff33"/>
-            <Setter Property="BorderThickness" Value="1"/>
-            <Setter Property="FontFamily" Value="Consolas"/>
-            <Setter Property="FontSize" Value="13"/>
-            <Setter Property="Padding" Value="14,7"/>
-            <Setter Property="Cursor" Value="Hand"/>
-            <Setter Property="Margin" Value="0,0,8,4"/>
-            <Setter Property="Template">
-                <Setter.Value>
-                    <ControlTemplate TargetType="Button">
-                        <Border x:Name="bd" Background="{TemplateBinding Background}"
-                                BorderBrush="{TemplateBinding BorderBrush}"
-                                BorderThickness="{TemplateBinding BorderThickness}"
-                                Padding="{TemplateBinding Padding}">
-                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                        </Border>
-                        <ControlTemplate.Triggers>
-                            <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="bd" Property="Background" Value="#123312"/>
-                            </Trigger>
-                            <Trigger Property="IsEnabled" Value="False">
-                                <Setter Property="Foreground" Value="#2a5a2a"/>
-                                <Setter Property="BorderBrush" Value="#2a5a2a"/>
-                            </Trigger>
-                        </ControlTemplate.Triggers>
-                    </ControlTemplate>
-                </Setter.Value>
-            </Setter>
-        </Style>
     </Window.Resources>
 
     <Grid>
-        <!-- scanlines: CRT phosphor overlay -->
-        <Rectangle IsHitTestVisible="False" Opacity="0.07">
+        <!-- scanlines: CRT phosphor overlay — só o tema terminal as expõe -->
+        <Rectangle IsHitTestVisible="False" Opacity="{DynamicResource ScanlineOpacity}">
             <Rectangle.Fill>
                 <DrawingBrush TileMode="Tile" Viewport="0,0,4,4" ViewportUnits="Absolute">
                     <DrawingBrush.Drawing>
@@ -64,17 +32,18 @@
             </Grid.RowDefinitions>
 
             <!-- header -->
-            <Border Grid.Row="0" BorderBrush="#1d4a1d" BorderThickness="0,0,0,1" Padding="16,10">
+            <Border Grid.Row="0" BorderBrush="{DynamicResource LineBrush}" BorderThickness="0,0,0,1"
+                    Background="{DynamicResource HeaderBgBrush}" Padding="16,10">
                 <StackPanel Orientation="Horizontal">
-                    <TextBlock x:Name="HeaderTitle" FontFamily="Consolas" FontSize="18"
-                               FontWeight="Bold" Foreground="#33ff33"
-                               Text="█▓▒░ OFICINA-OS // DIAG"/>
+                    <TextBlock x:Name="HeaderTitle" FontFamily="{DynamicResource MonoFont}" FontSize="18"
+                               FontWeight="Bold" Foreground="{DynamicResource HeaderFgBrush}"/>
                     <TextBlock x:Name="StatusText" VerticalAlignment="Center" Margin="20,0,0,0"
-                               FontFamily="Consolas" FontSize="12" Foreground="#7fd77f"
-                               Text="a vigiar USB…"/>
+                               FontFamily="{DynamicResource UiFont}" FontSize="12"
+                               Foreground="{DynamicResource HeaderDimBrush}"/>
                     <!-- instrumento vivo: corrente/tensão/temp/carga enquanto há dispositivo -->
                     <TextBlock x:Name="TelemetryText" VerticalAlignment="Center" Margin="20,0,0,0"
-                               FontFamily="Consolas" FontSize="12" Foreground="#4a9a4a" Text=""/>
+                               FontFamily="{DynamicResource MonoFont}" FontSize="12"
+                               Foreground="{DynamicResource HeaderDimBrush}" Text=""/>
                 </StackPanel>
             </Border>
 
@@ -85,20 +54,22 @@
                 </Grid.ColumnDefinitions>
 
                 <!-- console -->
-                <Border BorderBrush="#1d4a1d" BorderThickness="0,0,1,0" Margin="0">
+                <Border BorderBrush="{DynamicResource LineBrush}" BorderThickness="0,0,1,0" Margin="0">
                     <TextBox x:Name="Console" IsReadOnly="True" AcceptsReturn="True"
                              VerticalScrollBarVisibility="Auto"
-                             Background="Transparent" Foreground="#33ff33" BorderThickness="0"
-                             FontFamily="Consolas" FontSize="12.5" Padding="14,10"
+                             Background="{DynamicResource PanelBrush}" BorderThickness="0"
+                             Foreground="{DynamicResource FgBrush}" CaretBrush="{DynamicResource FgBrush}"
+                             FontFamily="{DynamicResource MonoFont}" FontSize="12.5" Padding="14,10"
                              Text="" />
                 </Border>
 
                 <!-- results -->
                 <ScrollViewer Grid.Column="1" VerticalScrollBarVisibility="Auto">
                     <StackPanel Margin="14">
-                        <TextBlock FontFamily="Consolas" Foreground="#7fd77f" FontSize="11"
-                                   Text="── RESULTADOS ────────────────" Margin="0,0,0,8"/>
-                        <ItemsControl x:Name="ResultsList" FontFamily="Consolas" FontSize="12">
+                        <TextBlock x:Name="ResultsHeader" FontFamily="{DynamicResource MonoFont}"
+                                   Foreground="{DynamicResource DimBrush}" FontSize="11"
+                                   Margin="0,0,0,8"/>
+                        <ItemsControl x:Name="ResultsList" FontFamily="{DynamicResource MonoFont}" FontSize="12">
                             <ItemsControl.ItemTemplate>
                                 <DataTemplate>
                                     <Grid Margin="0,2">
@@ -108,9 +79,9 @@
                                         </Grid.ColumnDefinitions>
                                         <TextBlock Text="{Binding Status, Converter={StaticResource StatusTag}}"
                                                    Foreground="{Binding Status, Converter={StaticResource StatusBrush}}"/>
-                                        <TextBlock Grid.Column="1" Foreground="#bfe8bf" TextWrapping="Wrap">
+                                        <TextBlock Grid.Column="1" Foreground="{DynamicResource TextBrush}" TextWrapping="Wrap">
                                             <Run Text="{Binding Key}"/><Run Text="  "/>
-                                            <Run Text="{Binding Display}" Foreground="#7fd77f"/>
+                                            <Run Text="{Binding Display}" Foreground="{DynamicResource DimBrush}"/>
                                         </TextBlock>
                                     </Grid>
                                 </DataTemplate>
@@ -121,30 +92,31 @@
             </Grid>
 
             <!-- actions -->
-            <Border Grid.Row="2" BorderBrush="#1d4a1d" BorderThickness="0,1,0,0" Padding="16,10">
+            <Border Grid.Row="2" BorderBrush="{DynamicResource LineBrush}" BorderThickness="0,1,0,0" Padding="16,10">
                 <!-- WrapPanel: os botões que não couberem passam para baixo em vez de cortar -->
                 <WrapPanel>
-                    <Button Style="{StaticResource TermButton}" x:Name="ScanButton"
-                            Click="Scan_Click">[ SCAN ]</Button>
-                    <Button Style="{StaticResource TermButton}" x:Name="BenchButton"
-                            Click="Bench_Click" IsEnabled="False">[ SCAN+ ]</Button>
-                    <Button Style="{StaticResource TermButton}" x:Name="TestButton"
-                            Click="Test_Click" IsEnabled="False">[ ECRÃ+TOQUE ]</Button>
-                    <Button Style="{StaticResource TermButton}" x:Name="ExportButton"
-                            Click="Export_Click" IsEnabled="False">[ EXPORTAR ]</Button>
-                    <Button Style="{StaticResource TermButton}" x:Name="SendButton"
-                            Click="Send_Click" IsEnabled="False">[ →LOJA (PRO) ]</Button>
-                    <Button Style="{StaticResource TermButton}" x:Name="AiButton"
-                            Click="Ai_Click" IsEnabled="False">[ IA (PRO) ]</Button>
-                    <Button Style="{StaticResource TermButton}" x:Name="InsuranceButton"
-                            Click="Insurance_Click" IsEnabled="False">[ SEGURADORA ]</Button>
-                    <Button Style="{StaticResource TermButton}" x:Name="UpdateButton"
+                    <Button Style="{DynamicResource TermButton}" x:Name="ScanButton"
+                            Click="Scan_Click"/>
+                    <Button Style="{DynamicResource TermButton}" x:Name="BenchButton"
+                            Click="Bench_Click" IsEnabled="False"/>
+                    <Button Style="{DynamicResource TermButton}" x:Name="TestButton"
+                            Click="Test_Click" IsEnabled="False"/>
+                    <Button Style="{DynamicResource TermButton}" x:Name="ExportButton"
+                            Click="Export_Click" IsEnabled="False"/>
+                    <Button Style="{DynamicResource TermButton}" x:Name="SendButton"
+                            Click="Send_Click" IsEnabled="False"/>
+                    <Button Style="{DynamicResource TermButton}" x:Name="AiButton"
+                            Click="Ai_Click" IsEnabled="False"/>
+                    <Button Style="{DynamicResource TermButton}" x:Name="InsuranceButton"
+                            Click="Insurance_Click" IsEnabled="False"/>
+                    <Button Style="{DynamicResource TermButton}" x:Name="UpdateButton"
                             Click="Update_Click" Visibility="Collapsed"
-                            Foreground="#ffd23f" BorderBrush="#ffd23f">[ ↓ ATUALIZAR ]</Button>
-                    <Button Style="{StaticResource TermButton}" x:Name="LogButton"
-                            Click="LogSend_Click" Margin="20,0,0,0">[ ENVIAR LOG ]</Button>
-                    <Button Style="{StaticResource TermButton}" x:Name="ConfigButton"
-                            Click="Config_Click">[ ⚙ CLOUD ]</Button>
+                            Foreground="{DynamicResource WarnBrush}"
+                            BorderBrush="{DynamicResource WarnBrush}"/>
+                    <Button Style="{DynamicResource TermButton}" x:Name="LogButton"
+                            Click="LogSend_Click" Margin="20,0,0,0"/>
+                    <Button Style="{DynamicResource TermButton}" x:Name="ConfigButton"
+                            Click="Config_Click"/>
                 </WrapPanel>
             </Border>
         </Grid>

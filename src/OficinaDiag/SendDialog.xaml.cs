@@ -7,6 +7,18 @@ public partial class SendDialog : Window
     public SendDialog()
     {
         InitializeComponent();
+        Title = L10n.T("send.title");
+        HeaderText.Text = L10n.T("send.header");
+        DescText.Text = L10n.T("send.desc");
+        CodeLabel.Text = L10n.T("send.code");
+        NameLabel.Text = L10n.T("send.name");
+        PhoneLabel.Text = L10n.T("send.phone");
+        EmailLabel.Text = L10n.T("send.email");
+        PurposeLabel.Text = L10n.T("send.purpose");
+        PurposeRepair.Content = L10n.T("send.purpose.repair");
+        PurposeSale.Content = L10n.T("send.purpose.sale");
+        SendBtn.Content = L10n.Btn("btn.send.ok");
+        CancelBtn.Content = L10n.Btn("btn.cancel");
     }
 
     public string ShopCode => ShopCodeBox.Text.Trim();
@@ -21,14 +33,14 @@ public partial class SendDialog : Window
     {
         if (ShopCode.Length < 4)
         {
-            MessageBox.Show(this, "Falta o código da loja (6 letras).",
-                "Enviar à loja", MessageBoxButton.OK, MessageBoxImage.Warning);
+            MessageBox.Show(this, L10n.T("send.err.code"),
+                L10n.T("send.title"), MessageBoxButton.OK, MessageBoxImage.Warning);
             return;
         }
         if (CustomerName.Length == 0 || CustomerPhone.Length < 3)
         {
-            MessageBox.Show(this, "Precisamos do teu nome e telefone — a loja usa-os para te identificar.",
-                "Enviar à loja", MessageBoxButton.OK, MessageBoxImage.Warning);
+            MessageBox.Show(this, L10n.T("send.err.contact"),
+                L10n.T("send.title"), MessageBoxButton.OK, MessageBoxImage.Warning);
             return;
         }
         DialogResult = true;

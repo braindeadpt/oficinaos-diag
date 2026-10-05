@@ -25,19 +25,21 @@ public sealed class ResultRow
 
 public sealed class StatusTagConverter : IValueConverter
 {
-    public object Convert(object v, Type t, object p, CultureInfo c) => $"[{v}]";
+    public object Convert(object v, Type t, object p, CultureInfo c) =>
+        ThemeManager.IsTerminal ? $"[{v}]" : $"{v}";
     public object ConvertBack(object v, Type t, object p, CultureInfo c) => Binding.DoNothing;
 }
 
 public sealed class StatusBrushConverter : IValueConverter
 {
-    public object Convert(object v, Type t, object p, CultureInfo c) => (v as string) switch
-    {
-        "pass" => new SolidColorBrush(Color.FromRgb(0x33, 0xff, 0x33)),
-        "warn" => new SolidColorBrush(Color.FromRgb(0xff, 0xd2, 0x3f)),
-        "fail" => new SolidColorBrush(Color.FromRgb(0xff, 0x55, 0x55)),
-        _ => new SolidColorBrush(Color.FromRgb(0x7f, 0xd7, 0x7f)),
-    };
+    public object Convert(object v, Type t, object p, CultureInfo c) =>
+        Application.Current.TryFindResource((v as string) switch
+        {
+            "pass" => "PassBrush",
+            "warn" => "WarnBrush",
+            "fail" => "FailBrush",
+            _ => "DimBrush",
+        }) ?? Brushes.Gray;
     public object ConvertBack(object v, Type t, object p, CultureInfo c) => Binding.DoNothing;
 }
 
@@ -77,29 +79,31 @@ public partial class MainWindow : Window
         // CenterScreen posiciona antes do clamp — re-centra dentro da work area
         Left = wa.Left + Math.Max(0, (wa.Width - Width) / 2);
         Top = wa.Top + Math.Max(0, (wa.Height - Height) / 2);
+        ApplyStrings();
+        L10n.Changed += ApplyStrings;
+        ThemeManager.Changed += ApplyStrings;
         var ver = System.Reflection.Assembly.GetExecutingAssembly().GetName().Version?.ToString(3);
         Title = $"OFICINA-OS // DIAG v{ver}";
-        HeaderTitle.Text = $"█▓▒░ OFICINA-OS // DIAG v{ver}";
-        Log($"> ecrã útil {wa.Width:0}x{wa.Height:0} · janela {Width:0}x{Height:0} @{Left:0},{Top:0}");
-        Log("> boot sequence…");
-        Log("> oficinaos-diag — scan USB grátis · relatórios Pro via cloud");
+        Log(L10n.F("log.screen", wa.Width, wa.Height, Width, Height, Left, Top));
+        Log(L10n.T("log.boot"));
+        Log(L10n.T("log.tagline"));
         if (!File.Exists(_adbPath))
-            Log("! adb não encontrado em tools\\platform-tools — corre tools\\fetch-tools.ps1");
+            Log(L10n.T("log.adbmissing"));
         _detector = new DeviceDetector(_adbPath);
         _detector.Attached += d => Dispatcher.Invoke(() =>
         {
-            Log($"> dispositivo ligado: {d.Label} [{d.Id}]");
+            Log(L10n.F("log.attached", d.Label, d.Id));
             _current = d;
-            StatusText.Text = $"{d.Label} detetado";
+            StatusText.Text = L10n.F("status.detected", d.Label);
             ScanButton.IsEnabled = true;
             BenchButton.IsEnabled = true;
             StartTelemetry(d);
         });
         _detector.Detached += d => Dispatcher.Invoke(() =>
         {
-            Log($"> dispositivo removido: {d.Label}");
+            Log(L10n.F("log.detached", d.Label));
             if (_current?.Id == d.Id) _current = null;
-            StatusText.Text = "a vigiar USB…";
+            StatusText.Text = L10n.T("status.watching");
             TelemetryText.Text = "";
             _telemetryCts?.Cancel();
             TestButton.IsEnabled = false;
@@ -159,23 +163,48 @@ public partial class MainWindow : Window
         var info = await Cloud.UpdateChecker.CheckAsync(current);
         if (info is null) return;
         _update = info;
-        UpdateButton.Content = $"[ ↓ ATUALIZAR {info.Tag} ]";
+        var label = L10n.F("btn.update", info.Tag);
+        UpdateButton.Content = ThemeManager.IsTerminal ? $"[ {label} ]" : label;
         UpdateButton.Visibility = Visibility.Visible;
-        Log($"> nova versão {info.Tag} disponível — carrega ATUALIZAR");
+        Log(L10n.F("log.update.avail", info.Tag));
     }
 
     private async void Update_Click(object sender, RoutedEventArgs e)
     {
         if (_update is null) return;
         UpdateButton.IsEnabled = false;
-        Log($"> a descarregar {_update.Tag}…");
+        Log(L10n.F("log.update.dl", _update.Tag));
         var (ok, msg) = await Cloud.UpdateChecker.DownloadAndStageAsync(
             _update, AppContext.BaseDirectory);
-        Log(ok ? $"> {msg}" : $"! atualização falhou: {msg}");
+        Log(ok ? $"> {msg}" : L10n.F("log.update.fail", msg));
         if (ok)
             Application.Current.Shutdown();
         else
             UpdateButton.IsEnabled = true;
+    }
+
+    /// <summary>Reaplica todos os textos da janela — corre no arranque e ao trocar de idioma.</summary>
+    private void ApplyStrings()
+    {
+        var ver = System.Reflection.Assembly.GetExecutingAssembly().GetName().Version?.ToString(3);
+        HeaderTitle.Text = $"{(ThemeManager.IsTerminal ? "█▓▒░ " : "")}OFICINA-OS // DIAG v{ver}";
+        StatusText.Text = _current is { } d
+            ? L10n.F("status.detected", d.Label)
+            : L10n.T("status.watching");
+        ResultsHeader.Text = L10n.Section("results.header");
+        ScanButton.Content = L10n.Btn("btn.scan");
+        BenchButton.Content = L10n.Btn("btn.bench");
+        TestButton.Content = L10n.Btn("btn.test");
+        ExportButton.Content = L10n.Btn("btn.export");
+        SendButton.Content = L10n.Btn("btn.send");
+        AiButton.Content = L10n.Btn("btn.ai");
+        InsuranceButton.Content = L10n.Btn("btn.insurance");
+        LogButton.Content = L10n.Btn("btn.log");
+        ConfigButton.Content = L10n.Btn("btn.settings");
+        if (_update is not null)
+            UpdateButton.Content = ThemeManager.IsTerminal
+                ? $"[ {L10n.F("btn.update", _update.Tag)} ]"
+                : L10n.F("btn.update", _update.Tag);
     }
 
     private void Log(string line)
@@ -189,12 +218,12 @@ public partial class MainWindow : Window
     {
         ScanButton.IsEnabled = false;
         _busy = true;
-        Log("> scan a correr…");
+        Log(L10n.T("log.scan.run"));
         try
         {
             if (_current is null)
             {
-                Log("! nenhum dispositivo — liga um telefone por USB (ADB debug / Confiar)");
+                Log(L10n.T("log.nodev"));
                 return;
             }
             _lastAiReport = null;
@@ -213,11 +242,11 @@ public partial class MainWindow : Window
                 .ToList();
 
             _history.Add(_report);
-            Log($"> scan completo: {_report.Results.Count} checks");
+            Log(L10n.F("log.scan.done", _report.Results.Count));
             ExportButton.IsEnabled = TestButton.IsEnabled = SendButton.IsEnabled =
                 AiButton.IsEnabled = InsuranceButton.IsEnabled = true;
         }
-        catch (Exception ex) { Log($"! erro: {ex.Message}"); }
+        catch (Exception ex) { Log(L10n.F("log.err", ex.Message)); }
         finally { ScanButton.IsEnabled = true; _busy = false; }
     }
 
@@ -234,10 +263,10 @@ public partial class MainWindow : Window
                 {
                     var h = hit.GetInt32(); var t = tot.GetInt32();
                     _report.Set("test.touch", h >= t - 5 ? "pass" : "fail",
-                        $"{h}/{t} zonas", "grelha de toque preenchida no telefone");
+                        L10n.F("test.touch.zones", h, t), L10n.T("test.touch.detail"));
                 }
-                _report.Set("test.screen", "pass", "cores ok",
-                    "utilizador confirmou as cores — dead pixels seriam visíveis");
+                _report.Set("test.screen", "pass", L10n.T("test.screen.val"),
+                    L10n.T("test.screen.detail"));
 
                 // Sensores — a página mede por browser APIs; "no-data" significa
                 // que o browser não respondeu, não que o hardware falhou.
@@ -246,9 +275,9 @@ public partial class MainWindow : Window
                 {
                     var names = new (string Key, string Label)[]
                     {
-                        ("accel", "acelerómetro"), ("gyro", "giroscópio"),
-                        ("orient", "orientação"), ("light", "luz ambiente"),
-                        ("multitouch", "multi-toque"),
+                        ("accel", L10n.T("sensor.accel")), ("gyro", L10n.T("sensor.gyro")),
+                        ("orient", L10n.T("sensor.orient")), ("light", L10n.T("sensor.light")),
+                        ("multitouch", L10n.T("sensor.multitouch")),
                     };
                     foreach (var (key, label) in names)
                     {
@@ -257,33 +286,37 @@ public partial class MainWindow : Window
                         if (state is null) continue;
                         _report.Set($"sensor.{key}",
                             state == "ok" ? "pass" : state == "no-data" ? "warn" : "skipped",
-                            state == "ok" ? "a responder" : state == "no-data" ? "sem leitura" : "browser não expõe",
+                            state == "ok" ? L10n.T("sensor.responding")
+                                : state == "no-data" ? L10n.T("sensor.nodata")
+                                : L10n.T("sensor.noapi"),
                             state == "no-data"
-                                ? $"o browser não devolveu dados do {label} — re-testar ou verificar hardware"
-                                : $"leitura via browser ({label})");
+                                ? L10n.F("sensor.nodata.detail", label)
+                                : L10n.F("sensor.reading.detail", label));
                     }
                 }
                 if (data.TryGetValue("vibrate", out var vib) && vib.ValueKind == JsonValueKind.String)
                 {
                     var v = vib.GetString();
                     if (v == "ok")
-                        _report.Set("sensor.vibrate", "pass", "vibrou", "utilizador confirmou vibração no telefone");
+                        _report.Set("sensor.vibrate", "pass", L10n.T("sensor.vibrate.ok"),
+                            L10n.T("sensor.vibrate.ok.detail"));
                     else if (v == "no-data")
-                        _report.Set("sensor.vibrate", "fail", "não vibrou", "utilizador não sentiu vibração — verificar motor");
+                        _report.Set("sensor.vibrate", "fail", L10n.T("sensor.vibrate.fail"),
+                            L10n.T("sensor.vibrate.fail.detail"));
                 }
-                Log("> resultados do teste no telefone recebidos (ecrã, toque, sensores)");
+                Log(L10n.T("log.test.received"));
                 RefreshResults();
                 server.Dispose();
             });
 
             var url = server.LanUrl;
-            Log($"> teste de ecrã em {url}");
+            Log(L10n.F("log.test.url", url));
             if (_current?.Kind == DeviceKind.Android)
             {
                 Process.Start(new ProcessStartInfo(_adbPath,
                     $"-s {_current.Id.TrimEnd('!')} shell am start -a android.intent.action.VIEW -d {url}")
                 { CreateNoWindow = true });
-                Log("> página de teste aberta no Android — segue as instruções no telefone");
+                Log(L10n.T("log.test.android"));
             }
             else
             {
@@ -291,10 +324,10 @@ public partial class MainWindow : Window
                 var gen = new QRCodeGenerator();
                 var qr = gen.CreateQrCode(url, QRCodeGenerator.ECCLevel.M);
                 new QrWindow(qr).Show();
-                Log("> QR mostrado — lê com a câmara do iPhone na mesma rede Wi-Fi");
+                Log(L10n.T("log.test.qr"));
             }
         }
-        catch (Exception ex) { Log($"! teste falhou: {ex.Message}"); }
+        catch (Exception ex) { Log(L10n.F("log.test.fail", ex.Message)); }
     }
 
     /// <summary>SCAN+ — sessão guiada de potência na janela bancada.</summary>
@@ -302,7 +335,7 @@ public partial class MainWindow : Window
     {
         if (_current is null)
         {
-            Log("! nenhum dispositivo — liga um telefone por USB");
+            Log(L10n.T("log.nodev.usb"));
             return;
         }
         var d = _current;
@@ -345,7 +378,7 @@ public partial class MainWindow : Window
         RefreshResults();
         ExportButton.IsEnabled = SendButton.IsEnabled = AiButton.IsEnabled =
             InsuranceButton.IsEnabled = true;
-        Log($"> SCAN+ gravado: {res.ChargeValue} · {res.SampleCount} amostras");
+        Log(L10n.F("log.bench.saved", res.ChargeValue, res.SampleCount));
     }
 
     private void RefreshResults()
@@ -361,14 +394,14 @@ public partial class MainWindow : Window
         if (_report is null) return;
         var dlg = new SaveFileDialog
         {
-            Filter = "Relatório HTML|*.html|JSON|*.json",
+            Filter = L10n.T("dlg.export.filter"),
             FileName = $"diag-{_report.Device.Serial ?? "device"}-{_report.CollectedAt:yyyyMMdd-HHmm}",
         };
         if (dlg.ShowDialog() != true) return;
         var isHtml = !dlg.FileName.EndsWith(".json", StringComparison.OrdinalIgnoreCase);
         File.WriteAllText(dlg.FileName,
             isHtml ? ReportBuilder.ToHtml(_report) : ReportBuilder.ToJson(_report));
-        Log($"> relatório guardado: {dlg.FileName}");
+        Log(L10n.F("log.export.saved", dlg.FileName));
         // HTML é para ver/partilhar — abre já no browser predefinido.
         if (isHtml)
             Process.Start(new ProcessStartInfo(dlg.FileName) { UseShellExecute = true });
@@ -382,12 +415,12 @@ public partial class MainWindow : Window
         if (dlg.ShowDialog() != true || dlg.Form is not { } form) return;
         var save = new SaveFileDialog
         {
-            Filter = "Relatório seguradora|*.html",
+            Filter = L10n.T("dlg.ins.filter"),
             FileName = $"seguradora-{_report.Device.Serial ?? "device"}-{_report.CollectedAt:yyyyMMdd-HHmm}.html",
         };
         if (save.ShowDialog() != true) return;
         File.WriteAllText(save.FileName, ReportBuilder.ToInsuranceHtml(_report, form));
-        Log($"> relatório de seguradora guardado: {save.FileName}");
+        Log(L10n.F("log.ins.saved", save.FileName));
         // Abre já no browser — daí é imprimir ou gravar em PDF.
         Process.Start(new ProcessStartInfo(save.FileName) { UseShellExecute = true });
     }
@@ -397,11 +430,11 @@ public partial class MainWindow : Window
         if (_report is null) return;
         var dlg = new SendDialog { Owner = this };
         if (dlg.ShowDialog() != true) return;
-        Log($"> a enviar à loja {dlg.ShopCode}…");
+        Log(L10n.F("log.send.start", dlg.ShopCode));
         var (ok, msg) = await _cloud.SendToShopAsync(
             dlg.ShopCode, _report, dlg.CustomerName, dlg.CustomerPhone, dlg.CustomerEmail,
             _lastAiReport, dlg.Purpose);
-        Log(ok ? $"> {msg}" : $"! envio falhou: {msg}");
+        Log(ok ? $"> {msg}" : L10n.F("log.send.fail", msg));
     }
 
     private async void LogSend_Click(object sender, RoutedEventArgs e)
@@ -410,7 +443,7 @@ public partial class MainWindow : Window
         try
         {
             var path = OficinaDiag.Log.AppLog.FilePath;
-            if (!File.Exists(path)) { Log("! ainda não há log para enviar"); return; }
+            if (!File.Exists(path)) { Log(L10n.T("log.log.none")); return; }
             string tail;
             using (var fs = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
             {
@@ -418,28 +451,28 @@ public partial class MainWindow : Window
                 fs.Seek(skip, SeekOrigin.Begin);
                 using var sr = new StreamReader(fs);
                 tail = await sr.ReadToEndAsync();
-                if (skip > 0) tail = "[… início cortado …]\n" + tail;
+                if (skip > 0) tail = L10n.T("log.log.truncated") + "\n" + tail;
             }
             var hint = _report is not null
                 ? $"{_report.Platform} {_report.Device.Brand} {_report.Device.Model} {_report.Device.Os} {_report.Device.OsVersion}".Trim()
                 : _current?.Label;
             LogButton.IsEnabled = false;
-            Log("> a enviar log de diagnóstico à cloud…");
+            Log(L10n.T("log.log.sending"));
             var (ok, msg) = await _cloud.SendLogAsync(tail, _report?.ToolVersion ?? "0.1.0", hint);
-            Log(ok ? $"> {msg}" : $"! envio do log falhou: {msg}");
+            Log(ok ? $"> {msg}" : L10n.F("log.log.fail", msg));
         }
-        catch (Exception ex) { Log($"! envio do log falhou: {ex.Message}"); }
+        catch (Exception ex) { Log(L10n.F("log.log.fail", ex.Message)); }
         finally { LogButton.IsEnabled = true; }
     }
 
     private void Config_Click(object sender, RoutedEventArgs e)
     {
-        var url = Microsoft.VisualBasic.Interaction.InputBox(
-            "URL do servidor OficinaOS Cloud:", "Configuração", _config.CloudUrl);
-        if (string.IsNullOrWhiteSpace(url)) return;
-        _config.CloudUrl = url.Trim();
+        var dlg = new SettingsDialog(_config) { Owner = this };
+        if (dlg.ShowDialog() != true) return;
         _config.Save();
-        _cloud.BaseUri = new Uri(_config.CloudUrl.TrimEnd('/') + "/");
+        // idioma/tema já aplicados ao vivo pelo diálogo; o URL da cloud só muda se for válido
+        if (!string.IsNullOrWhiteSpace(_config.CloudUrl))
+            _cloud.BaseUri = new Uri(_config.CloudUrl.TrimEnd('/') + "/");
         Log($"> cloud: {_config.CloudUrl}");
     }
 
@@ -447,22 +480,22 @@ public partial class MainWindow : Window
     {
         if (_report is null) return;
         var token = Microsoft.VisualBasic.Interaction.InputBox(
-            "Token da loja (oficinaos-cloud):", "Relatório IA — PRO", "");
+            L10n.T("dlg.ai.token"), L10n.T("dlg.ai.token.title"), "");
         if (string.IsNullOrWhiteSpace(token)) return;
         var lang = (Microsoft.VisualBasic.Interaction.InputBox(
-            "Idioma do relatório (pt/en/fr/es):", "Relatório IA — PRO", "pt") ?? "pt")
+            L10n.T("dlg.ai.lang"), L10n.T("dlg.ai.token.title"), "pt") ?? "pt")
             .Trim().ToLowerInvariant();
         if (lang is not ("pt" or "en" or "fr" or "es")) lang = "pt";
-        Log("> a gerar relatório IA…");
+        Log(L10n.T("log.ai.gen"));
         var (ok, text) = await _cloud.GenerateAiReportAsync(token, _report, lang);
-        if (!ok) { Log($"! IA falhou: {text}"); return; }
+        if (!ok) { Log(L10n.F("log.ai.fail", text)); return; }
         _lastAiReport = text;
         // Guarda em HTML renderizado (entregável ao cliente) e abre no browser.
-        var dlg = new SaveFileDialog { Filter = "Relatório IA|*.html", FileName = $"ai-report-{_report.CollectedAt:yyyyMMdd-HHmm}.html" };
+        var dlg = new SaveFileDialog { Filter = L10n.T("dlg.ai.filter"), FileName = $"ai-report-{_report.CollectedAt:yyyyMMdd-HHmm}.html" };
         if (dlg.ShowDialog() == true)
         {
             File.WriteAllText(dlg.FileName, ReportBuilder.AiReportToHtml(_report, text));
-            Log($"> relatório IA guardado: {dlg.FileName}");
+            Log(L10n.F("log.ai.saved", dlg.FileName));
             Process.Start(new ProcessStartInfo(dlg.FileName) { UseShellExecute = true });
         }
     }

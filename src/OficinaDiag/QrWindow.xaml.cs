@@ -1,6 +1,7 @@
 using System.IO;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using QRCoder;
 
@@ -13,12 +14,16 @@ public sealed class QrWindow : Window
     {
         Title = "SCAN ME";
         Width = 340; Height = 400;
-        Background = System.Windows.Media.Brushes.Black;
         WindowStartupLocation = WindowStartupLocation.CenterScreen;
         Topmost = true;
 
+        var fg = ThemeColor("FgBrush");
+        var bg = ThemeColor("PanelBrush");
+        Background = new SolidColorBrush(bg);
+
         using var png = new PngByteQRCode(data);
-        var bytes = png.GetGraphic(12, new byte[] { 0x33, 0xff, 0x33, 0xff }, new byte[] { 0x00, 0x00, 0x00, 0xff });
+        var bytes = png.GetGraphic(12,
+            new byte[] { fg.R, fg.G, fg.B, 0xff }, new byte[] { bg.R, bg.G, bg.B, 0xff });
         var bmp = new BitmapImage();
         bmp.BeginInit();
         bmp.StreamSource = new MemoryStream(bytes);
@@ -28,13 +33,17 @@ public sealed class QrWindow : Window
         var panel = new StackPanel { Margin = new Thickness(16) };
         panel.Children.Add(new TextBlock
         {
-            Text = "LÊ COM A CÂMARA DO TELEMÓVEL",
-            Foreground = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(0x33, 0xff, 0x33)),
-            FontFamily = new System.Windows.Media.FontFamily("Consolas"),
+            Text = L10n.T("qr.text"),
+            Foreground = new SolidColorBrush(fg),
+            FontFamily = (FontFamily)Application.Current.TryFindResource("UiFont")
+                ?? new FontFamily("Consolas"),
             HorizontalAlignment = HorizontalAlignment.Center,
             Margin = new Thickness(0, 0, 0, 12),
         });
         panel.Children.Add(new Image { Source = bmp, Width = 280, Height = 280 });
         Content = panel;
     }
+
+    private static Color ThemeColor(string key) =>
+        Application.Current.TryFindResource(key) is SolidColorBrush b ? b.Color : Colors.Black;
 }

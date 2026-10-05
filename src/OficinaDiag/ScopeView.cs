@@ -10,10 +10,14 @@ namespace OficinaDiag;
 /// </summary>
 public sealed class ScopeView : FrameworkElement
 {
-    private static readonly Pen GridPen = new(new SolidColorBrush(Color.FromRgb(0x0d, 0x2a, 0x0d)), 1);
-    private static readonly Pen AmpPen = new(new SolidColorBrush(Color.FromRgb(0x33, 0xff, 0x33)), 1.6);
-    private static readonly Pen VoltPen = new(new SolidColorBrush(Color.FromRgb(0x7f, 0xd7, 0x7f)), 1);
-    private static readonly Pen TempPen = new(new SolidColorBrush(Color.FromRgb(0xff, 0xd2, 0x3f)), 1.2);
+    // Pens resolvem-se do tema ativo a cada render — troca de tema repinta sozinha.
+    private static Pen Pen(string key, double width) =>
+        new(Application.Current.TryFindResource(key) as Brush ?? Brushes.Gray, width);
+
+    private static Pen GridPen => Pen("LineBrush", 1);
+    private static Pen AmpPen => Pen("FgBrush", 1.6);
+    private static Pen VoltPen => Pen("DimBrush", 1);
+    private static Pen TempPen => Pen("WarnBrush", 1.2);
 
     private readonly List<PowerSample> _samples = new();
     private double _windowSec = 90;

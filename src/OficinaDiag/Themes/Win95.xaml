@@ -1,0 +1,57 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    xmlns:sys="clr-namespace:System;assembly=mscorlib">
+    <!-- Windows 95 — cinza de painel, bevels levantados, Tahoma, faixa navy -->
+    <SolidColorBrush x:Key="BgBrush" Color="#C0C0C0"/>
+    <SolidColorBrush x:Key="PanelBrush" Color="#FFFFFF"/>
+    <SolidColorBrush x:Key="FgBrush" Color="#000000"/>
+    <SolidColorBrush x:Key="TextBrush" Color="#000000"/>
+    <SolidColorBrush x:Key="DimBrush" Color="#404040"/>
+    <SolidColorBrush x:Key="FaintBrush" Color="#808080"/>
+    <SolidColorBrush x:Key="LineBrush" Color="#808080"/>
+    <SolidColorBrush x:Key="HoverBrush" Color="#C0C0C0"/>
+    <SolidColorBrush x:Key="DisabledBrush" Color="#808080"/>
+    <SolidColorBrush x:Key="AccentBrush" Color="#000080"/>
+    <SolidColorBrush x:Key="WarnBrush" Color="#808000"/>
+    <SolidColorBrush x:Key="FailBrush" Color="#FF0000"/>
+    <SolidColorBrush x:Key="PassBrush" Color="#008000"/>
+    <SolidColorBrush x:Key="HeaderBgBrush" Color="#000080"/>
+    <SolidColorBrush x:Key="HeaderFgBrush" Color="#FFFFFF"/>
+    <SolidColorBrush x:Key="HeaderDimBrush" Color="#C0C0C0"/>
+    <FontFamily x:Key="UiFont">Tahoma</FontFamily>
+    <FontFamily x:Key="MonoFont">Courier New</FontFamily>
+    <sys:Double x:Key="ScanlineOpacity">0</sys:Double>
+
+    <!-- bevel 95: branco em cima/esquerda, sombra em baixo/direita; ao carregar inverte -->
+    <Style x:Key="TermButton" TargetType="Button">
+        <Setter Property="Foreground" Value="{DynamicResource FgBrush}"/>
+        <Setter Property="BorderThickness" Value="1"/>
+        <Setter Property="FontFamily" Value="{DynamicResource UiFont}"/>
+        <Setter Property="FontSize" Value="12"/>
+        <Setter Property="Padding" Value="14,5"/>
+        <Setter Property="Cursor" Value="Hand"/>
+        <Setter Property="Margin" Value="0,0,8,4"/>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="Button">
+                    <Border x:Name="shadow" BorderBrush="#808080" BorderThickness="0,0,1,1"
+                            Background="#C0C0C0">
+                        <Border x:Name="face" BorderBrush="#FFFFFF" BorderThickness="1,1,0,0"
+                                Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsPressed" Value="True">
+                            <Setter TargetName="face" Property="BorderBrush" Value="#808080"/>
+                            <Setter TargetName="shadow" Property="BorderBrush" Value="#FFFFFF"/>
+                        </Trigger>
+                        <Trigger Property="IsEnabled" Value="False">
+                            <Setter Property="Foreground" Value="{DynamicResource DisabledBrush}"/>
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+</ResourceDictionary>

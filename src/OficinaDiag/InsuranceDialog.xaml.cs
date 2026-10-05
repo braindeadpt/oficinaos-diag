@@ -12,6 +12,25 @@ public partial class InsuranceDialog : Window
     {
         _config = config;
         InitializeComponent();
+        Title = L10n.T("ins.title");
+        HeaderText.Text = L10n.T("ins.header");
+        DescText.Text = L10n.T("ins.desc");
+        InsuredLabel.Text = L10n.T("ins.insured");
+        InsurerLabel.Text = L10n.T("ins.insurer");
+        PolicyLabel.Text = L10n.T("ins.policy");
+        DamageLabel.Text = L10n.T("ins.damage");
+        RepairLabel.Text = L10n.T("ins.repair");
+        RepairBox.ToolTip = L10n.T("ins.repair.tip");
+        CostLabel.Text = L10n.T("ins.cost");
+        CostBox.ToolTip = L10n.T("ins.cost.tip");
+        TechLabel.Text = L10n.T("ins.tech");
+        ShopSecLabel.Text = L10n.Section("ins.shopsec");
+        ShopNameLabel.Text = L10n.T("ins.shopname");
+        ShopNifLabel.Text = L10n.T("ins.shopnif");
+        ShopPhoneLabel.Text = L10n.T("ins.shopphone");
+        ShopAddrLabel.Text = L10n.T("ins.shopaddr");
+        GenerateBtn.Content = L10n.Btn("btn.generate");
+        CancelBtn.Content = L10n.Btn("btn.cancel");
         ShopNameBox.Text = config.ShopName ?? "";
         ShopNifBox.Text = config.ShopNif ?? "";
         ShopPhoneBox.Text = config.ShopPhone ?? "";
@@ -24,20 +43,20 @@ public partial class InsuranceDialog : Window
     {
         if (InsuredNameBox.Text.Trim().Length == 0)
         {
-            MessageBox.Show(this, "Falta o nome do segurado.",
-                "Relatório para seguradora", MessageBoxButton.OK, MessageBoxImage.Warning);
+            MessageBox.Show(this, L10n.T("ins.err.insured"),
+                L10n.T("ins.title"), MessageBoxButton.OK, MessageBoxImage.Warning);
             return;
         }
         if (DamageBox.Text.Trim().Length < 5)
         {
-            MessageBox.Show(this, "Descreve o dano — é o que a seguradora pede primeiro.",
-                "Relatório para seguradora", MessageBoxButton.OK, MessageBoxImage.Warning);
+            MessageBox.Show(this, L10n.T("ins.err.damage"),
+                L10n.T("ins.title"), MessageBoxButton.OK, MessageBoxImage.Warning);
             return;
         }
         if (ShopNameBox.Text.Trim().Length == 0)
         {
-            MessageBox.Show(this, "O nome da loja é o carimbo do relatório — obrigatório.",
-                "Relatório para seguradora", MessageBoxButton.OK, MessageBoxImage.Warning);
+            MessageBox.Show(this, L10n.T("ins.err.shop"),
+                L10n.T("ins.title"), MessageBoxButton.OK, MessageBoxImage.Warning);
             return;
         }
 
