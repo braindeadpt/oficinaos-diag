@@ -90,8 +90,15 @@ public sealed class IosCollector
                     r.Set("os.version", "info", $"{r.Device.Os} {r.Device.OsVersion}",
                         $"build {GetValue(client, null, "BuildVersion")}");
 
-                    r.Set("device.activation", "pass", GetValue(client, null, "ActivationState"),
-                        "Activated = o equipamento está funcional");
+                    // Não ativado ≠ Activation Lock, mas fica preso no ecrã
+                    // "Hello" — não se pode revender sem confirmar a conta.
+                    var act = GetValue(client, null, "ActivationState");
+                    r.Set("device.activation",
+                        act is null ? "skipped" : act == "Activated" ? "pass" : "warn",
+                        act,
+                        act is null ? "estado de ativação não exposto por USB"
+                            : act == "Activated" ? "equipamento ativado e funcional"
+                            : "não ativado — pode estar preso no ecrã de ativação; verificar iCloud lock");
                     r.Set("device.sim", "info",
                         GetValue(client, null, "SIMStatus")
                             ?.Replace("kCTSIMSupportSIMStatus", ""));
@@ -108,6 +115,22 @@ public sealed class IosCollector
                     var iccid = GetValue(client, null, "IntegratedCircuitCardIdentity");
                     if (iccid is not null)
                         r.Set("identity.iccid", "info", iccid, "nº do cartão SIM físico");
+
+                    // Flags de bloqueio — honestas: o que não é consultável por
+                    // USB fica "skipped", nunca fingido.
+                    var supervised = GetValue(client, null, "IsSupervised")
+                        ?? GetValue(client, "com.apple.mobile.supervision", "IsSupervised");
+                    if (supervised is not null)
+                        r.Set("security.mdm", Truthy(supervised) ? "warn" : "pass",
+                            Truthy(supervised) ? "supervisionado (MDM)" : "sem supervisão",
+                            Truthy(supervised)
+                                ? "perfil de gestão — pode estar preso a uma empresa ou leasing"
+                                : null);
+                    else
+                        r.Set("security.mdm", "skipped", "indeterminado",
+                            "não verificável por USB — confirma em Definições → Geral → VPN e Gestão de Dispositivo");
+                    r.Set("security.findmy", "skipped", "indeterminado",
+                        "Find My / Activation Lock não é consultável sem apagar — pede ao cliente para o desativar à tua frente");
 
                     // Storage — o espaço de dados vive no domínio disk_usage;
                     // TotalDiskCapacity no domínio nulo serve de fallback.

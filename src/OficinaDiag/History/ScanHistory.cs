@@ -64,6 +64,13 @@ public sealed class ScanHistory
         return list;
     }
 
+    /// <summary>Scans anteriores de um serial, mais antigo primeiro — base do antes/depois.</summary>
+    public IReadOnlyList<DeviceReport> ForSerial(string serial) =>
+        All()
+            .Where(r => string.Equals(r.Device.Serial, serial, StringComparison.OrdinalIgnoreCase))
+            .OrderBy(r => r.CollectedAt)
+            .ToList();
+
     /// <summary>Battery capacity trend for a serial — the fun longitudinal stat.</summary>
     public IReadOnlyList<(DateTimeOffset at, string capacity)> BatteryTrend(string serial) =>
         All()

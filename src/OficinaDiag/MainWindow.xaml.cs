@@ -7,6 +7,7 @@ using System.Windows.Data;
 using System.Windows.Media;
 using Microsoft.Win32;
 using OficinaDiag.Devices;
+using OficinaDiag.Grading;
 using OficinaDiag.History;
 using OficinaDiag.Reports;
 using OficinaDiag.Tests;
@@ -196,6 +197,10 @@ public partial class MainWindow : Window
         ScanButton.Content = L10n.Btn("btn.scan");
         BenchButton.Content = L10n.Btn("btn.bench");
         TestButton.Content = L10n.Btn("btn.test");
+        ChecklistButton.Content = L10n.Btn("btn.checklist");
+        CompareButton.Content = L10n.Btn("btn.compare");
+        LabelButton.Content = L10n.Btn("btn.label");
+        ClientButton.Content = L10n.Btn("btn.client");
         ExportButton.Content = L10n.Btn("btn.export");
         SendButton.Content = L10n.Btn("btn.send");
         AiButton.Content = L10n.Btn("btn.ai");
@@ -242,13 +247,101 @@ public partial class MainWindow : Window
                 .OrderBy(r => r.Key)
                 .ToList();
 
+            ApplyGrade();
+            // histórico guarda o scan já com grau — o antes/depois mostra-o na lista
             _history.Add(_report);
             Log(L10n.F("log.scan.done", _report.Results.Count));
             ExportButton.IsEnabled = TestButton.IsEnabled = SendButton.IsEnabled =
-                AiButton.IsEnabled = InsuranceButton.IsEnabled = true;
+                AiButton.IsEnabled = InsuranceButton.IsEnabled =
+                CompareButton.IsEnabled = LabelButton.IsEnabled =
+                ClientButton.IsEnabled = true;
         }
         catch (Exception ex) { Log(L10n.F("log.err", ex.Message)); }
         finally { ScanButton.IsEnabled = true; _busy = false; }
+    }
+
+    /// <summary>
+    /// Recomputa o grau A–D sempre que o relatório ganha dados (scan, SCAN+,
+    /// teste no ecrã, checklist) — o veredicto vai para o log e para o HTML.
+    /// </summary>
+    private void ApplyGrade()
+    {
+        if (_report is null) return;
+        var g = Grader.Apply(_report);
+        RefreshResults();
+        Log(L10n.F("log.grade", g.Grade, g.Verdict));
+    }
+
+    /// <summary>Checklist físico — o que o USB não vê; entra no relatório e no grau.</summary>
+    private void Checklist_Click(object sender, RoutedEventArgs e)
+    {
+        // Inspeção física sem scan é válida — telemóvel que não fala por USB.
+        _report ??= new DeviceReport
+        {
+            Platform = _current?.Kind == DeviceKind.Ios ? "ios" : "android",
+            Device = { Serial = _current?.Id?.TrimEnd('!') },
+        };
+        var dlg = new ChecklistDialog(_report) { Owner = this };
+        if (dlg.ShowDialog() != true) return;
+        ApplyGrade();
+        ExportButton.IsEnabled = SendButton.IsEnabled = AiButton.IsEnabled =
+            InsuranceButton.IsEnabled = CompareButton.IsEnabled =
+            LabelButton.IsEnabled = ClientButton.IsEnabled = true;
+        Log(L10n.T("log.checklist.saved"));
+    }
+
+    /// <summary>Antes/depois — compara o relatório atual com um scan anterior do mesmo serial.</summary>
+    private void Compare_Click(object sender, RoutedEventArgs e)
+    {
+        if (_report is null) return;
+        var serial = _report.Device.Serial;
+        if (string.IsNullOrWhiteSpace(serial))
+        {
+            Log(L10n.T("log.cmp.noserial"));
+            return;
+        }
+        // O scan atual também está no histórico — exclui-o por timestamp.
+        var previous = _history.ForSerial(serial)
+            .Where(p => p.CollectedAt != _report.CollectedAt)
+            .ToList();
+        if (previous.Count == 0)
+        {
+            Log(L10n.T("log.cmp.none"));
+            return;
+        }
+        new CompareWindow(_report, previous) { Owner = this }.ShowDialog();
+    }
+
+    /// <summary>Etiqueta de balcão — modelo, serial, grau e QR; cola no saco do aparelho.</summary>
+    private void Label_Click(object sender, RoutedEventArgs e)
+    {
+        if (_report is null) return;
+        try
+        {
+            Log(LabelPrinter.Print(_report)
+                ? L10n.T("log.label.printed")
+                : L10n.T("log.label.cancel"));
+        }
+        catch (Exception ex) { Log(L10n.F("log.err", ex.Message)); }
+    }
+
+    /// <summary>Vista cliente — linguagem simples, grau em destaque, sem chaves técnicas.</summary>
+    private void Client_Click(object sender, RoutedEventArgs e)
+    {
+        if (_report is null) return;
+        var dlg = new SaveFileDialog
+        {
+            Filter = L10n.T("dlg.client.filter"),
+            FileName = $"cliente-{_report.Device.Serial ?? "device"}-{_report.CollectedAt:yyyyMMdd-HHmm}.html",
+        };
+        if (dlg.ShowDialog() != true) return;
+        try
+        {
+            File.WriteAllText(dlg.FileName, ReportBuilder.ToClientHtml(_report));
+        }
+        catch (Exception ex) { Log(L10n.F("log.err", ex.Message)); return; }
+        Log(L10n.F("log.client.saved", dlg.FileName));
+        Process.Start(new ProcessStartInfo(dlg.FileName) { UseShellExecute = true });
     }
 
     private void Test_Click(object sender, RoutedEventArgs e)
@@ -313,7 +406,7 @@ public partial class MainWindow : Window
                             L10n.T("sensor.vibrate.fail.detail"));
                 }
                 Log(L10n.T("log.test.received"));
-                RefreshResults();
+                ApplyGrade();
                 server.Dispose();
                 if (ReferenceEquals(_testServer, server)) _testServer = null;
             });
@@ -390,9 +483,10 @@ public partial class MainWindow : Window
             };
         }
         res.ApplyTo(_report);
-        RefreshResults();
+        ApplyGrade();
         ExportButton.IsEnabled = SendButton.IsEnabled = AiButton.IsEnabled =
-            InsuranceButton.IsEnabled = true;
+            InsuranceButton.IsEnabled = CompareButton.IsEnabled =
+            LabelButton.IsEnabled = ClientButton.IsEnabled = true;
         Log(L10n.F("log.bench.saved", res.ChargeValue, res.SampleCount));
     }
 

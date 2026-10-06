@@ -61,6 +61,10 @@ public static class L10n
             ["btn.update"] = "↓ ATUALIZAR {0}",
             ["btn.log"] = "ENVIAR LOG",
             ["btn.settings"] = "⚙",
+            ["btn.checklist"] = "CHECKLIST",
+            ["btn.compare"] = "ANTES/DEPOIS",
+            ["btn.label"] = "ETIQUETA",
+            ["btn.client"] = "CLIENTE",
 
             // log consola
             ["log.screen"] = "> ecrã útil {0}×{1} · janela {2}×{3} @{4},{5}",
@@ -94,6 +98,13 @@ public static class L10n
             ["log.ai.gen"] = "> a gerar relatório IA…",
             ["log.ai.fail"] = "! IA falhou: {0}",
             ["log.ai.saved"] = "> relatório IA guardado: {0}",
+            ["log.grade"] = "> grau {0} — {1}",
+            ["log.checklist.saved"] = "> checklist físico gravado no relatório",
+            ["log.cmp.none"] = "! sem scans anteriores deste serial — o antes/depois precisa de um scan antigo",
+            ["log.cmp.noserial"] = "! relatório sem serial — o antes/depois precisa de identificar o aparelho",
+            ["log.label.printed"] = "> etiqueta enviada para a impressora",
+            ["log.label.cancel"] = "> impressão da etiqueta cancelada",
+            ["log.client.saved"] = "> relatório de cliente guardado: {0}",
 
             // resultados do teste no telefone (escritos no relatório via UI)
             ["test.touch.zones"] = "{0}/{1} zonas",
@@ -119,6 +130,7 @@ public static class L10n
             ["dlg.export.filter"] = "Relatório HTML|*.html|JSON|*.json",
             ["dlg.ins.filter"] = "Relatório seguradora|*.html",
             ["dlg.ai.filter"] = "Relatório IA|*.html",
+            ["dlg.client.filter"] = "Relatório cliente|*.html",
             ["dlg.ai.token"] = "Token da loja (oficinaos-cloud):",
             ["dlg.ai.token.title"] = "Relatório IA — PRO",
             ["dlg.ai.lang"] = "Idioma do relatório (pt/en/fr/es):",
@@ -188,6 +200,25 @@ public static class L10n
             ["ins.err.damage"] = "Descreve o dano — é o que a seguradora pede primeiro.",
             ["ins.err.shop"] = "O nome da loja é o carimbo do relatório — obrigatório.",
 
+            // checklist físico
+            ["chk.title"] = "Checklist físico",
+            ["chk.header"] = "CHECKLIST FÍSICO — o que o USB não vê",
+            ["chk.desc"] = "Marca cada item em segundos: ok · defeito · n/t (não testado). Entra no relatório e pesa no grau.",
+            ["chk.notes"] = "notas do técnico (entram no relatório)",
+            ["chk.photo"] = "ANEXAR FOTOS",
+            ["chk.photos"] = "{0} foto(s) anexada(s)",
+            ["chk.fail"] = "defeito",
+            ["chk.na"] = "n/t",
+            ["btn.apply"] = "APLICAR",
+
+            // antes / depois
+            ["cmp.title"] = "Antes / depois",
+            ["cmp.header"] = "ANTES / DEPOIS — mesmo serial",
+            ["cmp.desc"] = "Escolhe um scan anterior para comparar com o atual — prova ao cliente que a peça nova ficou bem.",
+            ["cmp.col.check"] = "verificação",
+            ["cmp.col.before"] = "antes",
+            ["cmp.col.now"] = "agora",
+
             // QR popup
             ["qr.text"] = "LÊ COM A CÂMARA DO TELEMÓVEL",
 
@@ -217,6 +248,10 @@ public static class L10n
             ["btn.update"] = "↓ UPDATE {0}",
             ["btn.log"] = "SEND LOG",
             ["btn.settings"] = "⚙",
+            ["btn.checklist"] = "CHECKLIST",
+            ["btn.compare"] = "BEFORE/AFTER",
+            ["btn.label"] = "LABEL",
+            ["btn.client"] = "CUSTOMER",
 
             ["log.screen"] = "> work area {0}×{1} · window {2}×{3} @{4},{5}",
             ["log.boot"] = "> boot sequence…",
@@ -249,6 +284,13 @@ public static class L10n
             ["log.ai.gen"] = "> generating AI report…",
             ["log.ai.fail"] = "! AI failed: {0}",
             ["log.ai.saved"] = "> AI report saved: {0}",
+            ["log.grade"] = "> grade {0} — {1}",
+            ["log.checklist.saved"] = "> physical checklist saved to the report",
+            ["log.cmp.none"] = "! no previous scans for this serial — before/after needs an older scan",
+            ["log.cmp.noserial"] = "! report has no serial — before/after needs to identify the device",
+            ["log.label.printed"] = "> label sent to the printer",
+            ["log.label.cancel"] = "> label print cancelled",
+            ["log.client.saved"] = "> customer report saved: {0}",
 
             ["test.touch.zones"] = "{0}/{1} zones",
             ["test.touch.detail"] = "touch grid filled on the phone",
@@ -272,6 +314,7 @@ public static class L10n
             ["dlg.export.filter"] = "HTML report|*.html|JSON|*.json",
             ["dlg.ins.filter"] = "Insurer report|*.html",
             ["dlg.ai.filter"] = "AI report|*.html",
+            ["dlg.client.filter"] = "Customer report|*.html",
             ["dlg.ai.token"] = "Shop token (oficinaos-cloud):",
             ["dlg.ai.token.title"] = "AI report — PRO",
             ["dlg.ai.lang"] = "Report language (pt/en/fr/es):",
@@ -337,6 +380,23 @@ public static class L10n
             ["ins.err.insured"] = "Insured name missing.",
             ["ins.err.damage"] = "Describe the damage — it's the first thing the insurer asks for.",
             ["ins.err.shop"] = "Shop name is the report's stamp — required.",
+
+            ["chk.title"] = "Physical checklist",
+            ["chk.header"] = "PHYSICAL CHECKLIST — what USB can't see",
+            ["chk.desc"] = "Mark each item in seconds: ok · defect · n/a (not tested). It goes into the report and weighs on the grade.",
+            ["chk.notes"] = "technician notes (go in the report)",
+            ["chk.photo"] = "ATTACH PHOTOS",
+            ["chk.photos"] = "{0} photo(s) attached",
+            ["chk.fail"] = "defect",
+            ["chk.na"] = "n/a",
+            ["btn.apply"] = "APPLY",
+
+            ["cmp.title"] = "Before / after",
+            ["cmp.header"] = "BEFORE / AFTER — same serial",
+            ["cmp.desc"] = "Pick a previous scan to compare with the current one — prove to the customer the new part is good.",
+            ["cmp.col.check"] = "check",
+            ["cmp.col.before"] = "before",
+            ["cmp.col.now"] = "now",
 
             ["qr.text"] = "SCAN WITH THE PHONE CAMERA",
 

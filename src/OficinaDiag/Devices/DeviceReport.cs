@@ -56,6 +56,13 @@ public sealed class DeviceReport
 
     public string? Notes { get; set; }
 
+    /// <summary>
+    /// Fotos de bancada anexadas pelo técnico — paths locais, embutidas em
+    /// base64 só na renderização HTML. Não viajam para a cloud (os payloads
+    /// de intake/IA são construídos campo a campo, sem este).
+    /// </summary>
+    public List<string> PhotoPaths { get; } = [];
+
     public void Set(string key, string status, string? value, string? detail = null) =>
         Results[key] = new CheckResult { Status = status, Value = value, Detail = detail };
 }

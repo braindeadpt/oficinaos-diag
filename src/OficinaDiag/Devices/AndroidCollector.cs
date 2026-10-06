@@ -119,6 +119,70 @@ public sealed class AndroidCollector
             r.Set("security.crypto", crypto == "encrypted" ? "pass" : "info", crypto,
                 "dados do utilizador encriptados em repouso");
 
+        // ── Flags de bloqueio — o que decide uma retoma de usado ──────────
+        // Contas Google/Samsung ativas: não é defeito (todo o telefone de um
+        // cliente as tem), mas um factory reset dispara FRP e o aparelho fica
+        // preso à conta — bloqueia revenda até serem desvinculadas.
+        var accounts = await AdbAsync(serial, "shell dumpsys account");
+        if (accounts is not null)
+        {
+            var accCount = Regex.Matches(accounts,
+                @"type=(com\.google|com\.samsung|com\.huawei|com\.xiaomi|com\.oppo)").Count;
+            r.Set("security.accounts", accCount > 0 ? "warn" : "pass",
+                accCount == 0 ? "sem contas" : $"{accCount} conta(s)",
+                accCount > 0
+                    ? "conta(s) do fabricante/Google ativas — um reset dispara FRP; desvincular antes de vender"
+                    : "sem contas — FRP não dispara num reset");
+        }
+
+        // MDM: device/profile owner = gerido por empresa ou preso a leasing —
+        // red flag máxima para retoma.
+        var policy = await AdbAsync(serial, "shell dumpsys device_policy");
+        if (policy is not null)
+        {
+            var hasOwner = policy.Contains("Device Owner")
+                && !policy.Contains("No device owner");
+            r.Set("security.mdm", hasOwner ? "warn" : "pass",
+                hasOwner ? "gestão remota ativa" : "sem gestão remota",
+                hasOwner
+                    ? "device/profile owner definido — pode estar bloqueado a empresa ou contrato de leasing"
+                    : null);
+        }
+
+        // Knox / warranty bit + OEM unlock — o que o fabricante usa para
+        // recusar garantia numa retoma.
+        var warrantyBit = (await PropAsync(serial, "ro.boot.warranty_bit"))
+            ?? await PropAsync(serial, "ro.warranty_bit");
+        if (warrantyBit is "0" or "1")
+            r.Set("security.warranty", warrantyBit == "1" ? "fail" : "pass",
+                warrantyBit == "1" ? "Knox queimado (0x1)" : "intacto",
+                warrantyBit == "1"
+                    ? "garantia oficial perdida — o fabricante recusa reparação"
+                    : null);
+        var flashLocked = await PropAsync(serial, "ro.boot.flash.locked"); // 1 = bloqueado
+        var oemUnlock = await PropAsync(serial, "sys.oem_unlock_allowed"); // 1 = permitido
+        if (flashLocked == "0" || oemUnlock == "1")
+            r.Set("security.oemunlock", "warn",
+                flashLocked == "0" ? "bootloader desbloqueado" : "desbloqueio OEM permitido",
+                "software modificável — afeta garantia e valor de retoma");
+        else if (flashLocked == "1" || oemUnlock == "0")
+            r.Set("security.oemunlock", "pass", "bootloader bloqueado");
+
+        // Desgaste NAND (eMMC life_time / pre_eol) — raro sem root, mas quando
+        // exposto é um aviso "vai morrer" que nenhuma app de cliente mostra.
+        var nand = (await AdbAsync(serial,
+            "shell cat /sys/block/mmcblk0/device/life_time " +
+            "/sys/class/mmc_host/mmc0/mmc0:0001/life_time 2>/dev/null"))?.Trim();
+        var life = Regex.Matches(nand ?? "", @"0x([0-9A-Fa-f]{2})")
+            .Select(m => Convert.ToInt32(m.Groups[1].Value, 16)).ToList();
+        if (life.Count > 0)
+        {
+            var worst = life.Max(); // classes 1–11, ~10% de vida gasta por classe
+            r.Set("storage.wear", worst >= 9 ? "warn" : "info",
+                $"classe {worst}/11 (~{Math.Min(100, worst * 10)}% de vida gasta)",
+                "desgaste estimado da NAND reportado pelo controlador eMMC");
+        }
+
         // Battery — dumpsys gives level/temp/health/charge-state; sysfs may
         // give cycles & capacity; batterystats gives the learned estimate.
         var batt = await AdbAsync(serial, "shell dumpsys battery");

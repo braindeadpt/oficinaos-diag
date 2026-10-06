@@ -1,3 +1,4 @@
+using System.IO;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -81,6 +82,15 @@ public static class ReportBuilder
             $"{System.Net.WebUtility.HtmlEncode(r.Device.OsVersion)} · s/n {System.Net.WebUtility.HtmlEncode(r.Device.Serial)}<br>" +
             $"recolhido {r.CollectedAt:dd-MM-yyyy HH:mm} UTC · tool v{r.ToolVersion}</div>");
 
+        // Bloco de grau + veredicto no topo — a frase de fecho que a loja lê primeiro.
+        if (r.Results.TryGetValue("grade.overall", out var g))
+        {
+            var gradeClass = g.Status == "fail" ? "fail" : g.Status == "warn" ? "warn" : "pass";
+            sb.AppendLine($"<div style=\"border:2px solid;padding:.8em;margin-bottom:1.5em\" class=\"{gradeClass}\">" +
+                $"<b style=\"font-size:1.6em\">GRAU {System.Net.WebUtility.HtmlEncode(g.Value)}</b><br>" +
+                $"{System.Net.WebUtility.HtmlEncode(g.Detail ?? "")}</div>");
+        }
+
         sb.AppendLine("<table><tr><th>verificação</th><th>estado</th><th>valor</th><th>detalhe</th></tr>");
         foreach (var (key, c) in r.Results.OrderBy(kv => kv.Key))
         {
@@ -96,8 +106,31 @@ public static class ReportBuilder
                 $"{System.Net.WebUtility.HtmlEncode(r.LogsText)}</pre>");
         if (!string.IsNullOrWhiteSpace(r.Notes))
             sb.AppendLine($"<h1 style=\"font-size:1em\">NOTAS</h1><p>{System.Net.WebUtility.HtmlEncode(r.Notes)}</p>");
+        AppendPhotos(sb, r);
         sb.AppendLine("<div class=\"footer\">oficinaos-diag · open source (MIT) · relatório gerado localmente</div></body></html>");
         return sb.ToString();
+    }
+
+    /// <summary>Fotos de bancada embutidas em base64 — o HTML fica autocontido.</summary>
+    private static void AppendPhotos(StringBuilder sb, DeviceReport r)
+    {
+        if (r.PhotoPaths.Count == 0) return;
+        var imgs = new StringBuilder();
+        foreach (var path in r.PhotoPaths)
+        {
+            try
+            {
+                if (!File.Exists(path)) continue;
+                var ext = Path.GetExtension(path).ToLowerInvariant();
+                var mime = ext is ".png" ? "image/png" : ext is ".webp" ? "image/webp" : "image/jpeg";
+                var b64 = Convert.ToBase64String(File.ReadAllBytes(path));
+                imgs.Append($"<img src=\"data:{mime};base64,{b64}\" " +
+                    "style=\"max-width:230px;margin:4px;border:1px solid #1d4a1d\">");
+            }
+            catch { /* foto inacessível — salta */ }
+        }
+        if (imgs.Length > 0)
+            sb.AppendLine($"<h1 style=\"font-size:1em\">FOTOS DE BANCADA</h1><div>{imgs}</div>");
     }
 
     /// <summary>
@@ -146,6 +179,18 @@ public static class ReportBuilder
         "battery.technology" => "Bateria — tecnologia",
         "battery.temp" or "battery.temperature" => "Bateria — temperatura",
         "battery.voltage" => "Bateria — tensão",
+        "checklist.frame" => "Inspeção física — moldura / corpo",
+        "checklist.backglass" => "Inspeção física — vidro traseiro",
+        "checklist.screen_visual" => "Inspeção física — ecrã (riscos / manchas)",
+        "checklist.buttons" => "Inspeção física — botões",
+        "checklist.sim_tray" => "Inspeção física — gaveta SIM",
+        "checklist.charge_port" => "Inspeção física — porta de carga",
+        "checklist.speaker" => "Inspeção física — altifalante",
+        "checklist.earpiece" => "Inspeção física — auricular",
+        "checklist.biometrics" => "Inspeção física — biometria (Face/Touch ID)",
+        "checklist.cameras" => "Inspeção física — câmaras",
+        "checklist.liquid" => "Inspeção física — sinais de líquido / humidade",
+        "checklist.mic" => "Inspeção física — microfone",
         "device.activation" => "Bloqueio de ativação (iCloud)",
         "device.baseband" => "Modem (baseband)",
         "device.bluetooth" => "Bluetooth",
@@ -153,6 +198,7 @@ public static class ReportBuilder
         "device.telephony" => "Rede móvel",
         "device.wifi" => "Wi-Fi",
         "display" or "screen.specs" => "Ecrã",
+        "grade.overall" => "Classificação geral (grau)",
         "identity.color" => "Cor",
         "identity.fingerprint" => "Fingerprint do sistema",
         "identity.iccid" => "ICCID",
@@ -171,12 +217,17 @@ public static class ReportBuilder
         "power.session" => "Sessão de potência",
         "power.temp" => "Temperatura em carga",
         "scan" => "Diagnóstico",
+        "security.accounts" => "Contas no aparelho",
         "security.bootloader" => "Bootloader",
         "security.build" => "Build do sistema",
         "security.crypto" => "Encriptação",
+        "security.findmy" => "Find My iPhone",
+        "security.mdm" => "Gestão MDM",
+        "security.oemunlock" => "Desbloqueio OEM",
         "security.password" => "Código de bloqueio",
         "security.root" => "Root / jailbreak",
         "security.selinux" => "SELinux",
+        "security.warranty" => "Bit de garantia (Knox)",
         "sensors" => "Sensores",
         "sensor.accel" => "Acelerómetro",
         "sensor.gyro" => "Giroscópio",
@@ -185,10 +236,134 @@ public static class ReportBuilder
         "sensor.orient" => "Sensor de orientação",
         "sensor.vibrate" => "Motor de vibração",
         "storage" => "Armazenamento",
+        "storage.wear" => "Armazenamento — desgaste (NAND)",
+        "suggest.parts" => "Peças prováveis",
         "test.screen" => "Ecrã — teste visual",
         "test.touch" => "Toque — teste funcional",
         _ => key,
     };
+
+    /// <summary>Estado legível para o cliente — sem jargão.</summary>
+    private static string ClientStatus(string status) => status switch
+    {
+        "pass" => "OK",
+        "warn" => "Atenção",
+        "fail" => "Problema",
+        "skipped" => "Não verificado",
+        _ => "Info",
+    };
+
+    /// <summary>
+    /// Vista cliente do mesmo relatório — tema claro, grau e veredicto em
+    /// destaque, checklist físico e fotos. Sem chaves técnicas nem logs:
+    /// é o papel que sai com o cliente, não a grelha da bancada.
+    /// </summary>
+    public static string ToClientHtml(DeviceReport r)
+    {
+        var e = (string? s) => System.Net.WebUtility.HtmlEncode(s ?? "");
+        var model = string.IsNullOrWhiteSpace(r.Device.MarketingName)
+            ? r.Device.Model
+            : r.Device.MarketingName;
+        var grade = r.Results.TryGetValue("grade.overall", out var g) ? g : null;
+        var parts = r.Results.TryGetValue("suggest.parts", out var p) ? p.Value : null;
+
+        var sb = new StringBuilder();
+        sb.AppendLine("""
+        <!DOCTYPE html><html lang="pt"><head><meta charset="utf-8">
+        <title>Relatório do equipamento</title><style>
+        body{font-family:'Segoe UI',Arial,sans-serif;color:#1a1a1a;max-width:720px;margin:2em auto;padding:0 1.5em}
+        h1{font-size:1.3em;border-bottom:2px solid #1a1a1a;padding-bottom:.4em}
+        .meta{color:#555;font-size:.85em;margin-bottom:1.5em}
+        .grade{border:2px solid #1a1a1a;padding:1em 1.2em;margin-bottom:1.5em}
+        .grade .letter{font-size:2.4em;font-weight:bold}
+        .grade .verdict{font-size:1em;margin-top:.4em}
+        .grade-a{border-color:#1a7a1a;color:#1a7a1a}
+        .grade-b{border-color:#9a6a00;color:#9a6a00}
+        .grade-c{border-color:#b06a00;color:#b06a00}
+        .grade-d{border-color:#b00;color:#b00}
+        .verdict{color:#333}
+        h2{font-size:.9em;text-transform:uppercase;letter-spacing:.06em;color:#444;border-bottom:1px solid #999;padding-bottom:.3em;margin:1.6em 0 .6em}
+        table{width:100%;border-collapse:collapse;font-size:.9em}
+        td,th{border:1px solid #bbb;padding:.35em .6em;text-align:left}
+        th{background:#eee}
+        .ok{color:#1a7a1a}.attention{color:#9a6a00}.problem{color:#b00;font-weight:bold}.unknown{color:#888}
+        .photos img{max-width:220px;margin:4px;border:1px solid #ccc}
+        .footer{margin-top:2.5em;font-size:.75em;color:#777;border-top:1px solid #ccc;padding-top:.8em}
+        @media print{body{margin:0;max-width:none}@page{margin:15mm}}
+        </style></head><body>
+        """);
+
+        sb.AppendLine("<h1>Relatório do equipamento</h1>");
+        sb.AppendLine($"<div class=\"meta\">{e(r.Device.Brand)} {e(model)} · " +
+            $"s/n {e(r.Device.Serial)} · inspecionado {r.CollectedAt:dd-MM-yyyy HH:mm}</div>");
+
+        if (grade is not null)
+        {
+            var cls = $"grade-{(grade.Value ?? "d").ToLowerInvariant()}";
+            sb.AppendLine($"<div class=\"grade {cls}\"><span class=\"letter\">GRAU {e(grade.Value)}</span>" +
+                $"<div class=\"verdict\">{e(grade.Detail)}</div></div>");
+        }
+
+        if (parts is not null)
+            sb.AppendLine($"<p><b>Peças prováveis para reparação:</b> {e(parts)}</p>");
+
+        // Verificações relevantes para o cliente — agrupadas por estado.
+        var shown = r.Results
+            .Where(kv => !kv.Key.StartsWith("logs.", StringComparison.Ordinal)
+                      && !kv.Key.StartsWith("grade.", StringComparison.Ordinal)
+                      && !kv.Key.StartsWith("suggest.", StringComparison.Ordinal)
+                      && kv.Key is not "identity.fingerprint" and not "security.selinux"
+                             and not "security.build" and not "security.crypto"
+                             and not "identity.iccid" and not "identity.partno"
+                             and not "identity.regmodel" and not "identity.region")
+            .OrderBy(kv => kv.Key)
+            .ToList();
+        if (shown.Count > 0)
+        {
+            sb.AppendLine("<h2>O que verificámos</h2>" +
+                "<table><tr><th>Verificação</th><th>Resultado</th><th>Observação</th></tr>");
+            foreach (var (key, c) in shown)
+            {
+                var cls = c.Status switch
+                {
+                    "pass" => "ok",
+                    "warn" => "attention",
+                    "fail" => "problem",
+                    _ => "unknown",
+                };
+                var obs = string.Join(" — ", new[] { c.Value, c.Detail }.Where(s => !string.IsNullOrWhiteSpace(s)));
+                sb.AppendLine($"<tr><td>{e(FriendlyLabel(key))}</td>" +
+                    $"<td class=\"{cls}\">{ClientStatus(c.Status)}</td><td>{e(obs)}</td></tr>");
+            }
+            sb.AppendLine("</table>");
+        }
+
+        if (!string.IsNullOrWhiteSpace(r.Notes))
+            sb.AppendLine($"<h2>Notas do técnico</h2><p>{e(r.Notes)}</p>");
+
+        if (r.PhotoPaths.Count > 0)
+        {
+            var imgs = new StringBuilder();
+            foreach (var path in r.PhotoPaths)
+            {
+                try
+                {
+                    if (!File.Exists(path)) continue;
+                    var ext = Path.GetExtension(path).ToLowerInvariant();
+                    var mime = ext is ".png" ? "image/png" : ext is ".webp" ? "image/webp" : "image/jpeg";
+                    imgs.Append($"<img src=\"data:{mime};base64,{Convert.ToBase64String(File.ReadAllBytes(path))}\">");
+                }
+                catch { }
+            }
+            if (imgs.Length > 0)
+                sb.AppendLine($"<h2>Fotos</h2><div class=\"photos\">{imgs}</div>");
+        }
+
+        sb.AppendLine("<div class=\"footer\">Inspeção realizada por oficinaos-diag na data indicada. " +
+            "Este documento descreve o estado observado do equipamento — não substitui garantia " +
+            "nem certificação oficial.</div></body></html>");
+        return sb.ToString();
+    }
 
     private static string InsuranceStatus(string status) => status switch
     {

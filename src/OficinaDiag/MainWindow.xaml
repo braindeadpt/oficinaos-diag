@@ -101,6 +101,14 @@
                             Click="Bench_Click" IsEnabled="False"/>
                     <Button Style="{DynamicResource TermButton}" x:Name="TestButton"
                             Click="Test_Click" IsEnabled="False"/>
+                    <Button Style="{DynamicResource TermButton}" x:Name="ChecklistButton"
+                            Click="Checklist_Click"/>
+                    <Button Style="{DynamicResource TermButton}" x:Name="CompareButton"
+                            Click="Compare_Click" IsEnabled="False"/>
+                    <Button Style="{DynamicResource TermButton}" x:Name="LabelButton"
+                            Click="Label_Click" IsEnabled="False"/>
+                    <Button Style="{DynamicResource TermButton}" x:Name="ClientButton"
+                            Click="Client_Click" IsEnabled="False"/>
                     <Button Style="{DynamicResource TermButton}" x:Name="ExportButton"
                             Click="Export_Click" IsEnabled="False"/>
                     <Button Style="{DynamicResource TermButton}" x:Name="SendButton"
