@@ -57,6 +57,13 @@ public sealed class DeviceReport
     public string? Notes { get; set; }
 
     /// <summary>
+    /// "sale" quando o técnico marca a avaliação como retoma/compra (ou o
+    /// cliente envia para venda); null = reparação (o default da Cloud).
+    /// Enviado como <c>purpose</c> ao /reports/diagnostic.
+    /// </summary>
+    public string? Purpose { get; set; }
+
+    /// <summary>
     /// Fotos de bancada anexadas pelo técnico — paths locais, embutidas em
     /// base64 só na renderização HTML. Não viajam para a cloud (os payloads
     /// de intake/IA são construídos campo a campo, sem este).

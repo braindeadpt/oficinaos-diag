@@ -41,8 +41,10 @@
 
         <StackPanel Grid.Row="2" Margin="0,10,0,0">
             <TextBlock x:Name="NotesLabel"/>
-            <TextBox x:Name="NotesBox" AcceptsReturn="True" Height="56"
+            <!-- 2000 = limite de `notes` na Cloud (IntakeRules.NotesMaxLength) -->
+            <TextBox x:Name="NotesBox" AcceptsReturn="True" Height="56" MaxLength="2000"
                      TextWrapping="Wrap" VerticalScrollBarVisibility="Auto"/>
+            <CheckBox x:Name="SaleBox" Margin="0,8,0,0"/>
         </StackPanel>
 
         <StackPanel Grid.Row="3" Orientation="Horizontal" Margin="0,10,0,0">

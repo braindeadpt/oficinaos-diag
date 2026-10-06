@@ -34,7 +34,7 @@
         <TextBox x:Name="PhoneBox" MaxLength="50"/>
 
         <TextBlock x:Name="EmailLabel"/>
-        <TextBox x:Name="EmailBox" MaxLength="200"/>
+        <TextBox x:Name="EmailBox" MaxLength="200"/> <!-- = IntakeRules.EmailMaxLength -->
 
         <TextBlock x:Name="PurposeLabel"/>
         <RadioButton x:Name="PurposeRepair" IsChecked="True" Foreground="{DynamicResource FgBrush}"

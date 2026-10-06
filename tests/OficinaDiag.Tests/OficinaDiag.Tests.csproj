@@ -1,0 +1,33 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Testes da lógica pura do diag. A app é WPF (net8.0-windows) e não corre
+    em Linux/CI genérico, por isso em vez de referenciar o projeto ligamos
+    (Link) só os ficheiros sem dependências de UI. Corre com `dotnet test`
+    em Windows, Linux ou macOS.
+  -->
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+    <RootNamespace>OficinaDiag.Tests</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="..\..\src\OficinaDiag\Cloud\IntakeRules.cs" Link="Linked\IntakeRules.cs" />
+    <Compile Include="..\..\src\OficinaDiag\Cloud\UpdateChecker.cs" Link="Linked\UpdateChecker.cs" />
+    <Compile Include="..\..\src\OficinaDiag\Devices\DeviceReport.cs" Link="Linked\DeviceReport.cs" />
+    <Compile Include="..\..\src\OficinaDiag\Reports\ReportBuilder.cs" Link="Linked\ReportBuilder.cs" />
+    <Compile Include="..\..\src\OficinaDiag\Reports\InsuranceForm.cs" Link="Linked\InsuranceForm.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Markdig" Version="1.4.0" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.11.1" />
+    <PackageReference Include="xunit" Version="2.9.2" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2" />
+  </ItemGroup>
+
+</Project>

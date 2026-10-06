@@ -25,8 +25,13 @@ public sealed class CloudClient
 
     /// <summary>
     /// Um retry com espera curta para falhas transitórias (rede/5xx/timeout).
-    /// POSTs aqui são idempotentes ou baratos de duplicar — o intake deduplica
-    /// pelo lado do servidor se chegarem os dois.
+    /// Atenção: a primeira tentativa pode ter chegado à Cloud mesmo quando
+    /// vemos timeout/5xx. <paramref name="build"/> é chamado em cada tentativa,
+    /// por isso quem precisa de deduplicação tem de pôr no pedido uma chave
+    /// estável gerada UMA vez por envio (ver <see cref="IntakeRules.WithIdempotencyKey"/>):
+    /// o POST /intake envia <c>Idempotency-Key</c> e a Cloud responde ao
+    /// duplicado sem criar outro pedido. Os diag-logs não levam chave — um log
+    /// duplicado é inofensivo.
     /// </summary>
     private static async Task<HttpResponseMessage> SendWithRetryAsync(
         Func<HttpRequestMessage> build)
@@ -62,16 +67,23 @@ public sealed class CloudClient
     public async Task<(bool ok, string message)> SendToShopAsync(
         string shopCode, DeviceReport report, string name, string phone, string? email, string? aiReport, string? purpose)
     {
+        // Validação local espelhada da Cloud — erro legível em vez de 400 em bruto.
+        if (email is not null && !IntakeRules.IsValidEmail(email))
+            return (false, L10n.T("send.err.email"));
+        if (!IntakeRules.NotesWithinLimit(report.Notes))
+            return (false, L10n.F("err.notes.long", IntakeRules.NotesMaxLength));
+        // Uma chave por envio, igual em todas as tentativas: se o 1.º POST
+        // chegou e só a resposta se perdeu, o retry não cria um 2.º pedido.
+        var idempotencyKey = IntakeRules.NewIdempotencyKey();
+        var json = Reports.ReportBuilder.ToIntakeJson(report, name, phone, email?.Trim(), aiReport, purpose);
         try
         {
             var res = await SendWithRetryAsync(() => new HttpRequestMessage(
                 HttpMethod.Post,
                 new Uri(BaseUri, $"intake/{Uri.EscapeDataString(shopCode.Trim().ToUpperInvariant())}"))
             {
-                Content = new StringContent(
-                    Reports.ReportBuilder.ToIntakeJson(report, name, phone, email, aiReport, purpose),
-                    Encoding.UTF8, "application/json"),
-            });
+                Content = new StringContent(json, Encoding.UTF8, "application/json"),
+            }.WithIdempotencyKey(idempotencyKey));
             if (res.IsSuccessStatusCode)
                 return (true, "Relatório enviado à loja — eles veem-no na app.");
             var body = await res.Content.ReadAsStringAsync();
@@ -129,6 +141,8 @@ public sealed class CloudClient
     public async Task<(bool ok, string reportOrError)> GenerateAiReportAsync(
         string shopToken, DeviceReport report, string lang = "pt")
     {
+        if (!IntakeRules.NotesWithinLimit(report.Notes))
+            return (false, L10n.F("err.notes.long", IntakeRules.NotesMaxLength));
         try
         {
             using var req = new HttpRequestMessage(HttpMethod.Post, new Uri(BaseUri, "reports/diagnostic"))

@@ -31,7 +31,10 @@ public sealed partial class ChecklistDialog : Window
         PhotoBtn.Content = L10n.Btn("chk.photo");
         ApplyBtn.Content = L10n.Btn("btn.apply");
         CancelBtn.Content = L10n.Btn("btn.cancel");
+        NotesBox.MaxLength = Cloud.IntakeRules.NotesMaxLength;
         NotesBox.Text = _report.Notes ?? "";
+        SaleBox.Content = L10n.T("chk.sale");
+        SaleBox.IsChecked = _report.Purpose == "sale";
 
         foreach (var item in Grader.ChecklistItems)
             ItemsPanel.Children.Add(BuildRow(item));
@@ -141,7 +144,16 @@ public sealed partial class ChecklistDialog : Window
                 s == 1 ? "ok" : s == 2 ? "defeito" : "não testado",
                 label);
         }
-        _report.Notes = NotesBox.Text.Trim();
+        var notes = NotesBox.Text.Trim();
+        // MaxLength trava a escrita, mas notas antigas (histórico) podem vir maiores.
+        if (!Cloud.IntakeRules.NotesWithinLimit(notes))
+        {
+            MessageBox.Show(this, L10n.F("err.notes.long", Cloud.IntakeRules.NotesMaxLength),
+                L10n.T("chk.title"), MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+        _report.Notes = notes;
+        _report.Purpose = SaleBox.IsChecked == true ? "sale" : null;
         DialogResult = true;
     }
 }
