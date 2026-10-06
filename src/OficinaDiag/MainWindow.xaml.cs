@@ -49,6 +49,7 @@ public partial class MainWindow : Window
         Path.Combine(AppContext.BaseDirectory, "tools", "platform-tools", "adb.exe");
 
     private DeviceDetector? _detector;
+    private Tests.TestServer? _testServer;
     private readonly ScanHistory _history = new();
     private readonly Cloud.DiagConfig _config = Cloud.DiagConfig.Load();
     private readonly Cloud.CloudClient _cloud;
@@ -254,8 +255,15 @@ public partial class MainWindow : Window
     {
         try
         {
-            var server = new TestServer();
-            server.Start();
+            _testServer?.Dispose(); // sessão anterior abandonada — liberta a porta
+            var server = _testServer = new TestServer();
+            if (!server.Start())
+            {
+                _testServer = null;
+                server.Dispose();
+                Log(L10n.F("log.test.fail", "device-test.html não encontrado"));
+                return;
+            }
             server.ResultReceived += data => Dispatcher.Invoke(() =>
             {
                 if (_report is null) return;
@@ -307,6 +315,7 @@ public partial class MainWindow : Window
                 Log(L10n.T("log.test.received"));
                 RefreshResults();
                 server.Dispose();
+                if (ReferenceEquals(_testServer, server)) _testServer = null;
             });
 
             var url = server.LanUrl;
@@ -361,11 +370,17 @@ public partial class MainWindow : Window
         }
 
         _busy = true; // ticker pausa durante a sessão
-        var bench = new BenchWindow(d.Label, probe, loadOn, loadOff) { Owner = this };
-        var saved = bench.ShowDialog() == true;
-        _busy = false;
+        bool saved;
+        Devices.PowerSessionResult? res;
+        try
+        {
+            var bench = new BenchWindow(d.Label, probe, loadOn, loadOff) { Owner = this };
+            saved = bench.ShowDialog() == true;
+            res = bench.Result;
+        }
+        finally { _busy = false; }
 
-        if (!saved || bench.Result is not { } res) return;
+        if (!saved || res is null) return;
         if (_report is null)
         {
             _report = new DeviceReport
@@ -385,7 +400,12 @@ public partial class MainWindow : Window
     {
         if (_report is null) return;
         ResultsList.ItemsSource = _report.Results
-            .Select(kv => new ResultRow { Key = kv.Key, Status = kv.Value.Status, Display = kv.Value.Value ?? "" })
+            .Select(kv => new ResultRow
+            {
+                Key = kv.Key,
+                Status = kv.Value.Status,
+                Display = $"{kv.Value.Value ?? ""} {kv.Value.Detail ?? ""}".Trim(),
+            })
             .OrderBy(r => r.Key).ToList();
     }
 
@@ -399,8 +419,12 @@ public partial class MainWindow : Window
         };
         if (dlg.ShowDialog() != true) return;
         var isHtml = !dlg.FileName.EndsWith(".json", StringComparison.OrdinalIgnoreCase);
-        File.WriteAllText(dlg.FileName,
-            isHtml ? ReportBuilder.ToHtml(_report) : ReportBuilder.ToJson(_report));
+        try
+        {
+            File.WriteAllText(dlg.FileName,
+                isHtml ? ReportBuilder.ToHtml(_report) : ReportBuilder.ToJson(_report));
+        }
+        catch (Exception ex) { Log(L10n.F("log.err", ex.Message)); return; }
         Log(L10n.F("log.export.saved", dlg.FileName));
         // HTML é para ver/partilhar — abre já no browser predefinido.
         if (isHtml)
@@ -419,7 +443,11 @@ public partial class MainWindow : Window
             FileName = $"seguradora-{_report.Device.Serial ?? "device"}-{_report.CollectedAt:yyyyMMdd-HHmm}.html",
         };
         if (save.ShowDialog() != true) return;
-        File.WriteAllText(save.FileName, ReportBuilder.ToInsuranceHtml(_report, form));
+        try
+        {
+            File.WriteAllText(save.FileName, ReportBuilder.ToInsuranceHtml(_report, form));
+        }
+        catch (Exception ex) { Log(L10n.F("log.err", ex.Message)); return; }
         Log(L10n.F("log.ins.saved", save.FileName));
         // Abre já no browser — daí é imprimir ou gravar em PDF.
         Process.Start(new ProcessStartInfo(save.FileName) { UseShellExecute = true });
@@ -431,10 +459,15 @@ public partial class MainWindow : Window
         var dlg = new SendDialog { Owner = this };
         if (dlg.ShowDialog() != true) return;
         Log(L10n.F("log.send.start", dlg.ShopCode));
-        var (ok, msg) = await _cloud.SendToShopAsync(
-            dlg.ShopCode, _report, dlg.CustomerName, dlg.CustomerPhone, dlg.CustomerEmail,
-            _lastAiReport, dlg.Purpose);
-        Log(ok ? $"> {msg}" : L10n.F("log.send.fail", msg));
+        SendButton.IsEnabled = false; // double-submit criava pedidos duplicados na loja
+        try
+        {
+            var (ok, msg) = await _cloud.SendToShopAsync(
+                dlg.ShopCode, _report, dlg.CustomerName, dlg.CustomerPhone, dlg.CustomerEmail,
+                _lastAiReport, dlg.Purpose);
+            Log(ok ? $"> {msg}" : L10n.F("log.send.fail", msg));
+        }
+        finally { SendButton.IsEnabled = true; }
     }
 
     private async void LogSend_Click(object sender, RoutedEventArgs e)
@@ -470,39 +503,67 @@ public partial class MainWindow : Window
         var dlg = new SettingsDialog(_config) { Owner = this };
         if (dlg.ShowDialog() != true) return;
         _config.Save();
-        // idioma/tema já aplicados ao vivo pelo diálogo; o URL da cloud só muda se for válido
-        if (!string.IsNullOrWhiteSpace(_config.CloudUrl))
-            _cloud.BaseUri = new Uri(_config.CloudUrl.TrimEnd('/') + "/");
+        // o diálogo valida antes de guardar — aqui é sempre um URI parseable
+        if (Cloud.DiagConfig.TryValidateCloudUrl(_config.CloudUrl, out var uri))
+            _cloud.BaseUri = new Uri(uri.ToString().TrimEnd('/') + "/");
         Log($"> cloud: {_config.CloudUrl}");
     }
 
     private async void Ai_Click(object sender, RoutedEventArgs e)
     {
         if (_report is null) return;
-        var token = Microsoft.VisualBasic.Interaction.InputBox(
-            L10n.T("dlg.ai.token"), L10n.T("dlg.ai.token.title"), "");
-        if (string.IsNullOrWhiteSpace(token)) return;
-        var lang = (Microsoft.VisualBasic.Interaction.InputBox(
-            L10n.T("dlg.ai.lang"), L10n.T("dlg.ai.token.title"), "pt") ?? "pt")
-            .Trim().ToLowerInvariant();
-        if (lang is not ("pt" or "en" or "fr" or "es")) lang = "pt";
-        Log(L10n.T("log.ai.gen"));
-        var (ok, text) = await _cloud.GenerateAiReportAsync(token, _report, lang);
-        if (!ok) { Log(L10n.F("log.ai.fail", text)); return; }
-        _lastAiReport = text;
-        // Guarda em HTML renderizado (entregável ao cliente) e abre no browser.
-        var dlg = new SaveFileDialog { Filter = L10n.T("dlg.ai.filter"), FileName = $"ai-report-{_report.CollectedAt:yyyyMMdd-HHmm}.html" };
-        if (dlg.ShowDialog() == true)
+        // Aviso de privacidade: crash logs (~40KB com paths e usernames) vão
+        // para o LLM via cloud — o técnico confirma antes de enviar.
+        if (MessageBox.Show(this, L10n.T("dlg.ai.privacy"),
+                L10n.T("dlg.ai.token.title"),
+                MessageBoxButton.YesNo, MessageBoxImage.Information) != MessageBoxResult.Yes)
+            return;
+        var token = _config.GetShopToken();
+        string lang;
+        if (token is not null)
         {
-            File.WriteAllText(dlg.FileName, ReportBuilder.AiReportToHtml(_report, text));
-            Log(L10n.F("log.ai.saved", dlg.FileName));
-            Process.Start(new ProcessStartInfo(dlg.FileName) { UseShellExecute = true });
+            lang = "pt";
         }
+        else
+        {
+            var tdlg = new TokenDialog { Owner = this };
+            if (tdlg.ShowDialog() != true) return;
+            token = tdlg.Token;
+            lang = tdlg.Lang;
+            if (tdlg.Remember)
+            {
+                _config.SetShopToken(token);
+                _config.Save();
+            }
+        }
+        AiButton.IsEnabled = false; // relatório IA é pago — sem double-submit
+        try
+        {
+            Log(L10n.T("log.ai.gen"));
+            var (ok, text) = await _cloud.GenerateAiReportAsync(token, _report, lang);
+            if (!ok) { Log(L10n.F("log.ai.fail", text)); return; }
+            _lastAiReport = text;
+            // Guarda em HTML renderizado (entregável ao cliente) e abre no browser.
+            var dlg = new SaveFileDialog { Filter = L10n.T("dlg.ai.filter"), FileName = $"ai-report-{_report.CollectedAt:yyyyMMdd-HHmm}.html" };
+            if (dlg.ShowDialog() == true)
+            {
+                try
+                {
+                    File.WriteAllText(dlg.FileName, ReportBuilder.AiReportToHtml(_report, text));
+                }
+                catch (Exception ex) { Log(L10n.F("log.err", ex.Message)); return; }
+                Log(L10n.F("log.ai.saved", dlg.FileName));
+                Process.Start(new ProcessStartInfo(dlg.FileName) { UseShellExecute = true });
+            }
+        }
+        finally { AiButton.IsEnabled = true; }
     }
 
     protected override void OnClosing(CancelEventArgs e)
     {
+        _testServer?.Dispose();
         _detector?.Dispose();
+        _telemetryCts?.Cancel();
         base.OnClosing(e);
     }
 }

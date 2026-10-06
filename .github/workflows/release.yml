@@ -36,8 +36,20 @@ jobs:
         shell: pwsh
         run: Compress-Archive -Path out/* -DestinationPath "oficinaos-diag-win-x64.zip"
 
+      - name: Checksum
+        shell: pwsh
+        # The in-app updater verifies this file before extracting — a tampered
+        # or partial zip must fail closed. Format: "<hash>  <filename>".
+        run: >-
+          "$((
+          Get-FileHash oficinaos-diag-win-x64.zip -Algorithm SHA256
+          ).Hash.ToLower())  oficinaos-diag-win-x64.zip"
+          | Out-File -Encoding ascii SHA256SUMS.txt
+
       - name: GitHub release
         uses: softprops/action-gh-release@v2
         with:
-          files: oficinaos-diag-*.zip
+          files: |
+            oficinaos-diag-*.zip
+            SHA256SUMS.txt
           generate_release_notes: true

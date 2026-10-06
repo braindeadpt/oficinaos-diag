@@ -44,6 +44,9 @@ public partial class SettingsDialog : Window
         LangLabel.Text = L10n.T("set.lang");
         ThemeLabel.Text = L10n.T("set.theme");
         CloudLabel.Text = L10n.T("set.cloud");
+        TokenLabel.Text = L10n.T("set.token");
+        TokenHint.Text = _config.ShopTokenProtected is not null
+            ? L10n.T("set.token.set") : L10n.T("set.token.unset");
         ThemeTerminal.Content = L10n.T("theme.terminal");
         ThemeWin95.Content = L10n.T("theme.win95");
         ThemeFluent.Content = L10n.T("theme.fluent");
@@ -61,10 +64,27 @@ public partial class SettingsDialog : Window
 
     private void Save_Click(object sender, RoutedEventArgs e)
     {
+        if (!string.IsNullOrWhiteSpace(CloudBox.Text))
+        {
+            var url = CloudBox.Text.Trim();
+            if (!DiagConfig.TryValidateCloudUrl(url, out var uri))
+            {
+                MessageBox.Show(this, L10n.T("set.err.url"),
+                    Title, MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+            // http:// para a Internet envia o token Pro e dados do cliente em
+            // claro — só localhost/LAN de testes é razoável; exige confirmação.
+            if (DiagConfig.IsInsecureUrl(uri) && MessageBox.Show(this,
+                    L10n.T("set.warn.http"), Title,
+                    MessageBoxButton.YesNo, MessageBoxImage.Warning) != MessageBoxResult.Yes)
+                return;
+            _config.CloudUrl = url;
+        }
         _config.Language = L10n.Current;
         _config.Theme = ThemeManager.Current;
-        if (!string.IsNullOrWhiteSpace(CloudBox.Text))
-            _config.CloudUrl = CloudBox.Text.Trim();
+        if (!string.IsNullOrEmpty(TokenBox.Password))
+            _config.SetShopToken(TokenBox.Password);
         DialogResult = true;
     }
 

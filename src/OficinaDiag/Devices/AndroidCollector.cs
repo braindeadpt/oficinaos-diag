@@ -28,6 +28,7 @@ public sealed class AndroidCollector
             using var p = Process.Start(psi);
             if (p is null) return null;
             var read = p.StandardOutput.ReadToEndAsync();
+            var drain = p.StandardError.ReadToEndAsync(); // stderr cheio bloqueava o adb
             if (!p.WaitForExit(timeoutMs)) { p.Kill(); return null; }
             return await read;
         }

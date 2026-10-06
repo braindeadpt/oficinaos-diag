@@ -1,9 +1,9 @@
 using System.IO;
 using System.Net;
+using System.Net.NetworkInformation;
 using System.Net.Sockets;
 using System.Text;
 using System.Text.Json;
-using OficinaDiag.Devices;
 
 namespace OficinaDiag.Tests;
 
@@ -13,37 +13,57 @@ namespace OficinaDiag.Tests;
 /// Pure LAN — no cloud, no account.
 /// Raw TcpListener: HttpListener com prefixo "+" precisaria de reserva
 /// urlacl/admin — socket simples basta aceitar a regra da firewall.
+///
+/// Porta aleatória + token por sessão no path — sem ele, qualquer um na LAN
+/// podia POSTar resultados falsos para um relatório que vai à seguradora.
 /// </summary>
 public sealed class TestServer : IDisposable
 {
     private readonly TcpListener _listener;
     private readonly CancellationTokenSource _cts = new();
+    private readonly string _token = Guid.NewGuid().ToString("N")[..12];
     private Task? _loop;
+    private bool _disposed;
 
-    public int Port { get; } = 8734;
+    public int Port =>
+        _listener.LocalEndpoint is IPEndPoint ep ? ep.Port : 0;
 
     /// <summary>Results posted back by the on-device test page.</summary>
     public event Action<Dictionary<string, JsonElement>>? ResultReceived;
 
     public TestServer()
     {
-        _listener = new TcpListener(IPAddress.Any, Port);
+        _listener = new TcpListener(IPAddress.Any, 0); // porta efémera — sem colisões fixas
     }
 
     public string LanUrl
     {
         get
         {
-            var ip = Dns.GetHostAddresses(Dns.GetHostName())
-                .FirstOrDefault(a => a.AddressFamily == AddressFamily.InterNetwork);
-            return $"http://{ip?.ToString() ?? "localhost"}:{Port}/";
+            var ip = NetworkInterface.GetAllNetworkInterfaces()
+                .Where(n => n.OperationalStatus == OperationalStatus.Up
+                    && n.NetworkInterfaceType is not NetworkInterfaceType.Loopback)
+                .SelectMany(n => n.GetIPProperties().UnicastAddresses)
+                .Select(a => a.Address)
+                .Where(a => a.AddressFamily == AddressFamily.InterNetwork
+                    && !a.ToString().StartsWith("169.254.")) // APIPA — sem rede
+                // preferir a LAN típica da loja; VPNs/VMs ficam para o fim
+                .OrderBy(a => a.ToString().StartsWith("192.168.") ? 0
+                    : a.ToString().StartsWith("10.") ? 1 : 2)
+                .FirstOrDefault();
+            return $"http://{ip?.ToString() ?? "localhost"}:{Port}/{_token}/";
         }
     }
 
-    public void Start()
+    /// <summary>Returns false se a página de teste não existir junto ao exe.</summary>
+    public bool Start()
     {
+        if (!File.Exists(
+                Path.Combine(AppContext.BaseDirectory, "Tests", "wwwroot", "device-test.html")))
+            return false;
         _listener.Start();
         _loop = Task.Run(LoopAsync);
+        return true;
     }
 
     private async Task LoopAsync()
@@ -89,7 +109,7 @@ public sealed class TestServer : IDisposable
                 var method = parts.Length > 0 ? parts[0] : "";
                 var path = parts.Length > 1 ? parts[1] : "/";
 
-                if (method == "POST" && path == "/result")
+                if (method == "POST" && path == $"/{_token}/result")
                 {
                     // lê o corpo conforme Content-Length
                     var lenMatch = System.Text.RegularExpressions.Regex.Match(
@@ -110,9 +130,13 @@ public sealed class TestServer : IDisposable
                     if (data is not null) ResultReceived?.Invoke(data);
                     Respond(stream, "200 OK", "ok", "text/plain");
                 }
-                else
+                else if (method == "GET" && path == $"/{_token}/")
                 {
                     Respond(stream, "200 OK", page, "text/html; charset=utf-8");
+                }
+                else
+                {
+                    Respond(stream, "404 Not Found", "not found", "text/plain");
                 }
             }
             catch { }
@@ -130,7 +154,10 @@ public sealed class TestServer : IDisposable
 
     public void Dispose()
     {
+        if (_disposed) return;
+        _disposed = true;
         _cts.Cancel();
         try { _listener.Stop(); } catch { }
+        _cts.Dispose();
     }
 }

@@ -122,6 +122,13 @@ public static class L10n
             ["dlg.ai.token"] = "Token da loja (oficinaos-cloud):",
             ["dlg.ai.token.title"] = "Relatório IA — PRO",
             ["dlg.ai.lang"] = "Idioma do relatório (pt/en/fr/es):",
+            ["dlg.token.remember"] = "guardar token neste PC (cifrado)",
+            ["dlg.ai.privacy"] = "O relatório IA envia os dados do scan — incl. logs de crash com paths e nomes de utilizador — para a cloud/LLM. Continuar?",
+            ["set.token"] = "token Pro (relatórios IA)",
+            ["set.token.set"] = "guardado — deixa vazio para manter, escreve para trocar",
+            ["set.token.unset"] = "vazio — pedido a cada relatório IA",
+            ["set.err.url"] = "URL inválido — usa um endereço completo tipo https://cloud.oficinaos.app",
+            ["set.warn.http"] = "http:// sem encriptação — o token e dados do cliente viajam em claro na rede. Continuar mesmo assim?",
 
             // bancada (SCAN+)
             ["bench.title"] = "OFICINA-OS // BANCADA",
@@ -268,6 +275,13 @@ public static class L10n
             ["dlg.ai.token"] = "Shop token (oficinaos-cloud):",
             ["dlg.ai.token.title"] = "AI report — PRO",
             ["dlg.ai.lang"] = "Report language (pt/en/fr/es):",
+            ["dlg.token.remember"] = "remember token on this PC (encrypted)",
+            ["dlg.ai.privacy"] = "The AI report sends the scan data — including crash logs with paths and usernames — to the cloud/LLM. Continue?",
+            ["set.token"] = "Pro token (AI reports)",
+            ["set.token.set"] = "saved — leave empty to keep, type to replace",
+            ["set.token.unset"] = "empty — asked on each AI report",
+            ["set.err.url"] = "Invalid URL — use a full address like https://cloud.oficinaos.app",
+            ["set.warn.http"] = "http:// without encryption — the token and customer data travel in cleartext. Continue anyway?",
 
             ["bench.title"] = "OFICINA-OS // BENCH",
             ["bench.header"] = "BENCH — power session",

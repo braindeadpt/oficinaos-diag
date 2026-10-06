@@ -1,4 +1,5 @@
 using System.IO;
+using System.Text;
 using System.Text.Json;
 using OficinaDiag.Devices;
 
@@ -17,6 +18,33 @@ public sealed class ScanHistory
     {
         Directory.CreateDirectory(Path.GetDirectoryName(_file)!);
         File.AppendAllText(_file, JsonSerializer.Serialize(report, Opts) + Environment.NewLine);
+        Prune();
+    }
+
+    /// <summary>
+    /// Cap do ficheiro — os crash logs dentro dos relatórios podem fazer cada
+    /// linha pesar ~1MB; sem poda o ficheiro crescia sem limite. Ficam as
+    /// entradas mais recentes dentro de ~8MB.
+    /// </summary>
+    private void Prune()
+    {
+        const long maxBytes = 8 * 1024 * 1024;
+        try
+        {
+            var info = new FileInfo(_file);
+            if (!info.Exists || info.Length <= maxBytes) return;
+            var keep = File.ReadLines(_file)
+                .Where(l => !string.IsNullOrWhiteSpace(l))
+                .Reverse()
+                .TakeWhile(l => true)
+                .ToList();
+            // Mantém a cauda até ao limite sem re-parsear tudo.
+            var acc = 0L;
+            var tail = keep.TakeWhile(l => (acc += Encoding.UTF8.GetByteCount(l) + 1) <= maxBytes).ToList();
+            tail.Reverse();
+            File.WriteAllLines(_file, tail);
+        }
+        catch { /* poda falhou — fica para a próxima vez */ }
     }
 
     public IReadOnlyList<DeviceReport> All()

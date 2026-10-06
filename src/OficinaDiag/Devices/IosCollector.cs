@@ -60,6 +60,7 @@ public sealed class IosCollector
         var r = new DeviceReport { Platform = "ios" };
         r.Device.Serial = udid;
 
+        var cts = new CancellationTokenSource();
         var collect = Task.Run(() =>
         {
             if (_idevice.idevice_new(out var device, udid) != iDeviceError.Success)
@@ -144,23 +145,29 @@ public sealed class IosCollector
                 // Bateria a sério: ciclos + capacidade vs design vivem na
                 // IORegistry (AppleSmartBattery) — só acessível via
                 // diagnostics_relay, não pelo lockdownd.
-                CollectBatteryHealth(r, udid);
+                if (!cts.IsCancellationRequested)
+                    CollectBatteryHealth(r, udid);
 
                 // MobileGestalt: part number, cor, região, ecrã — os dados que
                 // uma loja precisa para grading de usados.
-                CollectGestalt(r, udid);
+                if (!cts.IsCancellationRequested)
+                    CollectGestalt(r, udid);
 
                 // Panic/crash logs do dispositivo — kernel panics apontam a
                 // componente de hardware a falhar; crashes de apps são info.
-                CollectCrashLogs(r, udid);
+                if (!cts.IsCancellationRequested)
+                    CollectCrashLogs(r, udid);
             }
         });
 
         // O handshake lockdownd pode bloquear para sempre quando outra app do
         // Windows (Fotos/AutoPlay) tem o iPhone ocupado — timeout defensivo.
         if (await Task.WhenAny(collect, Task.Delay(TimeSpan.FromSeconds(30))) != collect)
+        {
+            cts.Cancel(); // a task não morre na hora, mas salta as secções restantes
             r.Set("scan", "fail", null,
                 "Timeout — fecha a janela de importação de fotos do Windows e tenta de novo");
+        }
 
         return r;
     }
@@ -181,6 +188,7 @@ public sealed class IosCollector
             });
             if (p is null) return null;
             var stdout = p.StandardOutput.ReadToEndAsync();
+            var drain = p.StandardError.ReadToEndAsync(); // stderr cheio bloqueava o processo
             if (!p.WaitForExit(timeoutMs))
             {
                 try { p.Kill(); } catch { }
@@ -361,7 +369,8 @@ public sealed class IosCollector
                 CreateNoWindow = true,
             });
             if (p is null) return;
-            p.StandardOutput.ReadToEndAsync();
+            var stdoutTask = p.StandardOutput.ReadToEndAsync();
+            var stderrTask = p.StandardError.ReadToEndAsync(); // drain — buffers cheios bloqueiam
             if (!p.WaitForExit(25_000)) { try { p.Kill(); } catch { } return; }
 
             var files = Directory.EnumerateFiles(dir, "*", SearchOption.AllDirectories)

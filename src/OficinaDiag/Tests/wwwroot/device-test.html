@@ -172,7 +172,7 @@ document.getElementById('endBtn').onclick=()=>{ finish(); };
 
 function finish(){
   result.colorsViewed = colors.length;
-  fetch('/result',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(result)});
+  fetch('result',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(result)});
   document.getElementById('sensors').style.display='none';
   document.getElementById('done').style.display='flex';
 }

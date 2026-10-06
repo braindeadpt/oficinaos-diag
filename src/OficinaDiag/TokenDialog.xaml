@@ -1,7 +1,7 @@
-<Window x:Class="OficinaDiag.SettingsDialog"
+<Window x:Class="OficinaDiag.TokenDialog"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="Settings" Width="400" SizeToContent="Height"
+        Title="Token" Width="380" SizeToContent="Height"
         WindowStartupLocation="CenterOwner" ResizeMode="NoResize"
         Background="{DynamicResource BgBrush}" Foreground="{DynamicResource FgBrush}"
         FontFamily="{DynamicResource UiFont}">
@@ -10,13 +10,6 @@
             <Setter Property="Foreground" Value="{DynamicResource DimBrush}"/>
             <Setter Property="Margin" Value="0,10,0,3"/>
         </Style>
-        <Style TargetType="TextBox">
-            <Setter Property="Background" Value="{DynamicResource PanelBrush}"/>
-            <Setter Property="Foreground" Value="{DynamicResource FgBrush}"/>
-            <Setter Property="BorderBrush" Value="{DynamicResource LineBrush}"/>
-            <Setter Property="Padding" Value="6,4"/>
-            <Setter Property="CaretBrush" Value="{DynamicResource FgBrush}"/>
-        </Style>
         <Style TargetType="PasswordBox">
             <Setter Property="Background" Value="{DynamicResource PanelBrush}"/>
             <Setter Property="Foreground" Value="{DynamicResource FgBrush}"/>
@@ -24,35 +17,29 @@
             <Setter Property="Padding" Value="6,4"/>
             <Setter Property="CaretBrush" Value="{DynamicResource FgBrush}"/>
         </Style>
-        <Style TargetType="RadioButton">
+        <Style TargetType="TextBox">
+            <Setter Property="Background" Value="{DynamicResource PanelBrush}"/>
             <Setter Property="Foreground" Value="{DynamicResource FgBrush}"/>
-            <Setter Property="Margin" Value="0,2,0,0"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource LineBrush}"/>
+            <Setter Property="Padding" Value="6,4"/>
+            <Setter Property="CaretBrush" Value="{DynamicResource FgBrush}"/>
+        </Style>
+        <Style TargetType="CheckBox">
+            <Setter Property="Foreground" Value="{DynamicResource DimBrush}"/>
+            <Setter Property="Margin" Value="0,10,0,0"/>
         </Style>
         <Style TargetType="Button" BasedOn="{StaticResource TermButton}"/>
     </Window.Resources>
     <StackPanel Margin="20">
-        <TextBlock x:Name="HeaderText" FontSize="14" Foreground="{DynamicResource FgBrush}"
-                   Margin="0,0,0,4"/>
-
-        <TextBlock x:Name="LangLabel"/>
-        <RadioButton x:Name="LangPt" Content="Português"/>
-        <RadioButton x:Name="LangEn" Content="English"/>
-
-        <TextBlock x:Name="ThemeLabel"/>
-        <RadioButton x:Name="ThemeTerminal"/>
-        <RadioButton x:Name="ThemeWin95"/>
-        <RadioButton x:Name="ThemeFluent"/>
-
-        <TextBlock x:Name="CloudLabel"/>
-        <TextBox x:Name="CloudBox" MaxLength="300"/>
-
-        <TextBlock x:Name="TokenLabel"/>
+        <TextBlock x:Name="TokenLabel" Margin="0,0,0,3"/>
         <PasswordBox x:Name="TokenBox" MaxLength="200"/>
-        <TextBlock x:Name="TokenHint" FontSize="10" Margin="0,2,0,0"/>
+        <CheckBox x:Name="RememberBox"/>
+        <TextBlock x:Name="LangLabel"/>
+        <TextBox x:Name="LangBox" MaxLength="5" Text="pt"/>
 
         <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,16,0,0">
-            <Button x:Name="SaveBtn" IsDefault="True" Click="Save_Click"/>
-            <Button x:Name="CancelBtn" IsCancel="True"/>
+            <Button x:Name="OkBtn" IsDefault="True" Click="Ok_Click"/>
+            <Button x:Name="CancelBtn" IsCancel="True" Margin="8,0,0,0"/>
         </StackPanel>
     </StackPanel>
 </Window>

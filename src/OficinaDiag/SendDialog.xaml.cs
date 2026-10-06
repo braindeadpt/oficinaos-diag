@@ -31,7 +31,8 @@ public partial class SendDialog : Window
 
     private void Send_Click(object sender, RoutedEventArgs e)
     {
-        if (ShopCode.Length < 4)
+        // a cloud gera códigos de loja com exatamente 6 caracteres
+        if (ShopCode.Length < 6)
         {
             MessageBox.Show(this, L10n.T("send.err.code"),
                 L10n.T("send.title"), MessageBoxButton.OK, MessageBoxImage.Warning);
