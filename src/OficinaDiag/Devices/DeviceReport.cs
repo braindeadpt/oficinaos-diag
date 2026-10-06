@@ -13,7 +13,7 @@ public sealed class CheckResult
 
 /// <summary>Ambient battery readout for the header ticker — polled while a device is connected.</summary>
 public sealed record LiveTelemetry(int? Milliamps, double? Volts, double? TempC, int? Percent,
-    bool? Charging, double? NegotiatedWatts = null);
+    bool? Charging, double? NegotiatedWatts = null, double? SocTempC = null);
 
 /// <summary>Device identity block — mirrors the cloud /reports/diagnostic contract.</summary>
 public sealed class DeviceIdentity

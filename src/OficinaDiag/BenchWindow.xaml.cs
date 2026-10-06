@@ -100,7 +100,8 @@ public sealed partial class BenchWindow : Window
             if (t is not null)
             {
                 var s = new PowerSample(sw.Elapsed.TotalSeconds, phase,
-                    t.Milliamps, t.Volts, t.TempC, t.Percent, t.Charging, t.NegotiatedWatts);
+                    t.Milliamps, t.Volts, t.TempC, t.Percent, t.Charging,
+                    t.NegotiatedWatts, t.SocTempC);
                 samples.Add(s);
                 Scope.AddSample(s);
                 Live.Text = Format(t);
@@ -118,6 +119,7 @@ public sealed partial class BenchWindow : Window
             parts.Add($"{m}mA{(t.Charging == true ? "↑" : t.Charging == false ? "↓" : "")}");
         if (t.Volts is { } v) parts.Add($"{v:0.00}V");
         if (t.TempC is { } c) parts.Add($"{c:0.#}°C");
+        if (t.SocTempC is { } sc) parts.Add($"SoC {sc:0.#}°C");
         if (t.Percent is { } p) parts.Add($"batt {p}%");
         if (t.NegotiatedWatts is { } w) parts.Add($"neg {w:0}W");
         return parts.Count > 0 ? string.Join(" · ", parts) : "—";

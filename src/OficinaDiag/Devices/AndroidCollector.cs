@@ -84,11 +84,24 @@ public sealed class AndroidCollector
         r.Set("device.baseband", "info", await PropAsync(serial, "gsm.version.baseband"),
             "firmware do modem — afeta rede/SIM");
 
-        // SIM/carrier — estado de leitura do cartão e operadora detetada
+        // SIM/carrier — PIN/PUK do cartão e lock de operadora saltam aqui
+        // (NETWORK_LOCKED/PERM_DISABLED = telemóvel preso a uma operadora —
+        // decisivo para retoma; PIN_REQUIRED = PIN do cartão do cliente).
         var simState = await PropAsync(serial, "gsm.sim.state");
         var carrier = await PropAsync(serial, "gsm.operator.alpha");
-        r.Set("device.sim", simState == "READY" ? "pass" : "info", simState,
-            string.IsNullOrWhiteSpace(carrier) ? null : $"operadora: {carrier}");
+        var simLocked = simState?.Split(',')
+            .Any(s => s.Trim() is "PIN_REQUIRED" or "PUK_REQUIRED"
+                or "NETWORK_LOCKED" or "PERM_DISABLED") == true;
+        var isCarrierLock = simState?.Split(',')
+            .Any(s => s.Trim() is "NETWORK_LOCKED" or "PERM_DISABLED") == true;
+        r.Set("device.sim", isCarrierLock ? "fail" : simLocked ? "warn" : "info",
+            simState,
+            string.Join(" — ", new[]
+            {
+                isCarrierLock ? "lock de operadora — não aceita SIM de outras redes"
+                    : simLocked ? "cartão pede PIN/PUK — não é defeito do telefone" : null,
+                string.IsNullOrWhiteSpace(carrier) ? null : $"operadora: {carrier}",
+            }.Where(s => s is not null)));
 
         // IMEI — service call funciona no shell de muitos dispositivos;
         // quando o fabricante bloqueia, sai como "info" sem quebrar o scan.
@@ -339,6 +352,35 @@ public sealed class AndroidCollector
         if (l.Length > 3 && int.TryParse(l[3], out var cp))
             pct = cp;
         return new LiveTelemetry(mA, volts, tempC, pct, charging);
+    }
+
+    /// <summary>
+    /// Zonas térmicas via sysfs (uma shell call, mais leve que dumpsys) —
+    /// a bancada cruza a subida da célula com a do SoC para distinguir
+    /// "bateria a trabalhar" de "throttling do processador".
+    /// </summary>
+    public async Task<double?> ProbeSocTempAsync(string serial)
+    {
+        var o = await AdbAsync(serial,
+            "shell for z in /sys/class/thermal/thermal_zone*; " +
+            "do echo $(cat $z/type 2>/dev/null):$(cat $z/temp 2>/dev/null); done", 5000);
+        if (o is null) return null;
+
+        double? soc = null;
+        foreach (var line in o.Split('\n', StringSplitOptions.RemoveEmptyEntries))
+        {
+            var parts = line.Split(':');
+            if (parts.Length != 2) continue;
+            var type = parts[0].Trim().ToLowerInvariant();
+            if (!double.TryParse(parts[1].Trim(), out var raw)) continue;
+            var c = raw > 500 ? raw / 1000 : raw; // miligraus → °C
+            // zonas de SoC/CPU — nomes variam por OEM; bateria fica de fora
+            var isSoc = type.Contains("cpu") || type.Contains("soc") || type.Contains("ap")
+                || type.Contains("kryo") || type.Contains("big") || type.Contains("little")
+                || type.Contains("silver") || type.Contains("gold");
+            if (isSoc && (soc is null || c > soc)) soc = c;
+        }
+        return soc;
     }
 
     private async Task CollectLogsAsync(DeviceReport r, string serial)

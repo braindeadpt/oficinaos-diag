@@ -99,9 +99,14 @@ public sealed class IosCollector
                         act is null ? "estado de ativação não exposto por USB"
                             : act == "Activated" ? "equipamento ativado e funcional"
                             : "não ativado — pode estar preso no ecrã de ativação; verificar iCloud lock");
-                    r.Set("device.sim", "info",
-                        GetValue(client, null, "SIMStatus")
-                            ?.Replace("kCTSIMSupportSIMStatus", ""));
+                    var simStatus = GetValue(client, null, "SIMStatus")
+                        ?.Replace("kCTSIMSupportSIMStatus", "");
+                    r.Set("device.sim",
+                        simStatus?.Contains("Locked") == true ? "warn" : "info",
+                        simStatus,
+                        simStatus?.Contains("Locked") == true
+                            ? "SIM bloqueado — PIN do cartão ou lock de operadora"
+                            : null);
                     r.Set("device.wifi", "info", GetValue(client, null, "WiFiAddress"));
                     r.Set("security.password", "info", GetValue(client, null, "PasswordProtected"),
                         "true = código de desbloqueio definido");

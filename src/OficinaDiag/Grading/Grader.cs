@@ -75,6 +75,10 @@ public static class Grader
             Cap(2, "Knox/warranty bit queimado — fabricante recusa garantia");
         if (Stat("security.bootloader") is "warn" || Stat("security.root") is "warn" || Stat("security.oemunlock") is "warn")
             Cap(2, "software modificado / bootloader desbloqueado — afeta garantia e retoma");
+        // Lock de operadora: revender exige desbloqueio de rede — condiciona,
+        // não inviabiliza (PIN/PUK do cartão do cliente não pesa).
+        if (Stat("device.sim") is "fail")
+            Cap(2, $"lock de operadora ({Val("device.sim")}) — revender exige desbloqueio de rede");
 
         // ── bateria: o componente que mais se vende ──────────────────────
         var cap = ParsePct(Val("battery.capacity"));
@@ -104,6 +108,16 @@ public static class Grader
         {
             Cap(2, $"resistência interna alta ({Val("power.resistance")}) — célula envelhecida");
             parts.Add("bateria");
+        }
+        if (Stat("power.thermal") is "warn")
+        {
+            Cap(2, "célula aqueceu sob carga mais que o processador — bateria a trabalhar no limite");
+            parts.Add("bateria");
+        }
+        if (Stat("usb.stability") is "warn")
+        {
+            Cap(2, $"ligação USB instável ({Val("usb.stability")}) — porta com folga ou pinos gastos");
+            parts.Add("porta de carga");
         }
 
         // ── ecrã / toque ─────────────────────────────────────────────────

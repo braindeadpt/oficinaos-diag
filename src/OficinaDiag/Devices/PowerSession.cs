@@ -2,7 +2,8 @@ namespace OficinaDiag.Devices;
 
 /// <summary>Uma amostra da sessão de potência [SCAN+]. Phase: 1=base, 2=carga de trabalho, 3=recuperação.</summary>
 public sealed record PowerSample(double T, int Phase, int? Milliamps, double? Volts,
-    double? TempC, int? Percent, bool? Charging, double? NegotiatedWatts);
+    double? TempC, int? Percent, bool? Charging, double? NegotiatedWatts,
+    double? SocTempC = null);
 
 /// <summary>Resultado analisado da sessão — transforma-se em checks do relatório.</summary>
 public sealed class PowerSessionResult
@@ -14,6 +15,11 @@ public sealed class PowerSessionResult
     public int? InternalResistanceMohm { get; init; }
     public int? VoltageSagMv { get; init; }
     public double? MaxTempC { get; init; }
+    /// <summary>ΔT da célula e do SoC durante a carga — quem aquece diz onde está o defeito.</summary>
+    public double? BatteryRiseC { get; init; }
+    public double? SocRiseC { get; init; }
+    /// <summary>Desconexões USB vistas pelo host durante a sessão — porta/cabo instável.</summary>
+    public int UsbDrops { get; set; }
     public int SampleCount { get; init; }
     public int DurationSec { get; init; }
 
@@ -32,6 +38,26 @@ public sealed class PowerSessionResult
         if (MaxTempC is { } t)
             r.Set("power.temp", t > 42 ? "warn" : "info", $"{t:0.#} °C",
                 t > 42 ? "aqueceu durante o teste" : null);
+        if (BatteryRiseC is { } br && SocRiseC is { } sr)
+        {
+            // Cruz célula vs SoC: quem aqueceu diz se o calor vem da bateria
+            // ou do processador — distingue defeito de peça de throttling.
+            var v = $"célula {br:+0.#;-0.#;0} °C · SoC {sr:+0.#;-0.#;0} °C";
+            if (br - sr >= 3)
+                r.Set("power.thermal", "warn", v,
+                    "a célula aqueceu mais que o processador — a bateria está a trabalhar, não é só o ecrã");
+            else if (sr - br >= 3)
+                r.Set("power.thermal", "info", v,
+                    "o calor veio do processador — dissipação normal sob carga, não é defeito da bateria");
+            else
+                r.Set("power.thermal", "info", v, "aquecimento equilibrado entre célula e SoC");
+        }
+        if (UsbDrops > 0)
+            r.Set("usb.stability", "warn", $"{UsbDrops} desconexão(ões)",
+                "o host viu o USB cair durante a sessão — porta com folga, pinos gastos ou cabo do cliente fraco");
+        else
+            r.Set("usb.stability", "pass", "ligação estável",
+                "sem desconexões durante ~60 s de teste contínuo");
         r.Set("power.session", "info", $"{SampleCount} amostras · {DurationSec}s",
             "sessão SCAN+ — base · carga de ecrã · recuperação");
     }
@@ -86,6 +112,18 @@ public static class PowerAnalyzer
             }
         }
 
+        // Subida térmica por zona — média da base vs. pico em carga/recuperação.
+        double? Rise(Func<PowerSample, double?> sel)
+        {
+            var b = baseSamples.Select(sel).Where(v => v is { }).Select(v => v!.Value).ToList();
+            var hot = samples.Where(s => s.Phase != 1).Select(sel)
+                .Where(v => v is { }).Select(v => v!.Value).ToList();
+            if (b.Count == 0 || hot.Count == 0) return null;
+            return hot.Max() - b.Average();
+        }
+        var battRise = Rise(s => s.TempC);
+        var socRise = Rise(s => s.SocTempC);
+
         // Veredicto do caminho de carga (porta USB do PC — 2.5W é o normal)
         string status, detail;
         if (charging.Count == 0)
@@ -115,6 +153,8 @@ public static class PowerAnalyzer
             InternalResistanceMohm = irMohm,
             VoltageSagMv = sagMv,
             MaxTempC = maxTemp > 0 ? maxTemp : null,
+            BatteryRiseC = battRise,
+            SocRiseC = socRise,
             SampleCount = samples.Count,
             DurationSec = dur,
         };

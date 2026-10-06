@@ -478,7 +478,15 @@ public partial class MainWindow : Window
         {
             var adb = new AndroidCollector(_adbPath);
             var serial = d.Id.TrimEnd('!');
-            probe = () => adb.ProbeAsync(serial);
+            // probe + zonas térmicas — célula vs SoC distingue defeito de peça
+            // de throttling; segundo adb por tick é barato a 2s de cadência
+            probe = async () =>
+            {
+                var t = await adb.ProbeAsync(serial);
+                if (t is null) return null;
+                var soc = await adb.ProbeSocTempAsync(serial);
+                return t with { SocTempC = soc };
+            };
             // carga de trabalho automática: ecrã acordado + brilho máximo
             loadOn = async () => await adb.ShellAsync(serial,
                 "input keyevent KEYCODE_WAKEUP; svc power stayon true; " +
@@ -494,6 +502,12 @@ public partial class MainWindow : Window
         }
 
         _busy = true; // ticker pausa durante a sessão
+        // O host conta as quedas USB durante a sessão — cruz com o fuel gauge
+        // distingue porta/cabo instável de bateria fraca.
+        var drops = 0;
+        var benchId = d.Id;
+        void OnDrop(DetectedDevice dd) { if (dd.Id == benchId) drops++; }
+        _detector!.Detached += OnDrop;
         bool saved;
         Devices.PowerSessionResult? res;
         try
@@ -502,7 +516,7 @@ public partial class MainWindow : Window
             saved = bench.ShowDialog() == true;
             res = bench.Result;
         }
-        finally { _busy = false; }
+        finally { _busy = false; _detector!.Detached -= OnDrop; }
 
         if (!saved || res is null) return;
         if (_report is null)
@@ -513,6 +527,7 @@ public partial class MainWindow : Window
                 Device = { Serial = d.Id },
             };
         }
+        res.UsbDrops = drops;
         res.ApplyTo(_report);
         ApplyGrade();
         ExportButton.IsEnabled = SendButton.IsEnabled = AiButton.IsEnabled =

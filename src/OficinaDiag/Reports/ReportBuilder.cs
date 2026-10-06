@@ -226,6 +226,7 @@ public static class ReportBuilder
         "power.resistance" => "Resistência de carga",
         "power.session" => "Sessão de potência",
         "power.temp" => "Temperatura em carga",
+        "power.thermal" => "Aquecimento — célula vs SoC",
         "scan" => "Diagnóstico",
         "security.accounts" => "Contas no aparelho",
         "security.bootloader" => "Bootloader",
@@ -252,6 +253,7 @@ public static class ReportBuilder
         "test.screen" => "Ecrã — teste visual",
         "test.touch" => "Toque — teste funcional",
         "test.edges" => "Toque — zonas de borda",
+        "usb.stability" => "Ligação USB — estabilidade",
         _ => key,
     };
 
