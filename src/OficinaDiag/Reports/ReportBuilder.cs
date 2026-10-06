@@ -2,6 +2,7 @@ using System.IO;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Markdig;
 using OficinaDiag.Devices;
 
 namespace OficinaDiag.Reports;
@@ -18,6 +19,10 @@ public static class ReportBuilder
         DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
     };
 
+    /// <summary>Pipeline do relatório IA: CommonMark como antes, mas com HTML em bruto desligado.</summary>
+    internal static readonly Markdig.MarkdownPipeline AiMarkdownPipeline =
+        new Markdig.MarkdownPipelineBuilder().DisableHtml().Build();
+
     public static string ToJson(DeviceReport r) => JsonSerializer.Serialize(r, JsonOpts);
 
     /// <summary>Payload for cloud /reports/diagnostic (AI report, shop-side).</summary>
@@ -26,6 +31,8 @@ public static class ReportBuilder
         var payload = new
         {
             lang,
+            // "repair" | "sale" — o mesmo enquadramento que o intake e a app usam.
+            purpose = r.Purpose is "sale" or "repair" ? r.Purpose : null,
             device = new { brand = r.Device.Brand, model = r.Device.Model, os = r.Device.Os, osVersion = r.Device.OsVersion },
             results = r.Results,
             logs = r.LogsText,
@@ -139,7 +146,10 @@ public static class ReportBuilder
     /// </summary>
     public static string AiReportToHtml(DeviceReport r, string markdown)
     {
-        var body = Markdig.Markdown.ToHtml(markdown);
+        // O texto vem de um LLM alimentado por dados do dispositivo (nome,
+        // crash logs) → possível prompt injection. Sem HTML em bruto: tags
+        // e blocos HTML saem escapados, nunca como <script>/<img onerror>.
+        var body = Markdig.Markdown.ToHtml(markdown, AiMarkdownPipeline);
         return $$"""
         <!DOCTYPE html><html lang="pt"><head><meta charset="utf-8">
         <title>OficinaDiag — relatório IA</title><style>

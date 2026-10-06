@@ -60,6 +60,13 @@ dotnet publish src/OficinaDiag -r win-x64 --self-contained `
 O resultado é `publish\OficinaDiag.exe` + `tools\platform-tools\` ao lado —
 portátil, basta copiar a pasta.
 
+Testes da lógica pura (validação do envio, idempotência, HTML do relatório
+IA, origem das atualizações) — correm em Windows, Linux ou macOS:
+
+```powershell
+dotnet test tests/OficinaDiag.Tests
+```
+
 ## Aviso do Windows (SmartScreen)
 
 Na primeira execução o Windows mostra «o Windows protegeu o seu PC» — é normal:

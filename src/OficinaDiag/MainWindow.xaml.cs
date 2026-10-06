@@ -554,6 +554,7 @@ public partial class MainWindow : Window
         if (dlg.ShowDialog() != true) return;
         Log(L10n.F("log.send.start", dlg.ShopCode));
         SendButton.IsEnabled = false; // double-submit criava pedidos duplicados na loja
+        if (dlg.Purpose == "sale") _report.Purpose = "sale";
         try
         {
             var (ok, msg) = await _cloud.SendToShopAsync(

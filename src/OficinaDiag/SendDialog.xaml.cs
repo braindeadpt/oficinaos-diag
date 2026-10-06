@@ -44,6 +44,14 @@ public partial class SendDialog : Window
                 L10n.T("send.title"), MessageBoxButton.OK, MessageBoxImage.Warning);
             return;
         }
+        // email é opcional, mas se vier tem de passar o z.email() da Cloud
+        if (CustomerEmail is not null && !Cloud.IntakeRules.IsValidEmail(CustomerEmail))
+        {
+            MessageBox.Show(this, L10n.T("send.err.email"),
+                L10n.T("send.title"), MessageBoxButton.OK, MessageBoxImage.Warning);
+            EmailBox.Focus();
+            return;
+        }
         DialogResult = true;
     }
 }

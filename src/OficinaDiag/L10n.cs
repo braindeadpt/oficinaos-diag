@@ -176,6 +176,8 @@ public static class L10n
             ["btn.cancel"] = "cancelar",
             ["send.err.code"] = "Falta o código da loja (6 letras).",
             ["send.err.contact"] = "Precisamos do teu nome e telefone — a loja usa-os para te identificar.",
+            ["send.err.email"] = "O email não parece válido — corrige-o ou deixa o campo vazio.",
+            ["err.notes.long"] = "As notas têm mais de {0} caracteres — encurta-as antes de enviar.",
 
             // seguradora
             ["ins.title"] = "Relatório para seguradora",
@@ -205,6 +207,7 @@ public static class L10n
             ["chk.header"] = "CHECKLIST FÍSICO — o que o USB não vê",
             ["chk.desc"] = "Marca cada item em segundos: ok · defeito · n/t (não testado). Entra no relatório e pesa no grau.",
             ["chk.notes"] = "notas do técnico (entram no relatório)",
+            ["chk.sale"] = "avaliação para retoma / compra (o relatório IA usa o enquadramento de venda)",
             ["chk.photo"] = "ANEXAR FOTOS",
             ["chk.photos"] = "{0} foto(s) anexada(s)",
             ["chk.fail"] = "defeito",
@@ -358,6 +361,8 @@ public static class L10n
             ["btn.cancel"] = "cancel",
             ["send.err.code"] = "Shop code missing (6 letters).",
             ["send.err.contact"] = "We need your name and phone — the shop uses them to identify you.",
+            ["send.err.email"] = "That email doesn't look valid — fix it or leave the field empty.",
+            ["err.notes.long"] = "Notes are longer than {0} characters — shorten them before sending.",
 
             ["ins.title"] = "Insurer report",
             ["ins.header"] = "INSURER REPORT",
@@ -385,6 +390,7 @@ public static class L10n
             ["chk.header"] = "PHYSICAL CHECKLIST — what USB can't see",
             ["chk.desc"] = "Mark each item in seconds: ok · defect · n/a (not tested). It goes into the report and weighs on the grade.",
             ["chk.notes"] = "technician notes (go in the report)",
+            ["chk.sale"] = "trade-in / buy-back assessment (AI report uses the sale framing)",
             ["chk.photo"] = "ATTACH PHOTOS",
             ["chk.photos"] = "{0} photo(s) attached",
             ["chk.fail"] = "defect",
