@@ -9,20 +9,30 @@
   #stage{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;color:#0f0;text-align:center;padding:12px}
   #grid{position:fixed;inset:0;display:none;grid-template-columns:repeat(6,1fr);grid-template-rows:repeat(10,1fr)}
   .cell{border:1px solid #033;background:#000}
+  .cell.edge{border-color:#033}
   .cell.hit{background:#0f0}
+  .cell.edge.hit{background:#3af}
+  #mtouch{display:none;position:fixed;inset:0;background:#000;color:#0f0;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:16px}
+  #mtouch .count{font-size:64px;margin:20px 0}
   #sensors{display:none;position:fixed;inset:0;background:#000;color:#0f0;flex-direction:column;padding:16px;overflow-y:auto}
   #sensors h2{margin:0 0 10px;font-size:15px}
   .srow{display:flex;justify-content:space-between;border-bottom:1px solid #033;padding:8px 2px;font-size:13px}
   .srow .st{min-width:110px;text-align:right}
   .ok{color:#3f3}.warn{color:#fd3}.no{color:#f55}
-  #sensors button{background:#020;border:1px solid #0f0;color:#0f0;font:inherit;font-size:15px;padding:12px;margin:10px 0}
-  #sensors button:active{background:#030}
+  #sensors button,#mtouch button{background:#020;border:1px solid #0f0;color:#0f0;font:inherit;font-size:15px;padding:12px;margin:10px 0}
+  #sensors button:active,#mtouch button:active{background:#030}
   #done{display:none;position:fixed;inset:0;background:#000;color:#0f0;align-items:center;justify-content:center;text-align:center}
 </style>
 </head>
 <body>
 <div id="stage">TOCA PARA COMEÇAR<br><small>teste de cores + toque + sensores</small></div>
 <div id="grid"></div>
+<div id="mtouch">
+  <div>COLOCA 5 DEDOS NO ECRÃ<br><small>deteta multi-toque e zonas mortas</small></div>
+  <div class="count" id="mtCount">0</div>
+  <div id="mtLive">…</div>
+  <button id="mtNext">CONTINUAR</button>
+</div>
 <div id="sensors">
   <h2>SENSORES — abana e inclina o telefone</h2>
   <div class="srow"><span>Acelerómetro</span><span class="st" id="s-accel">…</span></div>
@@ -31,6 +41,11 @@
   <div class="srow"><span>Luz ambiente</span><span class="st" id="s-light">…</span></div>
   <div class="srow"><span>Multi-toque</span><span class="st" id="s-touch">…</span></div>
   <div class="srow"><span>Bateria (API)</span><span class="st" id="s-batt">…</span></div>
+  <button id="spkBtn">TOCAR TOM — ouviste?</button>
+  <div id="spkAsk" style="display:none">
+    <button id="spkYes">SIM, ouvi</button>
+    <button id="spkNo">NÃO ouvi</button>
+  </div>
   <button id="vibBtn">VIBRAR — sentiste?</button>
   <div id="vibAsk" style="display:none">
     <button id="vibYes">SIM, vibrou</button>
@@ -43,43 +58,99 @@
 <script>
 const stage = document.getElementById('stage');
 const grid = document.getElementById('grid');
-const colors = ['#f00','#0f0','#00f','#fff','#000','#f0f','#ff0','#0ff'];
+/* cores cheias (pixeis mortos) + cinzentos (burn-in / uniformidade) */
+const colors = ['#f00','#0f0','#00f','#fff','#000','#f0f','#ff0','#0ff',
+                '#222','#555','#888','#bbb','#eee'];
 let step = -1;
 const result = {
-  colorsViewed: 0, touchTotal: 60, touchHit: 0,
+  colorsViewed: 0, touchTotal: 60, touchHit: 0, edgeTotal: 0, edgeHit: 0,
+  multiTouch: 0,
   userAgent: navigator.userAgent,
   maxTouchPoints: navigator.maxTouchPoints || 0,
-  sensors: {}, vibrate: null, batteryApi: null
+  sensors: {}, vibrate: null, speaker: null, batteryApi: null
 };
 
-/* ── fase 1: cores ── */
+/* ── fase 1: cores + cinzentos ── */
 stage.onclick = () => {
   step++;
-  if (step < colors.length) { stage.style.background = colors[step]; stage.style.color = step===4?'#0f0':'#000'; stage.innerHTML='procura pixeis mortos — toca para avançar'; }
+  if (step < colors.length) {
+    stage.style.background = colors[step];
+    const isGrey = /^#(?:22|55|88|bb|ee)$/.test(colors[step]);
+    stage.style.color = (colors[step]==='#000'||colors[step]==='#222'||colors[step]==='#555')?'#0f0':'#000';
+    stage.innerHTML = isGrey
+      ? 'cinzento — procura manchas ou imagem fantasma (burn-in)'
+      : 'procura pixeis mortos — toca para avançar';
+  }
   else { stage.style.display='none'; startGrid(); }
 };
 
-/* ── fase 2: grelha de toque ── */
+/* ── fase 2: grelha de toque — bordas contadas à parte ── */
 function startGrid(){
   grid.style.display='grid';
-  const hit = new Set();
-  for(let i=0;i<60;i++){
-    const c=document.createElement('div'); c.className='cell'; c.dataset.i=i; grid.appendChild(c);
+  const hit = new Set(), edgeHit = new Set();
+  const COLS=6, ROWS=10;
+  for(let i=0;i<COLS*ROWS;i++){
+    const c=document.createElement('div');
+    const col=i%COLS, row=Math.floor(i/COLS);
+    const isEdge = col===0||col===COLS-1||row===0||row===ROWS-1;
+    c.className='cell'+(isEdge?' edge':''); c.dataset.i=i;
+    if(isEdge) c.dataset.edge='1';
+    grid.appendChild(c);
   }
+  result.edgeTotal = grid.querySelectorAll('.cell.edge').length;
   const mark = (t)=>{
     const el = document.elementFromPoint(t.clientX, t.clientY);
-    if(el && el.classList.contains('cell')){ el.classList.add('hit'); hit.add(el.dataset.i); }
+    if(el && el.classList.contains('cell')){
+      el.classList.add('hit'); hit.add(el.dataset.i);
+      if(el.dataset.edge) edgeHit.add(el.dataset.i);
+    }
   };
   grid.addEventListener('touchstart',e=>{[...e.touches].forEach(mark)},{passive:true});
   grid.addEventListener('touchmove',e=>{[...e.touches].forEach(mark)},{passive:true});
   grid.addEventListener('touchend',()=>{
-    if(hit.size>=55) startSensors(hit.size);
+    if(hit.size>=55) startMultiTouch(hit.size, edgeHit.size);
   },{passive:true});
   grid.onmousemove = e=>{ if(e.buttons) mark(e); };
-  grid.onclick = e=>{ mark(e); if(hit.size>=55) startSensors(hit.size); };
+  grid.onclick = e=>{ mark(e); if(hit.size>=55) startMultiTouch(hit.size, edgeHit.size); };
 }
 
-/* ── fase 3: sensores ── */
+/* ── fase 3: multi-toque — conta dedos simultâneos ── */
+function startMultiTouch(touchHit, edgeHitCount){
+  grid.style.display='none';
+  const panel=document.getElementById('mtouch');
+  panel.style.display='flex';
+  result.touchHit = touchHit;
+  result.edgeHit = edgeHitCount;
+  let maxSeen=0, live=0;
+  const paint=()=>{
+    document.getElementById('mtCount').textContent=maxSeen;
+    document.getElementById('mtLive').textContent = live>0 ? live+' dedo(s) agora' : '…';
+  };
+  const onDown=e=>{
+    live = e.touches ? e.touches.length : live+1;
+    if(live>maxSeen) maxSeen=live;
+    paint();
+  };
+  const onUp=e=>{ live = e.touches ? e.touches.length : Math.max(0,live-1); paint(); };
+  panel.addEventListener('touchstart',onDown,{passive:true});
+  panel.addEventListener('touchmove',onDown,{passive:true});
+  panel.addEventListener('touchend',onUp,{passive:true});
+  panel.addEventListener('touchcancel',onUp,{passive:true});
+  // rato/pen para desktop
+  let ptrs=new Set();
+  panel.addEventListener('pointerdown',e=>{ptrs.add(e.pointerId);live=ptrs.size;if(live>maxSeen)maxSeen=live;paint();});
+  panel.addEventListener('pointerup',e=>{ptrs.delete(e.pointerId);live=ptrs.size;paint();});
+  panel.addEventListener('pointercancel',e=>{ptrs.delete(e.pointerId);live=ptrs.size;paint();});
+  document.getElementById('mtNext').onclick=()=>{
+    // dedos realmente vistos — maxTouchPoints fica só como contexto no payload;
+    // se o técnico saltou a fase fica 0 e o check sai como não testado
+    result.multiTouch = maxSeen;
+    panel.style.display='none';
+    startSensors();
+  };
+}
+
+/* ── fase 4: sensores + altifalante + vibração ── */
 function setSt(id, val, cls){
   const el=document.getElementById(id); el.textContent=val; el.className='st '+(cls||'');
 }
@@ -97,11 +168,9 @@ function probe(name, ctor){
   }
 }
 
-function startSensors(touchHit){
-  grid.style.display='none';
+function startSensors(){
   const panel=document.getElementById('sensors');
   panel.style.display='flex';
-  result.touchHit = touchHit;
 
   // iOS 13+ — os eventos de movimento precisam de permissão por gesto
   if(typeof DeviceMotionEvent!=='undefined' && typeof DeviceMotionEvent.requestPermission==='function'){
@@ -143,8 +212,9 @@ function startSensors(touchHit){
     if(!result.sensors.light){ result.sensors.light='no-data'; setSt('s-light','sem leitura','warn'); }
   }, 6000);
 
-  setSt('s-touch', result.maxTouchPoints+' pontos', result.maxTouchPoints>=2?'ok':'warn');
-  if(result.maxTouchPoints<2) result.sensors.multitouch='no-data'; else result.sensors.multitouch='ok';
+  const mt = result.multiTouch;
+  setSt('s-touch', mt>0 ? mt+' dedos' : 'não testado', mt>=5?'ok':mt>0?'warn':'warn');
+  result.sensors.multitouch = mt>0 ? (mt>=5?'ok':'ok') : 'no-data';
 
   if(navigator.getBattery){
     navigator.getBattery().then(b=>{
@@ -153,6 +223,26 @@ function startSensors(touchHit){
     }).catch(()=>{ setSt('s-batt','não exposto','no'); });
   } else { setSt('s-batt','não exposto','no'); }
 }
+
+/* altifalante — tom WebAudio + confirmação humana; auricular não tem
+   routing API na web (fica no checklist físico) */
+let audioCtx=null;
+document.getElementById('spkBtn').onclick=()=>{
+  try{
+    audioCtx = audioCtx || new (window.AudioContext||window.webkitAudioContext)();
+    const o=audioCtx.createOscillator(), g=audioCtx.createGain();
+    o.type='sine'; o.frequency.value=880;
+    g.gain.setValueAtTime(0.3,audioCtx.currentTime);
+    o.connect(g); g.connect(audioCtx.destination);
+    o.start(); o.stop(audioCtx.currentTime+0.8);
+    document.getElementById('spkAsk').style.display='block';
+  }catch(e){
+    result.speaker='unavailable';
+    document.getElementById('spkBtn').textContent='áudio não exposto';
+  }
+};
+document.getElementById('spkYes').onclick=()=>{ result.speaker='ok'; document.getElementById('spkAsk').style.display='none'; document.getElementById('spkBtn').textContent='TOM OUVIDO ✓'; };
+document.getElementById('spkNo').onclick=()=>{ result.speaker='fail'; document.getElementById('spkAsk').style.display='none'; document.getElementById('spkBtn').textContent='NÃO ouvi o tom'; };
 
 document.getElementById('permBtn').onclick=()=>{
   Promise.all([

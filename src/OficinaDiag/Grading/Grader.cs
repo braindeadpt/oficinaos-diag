@@ -122,6 +122,21 @@ public static class Grader
             Cap(Stat("test.screen") == "fail" ? 3 : 2, "ecrã com defeitos visuais");
             parts.Add("ecrã");
         }
+        if (Stat("test.edges") is "warn" or "fail")
+        {
+            Cap(2, $"toque morto nas bordas ({Val("test.edges")}) — flat ou ecrã aftermarket");
+            parts.Add("ecrã");
+        }
+        if (Stat("sensor.multitouch") is "warn")
+        {
+            Cap(2, $"multi-toque limitado ({Val("sensor.multitouch")}) — painel degradado");
+            parts.Add("ecrã");
+        }
+        if (Stat("sensor.speaker") is "fail")
+        {
+            Cap(2, "altifalante sem som no teste do tom");
+            parts.Add("altifalante");
+        }
 
         // ── checklist físico ─────────────────────────────────────────────
         var checklistDone = 0;

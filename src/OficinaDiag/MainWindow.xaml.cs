@@ -369,6 +369,38 @@ public partial class MainWindow : Window
                 _report.Set("test.screen", "pass", L10n.T("test.screen.val"),
                     L10n.T("test.screen.detail"));
 
+                // Bordas: falha de toque nas margens é o sintoma clássico de
+                // ecrã aftermarket / mal ligado — contado à parte do interior.
+                if (data.TryGetValue("edgeHit", out var eh) && data.TryGetValue("edgeTotal", out var et))
+                {
+                    var eH = eh.GetInt32(); var eT = et.GetInt32();
+                    if (eT > 0)
+                        _report.Set("test.edges", eH >= eT ? "pass" : "warn",
+                            L10n.F("test.edges.val", eH, eT),
+                            eH >= eT ? L10n.T("test.edges.ok")
+                                     : L10n.T("test.edges.fail"));
+                }
+
+                // Multi-toque real (dedos simultâneos vistos na fase 3) —
+                // mais informativo que o maxTouchPoints anunciado.
+                if (data.TryGetValue("multiTouch", out var mt) && mt.GetInt32() > 0)
+                    _report.Set("sensor.multitouch",
+                        mt.GetInt32() >= 5 ? "pass" : "warn",
+                        L10n.F("test.multitouch.val", mt.GetInt32()),
+                        L10n.T("test.multitouch.detail"));
+
+                // Altifalante — confirmação humana do tom WebAudio.
+                if (data.TryGetValue("speaker", out var spk) && spk.ValueKind == JsonValueKind.String)
+                {
+                    var s = spk.GetString();
+                    _report.Set("sensor.speaker",
+                        s == "ok" ? "pass" : s == "fail" ? "fail" : "skipped",
+                        s == "ok" ? L10n.T("test.speaker.ok")
+                            : s == "fail" ? L10n.T("test.speaker.fail")
+                            : L10n.T("test.speaker.skip"),
+                        L10n.T("test.speaker.detail"));
+                }
+
                 // Sensores — a página mede por browser APIs; "no-data" significa
                 // que o browser não respondeu, não que o hardware falhou.
                 if (data.TryGetValue("sensors", out var sensors)
@@ -378,7 +410,6 @@ public partial class MainWindow : Window
                     {
                         ("accel", L10n.T("sensor.accel")), ("gyro", L10n.T("sensor.gyro")),
                         ("orient", L10n.T("sensor.orient")), ("light", L10n.T("sensor.light")),
-                        ("multitouch", L10n.T("sensor.multitouch")),
                     };
                     foreach (var (key, label) in names)
                     {

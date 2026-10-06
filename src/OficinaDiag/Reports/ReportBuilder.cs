@@ -245,11 +245,13 @@ public static class ReportBuilder
         "sensor.multitouch" => "Multi-toque",
         "sensor.orient" => "Sensor de orientação",
         "sensor.vibrate" => "Motor de vibração",
+        "sensor.speaker" => "Altifalante",
         "storage" => "Armazenamento",
         "storage.wear" => "Armazenamento — desgaste (NAND)",
         "suggest.parts" => "Peças prováveis",
         "test.screen" => "Ecrã — teste visual",
         "test.touch" => "Toque — teste funcional",
+        "test.edges" => "Toque — zonas de borda",
         _ => key,
     };
 
