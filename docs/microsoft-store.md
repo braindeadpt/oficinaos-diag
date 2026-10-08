@@ -4,9 +4,11 @@ Guia completo para submeter a app como **gratuita** na Microsoft Store.
 Distribuída pela Store, a app instala-se com um clique, atualiza sozinha e
 **não dispara o SmartScreen** (a Microsoft assina o pacote).
 
-> Estado: pipeline MSIX pronta e testada (`tools\build-store.ps1` produz um
-> `.msixupload` válido). Falta só a parte manual do Partner Center, que exige a
-> conta Microsoft do dono do produto.
+> Estado: **publicada**. Listagem live em
+> <https://apps.microsoft.com/detail/9P2BM91SFKFM> (editor: conta individual
+> do Partner Center). Este guia fica como referência para **submeter versões
+> novas** — cada release = novo `tools\build-store.ps1` + nova submissão
+> (review ~24–72h), começando no passo 3.
 
 ---
 
