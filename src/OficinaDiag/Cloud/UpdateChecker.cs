@@ -14,12 +14,16 @@ namespace OficinaDiag.Cloud;
 /// the app dir, and relaunches.
 ///
 /// AUTENTICIDADE (resolvido 2026-10): o SHA256SUMS só prova integridade se
-/// vier assinado. A release.yml assina o ficheiro com a chave privada
-/// RELEASE_SIGNING_KEY (GitHub secret + cópia offline do dono — nunca no
-/// repo). Uma conta GitHub comprometida já não chega: sem a chave, o .sig
-/// não valida e a atualização é recusada. Rotação: gerar novo par com
-/// tools/generate-release-key.ps1, embutir a nova pública, e só então
-/// trocar o secret — um exe antigo continua a validar com a chave que traz.
+/// vier assinado — e a assinatura é OFFLINE: a release.yml publica só um
+/// draft (zip + SHA256SUMS), e tools/sign-release.ps1 na máquina do dono
+/// assina e publica. A chave privada nunca toca no CI — quem tiver push no
+/// repo consegue forjar um draft, mas sem a chave não produz um .sig válido.
+/// Rotação: tools/generate-release-key.ps1, embutir a nova pública, e só
+/// então aposentar a antiga — um exe antigo valida com a chave que traz.
+///
+/// ANTI-DOWNGRADE: o SHA256SUMS declara "version <x.y.z>" — assinado,
+/// prende a versão ao conteúdo. Exigimos version == tag e > local, senão
+/// um SUMS velho podia ser republicado num tag mais alto (replay).
 /// </summary>
 public sealed class UpdateChecker
 {
@@ -45,12 +49,14 @@ public sealed class UpdateChecker
 
     /// <summary>
     /// Chave pública EC P-256 (SubjectPublicKeyInfo, base64) que assina o
-    /// SHA256SUMS de cada release. A privada vive fora do repo (secret
-    /// RELEASE_SIGNING_KEY no GitHub Actions + cópia offline do dono).
+    /// SHA256SUMS de cada release. A privada vive num cofre offline do dono
+    /// — nunca no repo nem no CI (rodada 2026-10-15: a primeira versão
+    /// transitou por um GitHub secret durante a implementação inicial e foi
+    /// aposentada antes de qualquer release a ter usado).
     /// Gerada com tools/generate-release-key.ps1.
     /// </summary>
     internal const string ReleaseSigningPublicKey =
-        "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEi01EhWqaWUkR8auOG7WnVuS9oGlI4jxQaUCOmqrzPw7cYOaCP2RzZLSnYuoZ1j2axpucL9UU4gO/kd+guVletg==";
+        "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEXWMC+Ch7bMRfIYBy3PamIFQ2euAADeNuvRPXbYi7dq3AqFVqk32XYNqWINniP2MB31pWTtmmGZhprg6giQT98A==";
 
     /// <summary>
     /// True só para <c>https://github.com/braindeadpt/oficinaos-diag/releases/download/&lt;tag&gt;/&lt;ficheiro&gt;</c>
@@ -108,7 +114,7 @@ public sealed class UpdateChecker
     /// right after a true return.
     /// </summary>
     public static async Task<(bool ok, string message)> DownloadAndStageAsync(
-        UpdateInfo info, string appDir)
+        UpdateInfo info, string appDir, Version current)
     {
         try
         {
@@ -119,12 +125,14 @@ public sealed class UpdateChecker
                 return (false, "Origem da atualização não reconhecida — atualização recusada.");
 
             // ANTES de gastar 100 MB de download: a assinatura do SHA256SUMS
-            // tem de validar contra a chave pública embutida. Sem assinatura
-            // válida, quem controla o repo não controla a atualização.
+            // tem de validar contra a chave pública embutida, e a versão que
+            // o SUMS declara tem de bater no tag e ser mais nova que a local —
+            // senão um SUMS antigo assinado podia ser republicado num tag
+            // mais alto (replay) e esta máquina fazia downgrade silencioso.
             var sumsBytes = await Http.GetByteArrayAsync(info.ChecksumUrl);
             var sigB64 = (await Http.GetStringAsync(info.SigUrl)).Trim();
-            if (!VerifySumsSignature(sumsBytes, sigB64))
-                return (false, "Assinatura da release inválida — atualização recusada.");
+            if (ValidateSums(sumsBytes, sigB64, info.Tag, current) is { } err)
+                return (false, err);
 
             var zipPath = Path.Combine(Path.GetTempPath(), $"oficinaos-diag-{info.Tag}.zip");
 
@@ -203,6 +211,40 @@ public sealed class UpdateChecker
                 DSASignatureFormat.IeeeP1363FixedFieldConcatenation);
         }
         catch { return false; }
+    }
+
+    /// <summary>
+    /// Validação completa do SHA256SUMS antes do download: assinatura EC
+    /// P-256 válida E a linha "version &lt;x.y.z&gt;" (coberta pela assinatura)
+    /// igual ao tag e mais recente que a versão local. Devolve null quando
+    /// está tudo bem, ou a mensagem de erro a mostrar — fail closed sempre.
+    /// </summary>
+    internal static string? ValidateSums(
+        byte[] sumsBytes, string sigB64, string tag, Version current, string? publicKeyB64 = null)
+    {
+        if (!VerifySumsSignature(sumsBytes, sigB64, publicKeyB64))
+            return "Assinatura da release inválida — atualização recusada.";
+        if (!Version.TryParse(tag.TrimStart('v'), out var tagVer))
+            return "Tag da release inválida — atualização recusada.";
+        var declared = DeclaredVersion(sumsBytes);
+        if (declared is null || declared != tagVer)
+            return "A release não declara a versão do tag — atualização recusada.";
+        if (declared <= current)
+            return "A release não é mais recente — atualização recusada.";
+        return null;
+    }
+
+    /// <summary>Versão declarada na linha "version &lt;x.y.z&gt;" do SHA256SUMS.</summary>
+    internal static Version? DeclaredVersion(byte[] sumsBytes)
+    {
+        foreach (var line in System.Text.Encoding.UTF8.GetString(sumsBytes).Split('\n'))
+        {
+            var parts = line.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries);
+            if (parts.Length == 2 && parts[0] == "version"
+                && Version.TryParse(parts[1], out var v))
+                return v;
+        }
+        return null;
     }
 
     /// <summary>

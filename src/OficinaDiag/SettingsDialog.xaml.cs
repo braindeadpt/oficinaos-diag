@@ -86,29 +86,30 @@ public partial class SettingsDialog : Window
         var pasted = TokenBox.Password;
         if (!string.IsNullOrEmpty(pasted))
         {
-            // Código de emparelhamento (XXXX-YYYY) → token scoped "diag".
-            // Um token direto (legacy) guarda-se como antes.
-            if (CloudClient.IsPairingCode(pasted))
+            // Só o código de emparelhamento (XXXX-YYYY da app da loja) entra
+            // aqui — é trocado na cloud por um token scoped "diag". Um token
+            // completo colado é recusado: este PC nunca deve guardar poder
+            // total sobre a loja.
+            if (!IntakeRules.IsPairingCode(pasted))
             {
-                SaveBtn.IsEnabled = false;
-                var cloud = new CloudClient(_config);
-                var (ok, token, shop, err) = await cloud.RedeemPairingAsync(pasted);
-                SaveBtn.IsEnabled = true;
-                if (!ok)
-                {
-                    MessageBox.Show(this, err, Title,
-                        MessageBoxButton.OK, MessageBoxImage.Warning);
-                    return;
-                }
-                _config.SetShopToken(token);
-                if (!string.IsNullOrEmpty(shop))
-                    MessageBox.Show(this, L10n.F("set.paired", shop), Title,
-                        MessageBoxButton.OK, MessageBoxImage.Information);
+                MessageBox.Show(this, L10n.T("set.token.codeonly"), Title,
+                    MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
             }
-            else
+            SaveBtn.IsEnabled = false;
+            var cloud = new CloudClient(_config);
+            var (ok, token, shop, err) = await cloud.RedeemPairingAsync(pasted);
+            SaveBtn.IsEnabled = true;
+            if (!ok)
             {
-                _config.SetShopToken(pasted);
+                MessageBox.Show(this, err, Title,
+                    MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
             }
+            _config.SetShopToken(token, "diag");
+            if (!string.IsNullOrEmpty(shop))
+                MessageBox.Show(this, L10n.F("set.paired", shop), Title,
+                    MessageBoxButton.OK, MessageBoxImage.Information);
         }
         DialogResult = true;
     }

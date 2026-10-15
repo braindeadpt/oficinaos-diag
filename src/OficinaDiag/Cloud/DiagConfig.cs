@@ -34,13 +34,23 @@ public sealed class DiagConfig
 
     // Token Pro (relatórios IA) — nunca em claro no disco: guardamos a versão
     // cifrada com DPAPI (âmbito CurrentUser). Sem ele, o AI pede o token à vez.
-    // RESOLVIDO (2026-10): quem cola um código de emparelhamento (XXXX-YYYY)
-    // recebe um token com scope "diag" — só serve /reports/diagnostic. Um PC
-    // de bancada comprometido deixa de poder publicar a montra ou mexer no
-    // WhatsApp da loja. O DPAPI (CurrentUser) continua a proteger contra
-    // cópia do ficheiro para outra máquina; contra outro processo do mesmo
-    // utilizador, o scope é a segunda linha de defesa.
+    // RESOLVIDO (2026-10): a app só aceita o código de emparelhamento
+    // (XXXX-YYYY), trocado na cloud por um token com scope "diag" — só serve
+    // /reports/diagnostic. Um PC de bancada comprometido não pode publicar a
+    // montra nem mexer no WhatsApp da loja. O DPAPI (CurrentUser) continua a
+    // proteger contra cópia do ficheiro para outra máquina; contra outro
+    // processo do mesmo utilizador, o scope é a segunda linha de defesa.
     public string? ShopTokenProtected { get; set; }
+
+    /// <summary>Scope declarado quando o token foi emitido ("diag").</summary>
+    public string? ShopTokenScope { get; set; }
+
+    /// <summary>
+    /// True quando o Load() encontrou um token pré-scope e o apagou — a UI
+    /// usa-o para pedir novo emparelhamento em vez de falhar sem explicação.
+    /// </summary>
+    [System.Text.Json.Serialization.JsonIgnore]
+    public bool LegacyTokenWiped { get; private set; }
 
     // Identidade da loja — carimbo do relatório para seguradora.
     // Guardada localmente; pedida na 1ª emissão e pré-preenchida depois.
@@ -66,7 +76,9 @@ public sealed class DiagConfig
 
     public string? GetShopToken()
     {
-        if (string.IsNullOrEmpty(ShopTokenProtected)) return null;
+        // DPAPI só existe em Windows; noutros runtimes devolve null em vez
+        // de PlatformNotSupported — a app é Windows-only, mas os testes não.
+        if (string.IsNullOrEmpty(ShopTokenProtected) || !OperatingSystem.IsWindows()) return null;
         try
         {
             var raw = ProtectedData.Unprotect(
@@ -76,11 +88,14 @@ public sealed class DiagConfig
         catch { return null; } // cifrado por outro utilizador/máquina — pede de novo
     }
 
-    public void SetShopToken(string? token)
+    public void SetShopToken(string? token, string? scope = null)
     {
-        ShopTokenProtected = string.IsNullOrWhiteSpace(token) ? null
+        // Sem DPAPI (não-Windows) não se guarda segredo nenhum em claro —
+        // em vez de gravar desprotegido, o token simplesmente não fica.
+        ShopTokenProtected = string.IsNullOrWhiteSpace(token) || !OperatingSystem.IsWindows() ? null
             : Convert.ToBase64String(ProtectedData.Protect(
                 Encoding.UTF8.GetBytes(token.Trim()), null, DataProtectionScope.CurrentUser));
+        ShopTokenScope = token is null || ShopTokenProtected is null ? null : scope;
     }
 
     public static DiagConfig Load()
@@ -95,6 +110,15 @@ public sealed class DiagConfig
                 // URL inválido não pode partir o arranque — volta ao default.
                 if (!TryValidateCloudUrl(cfg.CloudUrl, out _))
                     cfg.CloudUrl = DefaultCloudUrl;
+                // Token guardado antes dos scopes ("full" da loja) — demasiado
+                // poder para um PC de bancada. Apaga-se e pede emparelhamento;
+                // o código XXXX-YYYY emite um token "diag" de privilégio mínimo.
+                if (cfg.ShopTokenProtected is not null && cfg.ShopTokenScope != "diag")
+                {
+                    cfg.ShopTokenProtected = null;
+                    cfg.ShopTokenScope = null;
+                    cfg.LegacyTokenWiped = true;
+                }
                 return cfg;
             }
             catch { /* corrupt config → try the next location / defaults */ }

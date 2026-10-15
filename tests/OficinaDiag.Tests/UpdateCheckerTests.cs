@@ -73,6 +73,56 @@ public class UpdateCheckerTests
         Assert.False(UpdateChecker.VerifySumsSignature(
             Encoding.UTF8.GetBytes("x"), sig, SignedFixture().pubB64));
 
+    // --- Anti-downgrade: a linha "version x.y.z" assinada prende o conteúdo ao tag ---
+
+    private static (string pubB64, string sigB64, byte[] sums) SignedSums(
+        string version, string zipName = "oficinaos-diag-v0.3.0-win-x64.zip")
+        => SignedFixture($"version {version}\nabc123  {zipName}\n");
+
+    [Fact]
+    public void AcceptsSignedSumsWithMatchingNewerVersion()
+    {
+        var (pub, sig, sums) = SignedSums("0.3.0");
+        Assert.Null(UpdateChecker.ValidateSums(sums, sig, "v0.3.0", new Version(0, 2, 0), pub));
+    }
+
+    [Fact]
+    public void RejectsSignedSumsWithMismatchedTag()
+    {
+        // SUMS assinado de uma release antiga republicado num tag mais alto —
+        // a assinatura é válida, mas a versão assinada não bate no tag.
+        var (pub, sig, sums) = SignedSums("0.2.0");
+        Assert.NotNull(UpdateChecker.ValidateSums(sums, sig, "v0.9.9", new Version(0, 1, 0), pub));
+    }
+
+    [Theory]
+    [InlineData("0.2.0")]  // igual à versão local — replay
+    [InlineData("0.1.9")]  // mais antiga — downgrade assinado
+    public void RejectsSignedSumsNotNewerThanLocal(string version)
+    {
+        var (pub, sig, sums) = SignedSums(version);
+        Assert.NotNull(UpdateChecker.ValidateSums(sums, sig, $"v{version}", new Version(0, 2, 0), pub));
+    }
+
+    [Fact]
+    public void RejectsSignedSumsWithoutVersionLine()
+    {
+        // SUMS antigo (pré-version) mesmo bem assinado não pode atualizar —
+        // sem a linha assinada não há prova anti-downgrade.
+        var (pub, sig, sums) = SignedFixture();
+        Assert.NotNull(UpdateChecker.ValidateSums(sums, sig, "v9.9.9", new Version(0, 1, 0), pub));
+    }
+
+    [Fact]
+    public void RejectsValidVersionWithBadSignature()
+    {
+        // A ordem importa: versão válida + assinatura forjada → recusado.
+        var (_, sig, sums) = SignedSums("0.3.0");
+        using var other = ECDsa.Create(ECCurve.NamedCurves.nistP256);
+        var otherPub = Convert.ToBase64String(other.ExportSubjectPublicKeyInfo());
+        Assert.NotNull(UpdateChecker.ValidateSums(sums, sig, "v0.3.0", new Version(0, 2, 0), otherPub));
+    }
+
     [Fact]
     public void EmbeddedPublicKeyIsWellFormed()
     {

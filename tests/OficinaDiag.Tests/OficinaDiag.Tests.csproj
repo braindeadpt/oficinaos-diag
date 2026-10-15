@@ -17,6 +17,7 @@
 
   <ItemGroup>
     <Compile Include="..\..\src\OficinaDiag\Cloud\IntakeRules.cs" Link="Linked\IntakeRules.cs" />
+    <Compile Include="..\..\src\OficinaDiag\Cloud\DiagConfig.cs" Link="Linked\DiagConfig.cs" />
     <Compile Include="..\..\src\OficinaDiag\Cloud\UpdateChecker.cs" Link="Linked\UpdateChecker.cs" />
     <Compile Include="..\..\src\OficinaDiag\Devices\DeviceReport.cs" Link="Linked\DeviceReport.cs" />
     <Compile Include="..\..\src\OficinaDiag\Devices\PowerSession.cs" Link="Linked\PowerSession.cs" />
@@ -28,6 +29,7 @@
 
   <ItemGroup>
     <PackageReference Include="Markdig" Version="1.4.0" />
+    <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="8.0.0" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.11.1" />
     <PackageReference Include="xunit" Version="2.9.2" />
     <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2" />

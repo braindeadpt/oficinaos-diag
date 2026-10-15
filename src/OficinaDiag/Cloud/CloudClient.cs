@@ -134,16 +134,6 @@ public sealed class CloudClient
     }
 
     /// <summary>
-    /// Código de emparelhamento da app da loja (XXXX-YYYY)? O alfabeto real
-    /// exclui 0/O/1/I, mas aceitamos dígitos — quem os digita recebe o 400
-    /// legível da cloud em vez de um "formato inválido" local.
-    /// </summary>
-    public static bool IsPairingCode(string input) =>
-        System.Text.RegularExpressions.Regex.IsMatch(
-            input.Trim(), @"^[A-Z0-9]{4}-[A-Z0-9]{4}$",
-            System.Text.RegularExpressions.RegexOptions.IgnoreCase);
-
-    /// <summary>
     /// Troca um código de emparelhamento por um token com scope "diag" — o
     /// PC de bancada fica com um token que só serve relatórios IA; se for
     /// comprometido não pode publicar a montra nem mexer no WhatsApp da loja.

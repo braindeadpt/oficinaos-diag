@@ -2,10 +2,10 @@
 #
 #   .\tools\generate-release-key.ps1
 #
-# Writes the PRIVATE key to .\release-signing-key.pem (gitignored — keep a
-# copy in a safe offline place and NEVER commit it) and prints:
-#   - the PUBLIC key base64 to paste into UpdateChecker.cs
-#   - where to register the private key (GitHub secret RELEASE_SIGNING_KEY)
+# Writes the PRIVATE key to .\release-signing-key.pem (gitignored — move it
+# OUT of this machine to a vault/encrypted pen; the key must never live in
+# CI or on a host that builds releases — see docs/RELEASE.md) and prints
+# the PUBLIC key base64 to paste into UpdateChecker.cs.
 $ErrorActionPreference = 'Stop'
 
 $repo = Split-Path -Parent $PSScriptRoot
@@ -37,7 +37,6 @@ Write-Host "=== PUBLIC key — paste into UpdateChecker.ReleaseSigningPublicKey 
 Write-Host $pubB64
 Write-Host ""
 Write-Host "=== PRIVATE key — written to $privPath (owner-only ACL) ==="
-Write-Host "1) Add its contents as the GitHub secret  RELEASE_SIGNING_KEY  in:"
-Write-Host "   https://github.com/braindeadpt/oficinaos-diag/settings/secrets/actions"
-Write-Host "2) Copy the .pem somewhere safe offline (password manager / USB vault)."
-Write-Host "3) Never commit the .pem — it is gitignored."
+Write-Host "1) Move it OFF this machine to an encrypted vault/USB — releases are"
+Write-Host "   signed offline by tools/sign-release.ps1, never in CI."
+Write-Host "2) Never commit the .pem — it is gitignored."

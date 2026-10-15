@@ -35,19 +35,29 @@ public sealed class TestServer : IDisposable
     private readonly Dictionary<IPAddress, (DateTimeOffset windowStart, int count)> _rate = new();
     private readonly object _rateLock = new();
 
+    private readonly IPAddress _bindAddress;
+
     public int Port =>
         _listener.LocalEndpoint is IPEndPoint ep ? ep.Port : 0;
 
     /// <summary>Results posted back by the on-device test page.</summary>
     public event Action<Dictionary<string, JsonElement>>? ResultReceived;
 
+    /// <summary>
+    /// True quando não havia IP de LAN e o servidor ficou em loopback — a UI
+    /// avisa que o QR não vai abrir no telemóvel.
+    /// </summary>
+    public bool IsLoopbackOnly => _bindAddress.Equals(IPAddress.Loopback);
+
     public TestServer()
     {
         // Bind ao IP LAN que anunciamos — não a Any. Com IPAddress.Any a
         // página também respondia nas outras interfaces da máquina (NIC
-        // pública, VPN, adaptadores VMware). Só o telemóvel na LAN da loja
-        // precisa de chegar aqui.
-        _listener = new TcpListener(ResolveLanAddress() ?? IPAddress.Any, 0);
+        // pública, VPN, adaptadores VMware). Sem IP de LAN caímos em
+        // loopback (o teste fica inutilizável, mas nada fica exposto) —
+        // nunca Any, que fingiria funcionar enquanto escutava em tudo.
+        _bindAddress = ResolveLanAddress() ?? IPAddress.Loopback;
+        _listener = new TcpListener(_bindAddress, 0);
     }
 
     private static IPAddress? ResolveLanAddress() =>
@@ -63,8 +73,9 @@ public sealed class TestServer : IDisposable
                 : a.ToString().StartsWith("10.") ? 1 : 2)
             .FirstOrDefault();
 
+    /// <summary>URL com o IP do bind real — se a NIC mudar depois do Start o QR não aponta para um IP que já não escuta.</summary>
     public string LanUrl =>
-        $"http://{ResolveLanAddress()?.ToString() ?? "localhost"}:{Port}/{_token}/";
+        $"http://{_bindAddress}:{Port}/{_token}/";
 
     /// <summary>Returns false se a página de teste não existir junto ao exe.</summary>
     public bool Start()
@@ -198,14 +209,20 @@ public sealed class TestServer : IDisposable
                     }
                     var body = Encoding.UTF8.GetString(buf.ToArray(), bodyStart, Math.Min(contentLen, have));
                     var data = JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(body);
+                    // Shape check antes de fechar: a página envia sempre
+                    // touchHit/touchTotal/colorsViewed. Um JSON qualquer de
+                    // um peer da LAN (scanner, curl curioso) não pode matar
+                    // a sessão antes de o telemóvel entregar o resultado.
+                    if (!IsResultShape(data))
+                    {
+                        Respond(stream, "400 Bad Request", "unexpected payload", "text/plain");
+                        return;
+                    }
                     Respond(stream, "200 OK", "ok", "text/plain");
                     // 200 primeiro — o cliente tem de ver o ACK; só depois se
                     // dispara o evento e se fecha o servidor (one-shot).
-                    if (data is not null)
-                    {
-                        ResultReceived?.Invoke(data);
-                        Complete();
-                    }
+                    ResultReceived?.Invoke(data!);
+                    Complete();
                 }
                 else if (method == "GET" && path == $"/{_token}/")
                 {
@@ -220,6 +237,16 @@ public sealed class TestServer : IDisposable
         catch { }
         finally { Interlocked.Decrement(ref _activeClients); }
     }
+
+    /// <summary>
+    /// A página de teste define sempre estes três campos numéricos — o mínimo
+    /// que distingue um resultado real de ruído JSON de outro peer da LAN.
+    /// </summary>
+    private static bool IsResultShape(Dictionary<string, JsonElement>? data) =>
+        data is not null
+        && data.TryGetValue("touchHit", out var th) && th.ValueKind == JsonValueKind.Number
+        && data.TryGetValue("touchTotal", out var tt) && tt.ValueKind == JsonValueKind.Number
+        && data.TryGetValue("colorsViewed", out var cv) && cv.ValueKind == JsonValueKind.Number;
 
     private static void Respond(NetworkStream stream, string status, string body, string contentType)
     {
