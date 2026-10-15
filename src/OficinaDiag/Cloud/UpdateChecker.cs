@@ -250,15 +250,19 @@ public sealed class UpdateChecker
     /// <summary>
     /// Returns the hash recorded in the (already signature-verified)
     /// SHA256SUMS payload for the downloaded zip's filename, or null when
-    /// the file/line is absent.
+    /// the file/line is absent. Linhas de metadados assinados ("version",
+    /// "commit") não são entradas de ficheiro — e a ausência delas (SUMS de
+    /// antes de as existirem) também é aceite.
     /// </summary>
-    private static string? ExpectedHash(byte[] sumsBytes, string zipUrl)
+    internal static string? ExpectedHash(byte[] sumsBytes, string zipUrl)
     {
         var fileName = zipUrl.Split('/').Last();
         foreach (var line in System.Text.Encoding.UTF8.GetString(sumsBytes).Split('\n'))
         {
             var parts = line.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries);
-            if (parts.Length >= 2 && parts[^1].TrimStart('*') == fileName)
+            if (parts.Length < 2) continue;
+            if (parts[0] is "version" or "commit") continue; // metadados, não ficheiros
+            if (parts[^1].TrimStart('*') == fileName)
                 return parts[0];
         }
         return null;
