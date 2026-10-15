@@ -1,4 +1,4 @@
-# Assinatura OFFLINE de releases — corre na máquina do dono, NUNCA no CI.
+﻿# Assinatura OFFLINE de releases — corre na máquina do dono, NUNCA no CI.
 #
 # Fluxo (ver docs/RELEASE.md):
 #   1. tag v* -> release.yml faz build+testes e publica um DRAFT com o zip
@@ -7,11 +7,14 @@
 #   2. Este script descarrega o SHA256SUMS.txt do draft, valida que a linha
 #      "version <x.y.z>" corresponde ao tag (estamos a assinar "isto É a
 #      versão X" — um SUMS antigo republicado num tag mais alto falha aqui
-#      e no updater), assina com a PEM local e faz upload do .sig.
+#      e no updater), resolve o commit do tag e recusa se não for ancestor
+#      de main (a chave offline só sela builds que vieram de main), pede
+#      confirmação, assina com a PEM local e faz upload do .sig.
 #   3. Só então publica o draft.
 #
 #   .\tools\sign-release.ps1 -Tag v0.3.0
 #   .\tools\sign-release.ps1 -Tag v0.3.0 -KeyFile E:\cofre\release-key.pem
+#   .\tools\sign-release.ps1 -Tag v0.3.0 -Force   # salta a confirmação
 #
 # A PEM vive FORA do repo e fora do CI (cofre/pen cifrada). Quem tiver push
 # no repo consegue criar um draft, mas sem a chave não produz um .sig válido
@@ -22,7 +25,9 @@ param(
     [string]$Repo = "braindeadpt/oficinaos-diag",
     # -NoPublish: testa o fluxo num draft (download→valida→assina→upload)
     # sem publicar — o draft continua invisível para o updater.
-    [switch]$NoPublish
+    [switch]$NoPublish,
+    # -Force: salta a confirmação interativa "Assinar <tag> @ <sha>?".
+    [switch]$Force
 )
 $ErrorActionPreference = 'Stop'
 
@@ -80,6 +85,39 @@ if (-not $declared -or $Matches[1] -ne $expectedVersion) {
     Write-Error "SHA256SUMS declara version '$($Matches[1])' mas o tag é '$Tag' — draft errado?"
 }
 Write-Host "version $expectedVersion confirmada no SUMS"
+
+# --- o que estamos a selar: commit do tag, e tem de vir de main ---------
+# Um draft pode nascer de qualquer tag; a chave offline só deve assinar
+# builds de commits que estão em main. Assinar às cegas um build de um
+# branch qualquer transformava a PEM num selo de commits não revistos.
+Write-Host "a resolver o commit de $Tag ..."
+$ref = gh api "repos/$Repo/git/ref/tags/$Tag" | ConvertFrom-Json
+if ($LASTEXITCODE -ne 0 -or -not $ref.object) {
+    Write-Error "git ref tags/$Tag não existe — o tag foi pushed para o origin?"
+}
+$sha = $ref.object.sha
+if ($ref.object.type -eq 'tag') {
+    # tag anotada → desreferencia até ao commit
+    $tagObj = gh api "repos/$Repo/git/tags/$sha" | ConvertFrom-Json
+    $sha = $tagObj.object.sha
+}
+$commit = gh api "repos/$Repo/commits/$sha" | ConvertFrom-Json
+$short = $sha.Substring(0, 7)
+$author = $commit.commit.author.name
+$msg = ($commit.commit.message -split "`n")[0]
+Write-Host "commit: $short — $author — $msg"
+
+# ancestor de main? compare/<sha>...main devolve "behind" (sha ⊆ main) ou
+# "identical"; "ahead"/"diverged" = tem commits que não estão em main.
+$cmp = gh api "repos/$Repo/compare/$sha...main" | ConvertFrom-Json
+if ($cmp.status -ne 'identical' -and $cmp.status -ne 'behind') {
+    Write-Error "$short não é ancestor de main (compare: $($cmp.status), ahead_by $($cmp.ahead_by)) — recuso assinar um build de um commit fora de main"
+}
+
+if (-not $Force) {
+    $ans = Read-Host "Assinar $Tag @ $short ? [s/N]"
+    if ($ans -notmatch '^(s|sim|y|yes)$') { Write-Error "assinatura cancelada — nada foi carregado" }
+}
 
 # --- assinar ---
 $ec = [System.Security.Cryptography.ECDsa]::Create()

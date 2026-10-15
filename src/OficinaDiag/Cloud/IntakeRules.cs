@@ -57,6 +57,17 @@ public static partial class IntakeRules
     [GeneratedRegex(@"^[A-Z0-9]{4}-[A-Z0-9]{4}$", RegexOptions.IgnoreCase)]
     private static partial Regex PairingCodeRegex();
 
+    /// <summary>
+    /// Defesa em profundidade no redeem: se a resposta da cloud declara um
+    /// scope, tem de ser "diag" — devolve o scope ofensor, ou null quando é
+    /// aceitável ("diag" ou ausente). Um token "full" nesta máquina seria
+    /// privilégio a mais — bug da cloud que queremos ver, não herdar.
+    /// Respostas sem "scope" (clouds antigas) passam: o pedido já pedia
+    /// scope="diag" e a default-deny do servidor limita o estrago.
+    /// </summary>
+    public static string? RedeemScopeError(string? scope) =>
+        scope is null or "diag" ? null : scope;
+
     /// <summary>Uma chave nova por envio — reutilizada em todas as tentativas desse envio.</summary>
     public static string NewIdempotencyKey() => Guid.NewGuid().ToString("D");
 

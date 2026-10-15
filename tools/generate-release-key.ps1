@@ -1,4 +1,4 @@
-# One-time setup: generate the EC P-256 keypair that signs releases.
+﻿# One-time setup: generate the EC P-256 keypair that signs releases.
 #
 #   .\tools\generate-release-key.ps1
 #

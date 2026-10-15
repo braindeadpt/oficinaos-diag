@@ -3,33 +3,33 @@
 Revisões do ecossistema de 2026-10. Este ficheiro regista o que era risco
 conhecido e como cada ponto foi fechado.
 
-## 1. Atualizações: assinatura ECDSA P-256 — **resolvido**
+## 1. Atualizações: assinatura ECDSA P-256 **offline** — **resolvido**
 
 **Antes:** o updater verificava o SHA-256 do zip contra o `SHA256SUMS.txt`
 **da mesma release** — provava integridade, não autenticidade. Uma conta
 GitHub comprometida publicava zip + checksum coerentes e o updater aplicava.
 
-**Agora:**
-- `release.yml` assina o `SHA256SUMS.txt` com uma chave EC P-256 privada
-  (GitHub secret `RELEASE_SIGNING_KEY`, gerado com
-  `tools/generate-release-key.ps1` — a privada nunca está no repo; cópia
-  offline do dono em `release-signing-key.pem`, gitignored).
-- `UpdateChecker` traz a chave pública embutida
-  (`ReleaseSigningPublicKey`, SubjectPublicKeyInfo base64) e verifica a
-  assinatura P1363 do SHA256SUMS **antes** de descarregar o zip. Sem
-  `SHA256SUMS.sig` válido → a release nem sequer é considerada update
-  (fail closed em `CheckAsync` e outra vez em `DownloadAndStageAsync`).
+**Agora** — a chave privada nunca passa pelo CI (fluxo completo e
+procedimento de rotação em [`RELEASE.md`](RELEASE.md)):
+- `release.yml` faz só build+testes e publica um **draft** com o zip e um
+  `SHA256SUMS.txt` que inclui uma linha `version <x.y.z>` — coberta pela
+  assinatura, ata o conteúdo à versão exata.
+- `tools/sign-release.ps1` corre na máquina do dono: descarrega o SUMS do
+  draft, confirma `version == tag`, resolve o commit do tag e **recusa se
+  não for ancestor de `main`**, pede confirmação, assina com a PEM local
+  e publica. Um GitHub comprometido consegue criar um draft — não um
+  `.sig` válido.
+- `UpdateChecker` traz a chave pública embutida e exige, antes de
+  descarregar: assinatura P1363 válida, `version == tag` e `version >
+  local` (anti-downgrade/replay). Sem `SHA256SUMS.sig` válido a release
+  nem sequer é candidata a update (fail closed).
 - O pin do publicador mantém-se: assets só de
   `https://github.com/braindeadpt/oficinaos-diag/releases/download/<tag>/`.
-- Rotação: gerar par novo, embutir a pública nova, publicar essa versão,
-  e só depois trocar o secret — exes antigos validam com a chave que trazem.
-- Sem `RELEASE_SIGNING_KEY` o workflow de release falha — não saem
-  releases não assinadas por engano.
 
-Limite honesto que fica: quem comprometer a conta GitHub **e** o secret
-consegue assinar — a chave de assinatura é a raiz de confiança. Authenticode
-(Azure Trusted Signing) continua a ser o upgrade seguinte e resolve também
-o aviso SmartScreen.
+Limite honesto que fica: a PEM é a raiz de confiança — quem a roubar da
+máquina do dono assina releases (daí viver num cofre/pen cifrada, nunca em
+disco partilhado nem no CI). Authenticode (Azure Trusted Signing)
+continua a ser o upgrade seguinte e resolve também o aviso SmartScreen.
 
 ## 2. Token com scope para o diag — **resolvido** (cloud + diag)
 

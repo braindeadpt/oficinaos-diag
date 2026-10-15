@@ -163,6 +163,15 @@ public sealed class CloudClient
                 return (false, "", "", $"Servidor respondeu {(int)res.StatusCode} — {body}");
             }
             using var doc = JsonDocument.Parse(body);
+            // Defesa em profundidade: scope declarado na resposta tem de
+            // ser "diag". Ausente (cloud antiga) aceitamos — ver IntakeRules.
+            if (doc.RootElement.TryGetProperty("scope", out var sc))
+            {
+                var scope = sc.ValueKind == JsonValueKind.String ? sc.GetString() : "";
+                if (IntakeRules.RedeemScopeError(scope) is { } bad)
+                    return (false, "", "",
+                        $"A cloud devolveu um token com scope \"{bad}\" — recuso guardar algo que não seja \"diag\". Atualiza a cloud ou reporta o problema.");
+            }
             var token = doc.RootElement.GetProperty("shopToken").GetString() ?? "";
             var shopName = doc.RootElement.TryGetProperty("shopName", out var s) ? s.GetString() ?? "" : "";
             return (true, token, shopName, "");
