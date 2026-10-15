@@ -215,9 +215,11 @@ public sealed class AndroidCollector
         var health = Match(batt, @"health: (\d+)");
         var healthText = health switch { "2" => "good", "3" => "overheat", "4" => "dead", "5" => "over-voltage", "6" => "failure", _ => health };
         r.Set("battery.level", "info", level is null ? null : $"{level}%");
+        // Sem leitura válida o valor fica null — nunca um "0°C" inventado.
+        var tempOk = double.TryParse(temp, out var t);
         r.Set("battery.temperature",
-            double.TryParse(temp, out var t) && t / 10 > 40 ? "warn" : "info",
-            temp is null ? null : $"{t / 10:0.#}°C");
+            tempOk && t / 10 > 40 ? "warn" : "info",
+            tempOk ? $"{t / 10:0.#}°C" : null);
         // Sem leitura de health não há check — ausência de dado não é defeito.
         if (healthText is not null)
             r.Set("battery.health", healthText == "good" ? "pass" : "warn", healthText);

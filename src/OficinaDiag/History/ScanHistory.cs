@@ -17,11 +17,30 @@ public sealed class ScanHistory
 
     private static readonly JsonSerializerOptions Opts = new() { WriteIndented = false };
 
+    /// <summary>
+    /// Append+poda intercalados por duas instâncias (ex.: app + segundo
+    /// processo) perdiam linhas: a poda lia o ficheiro, outro processo
+    /// escrevia, o Move sobrescrevia a linha nova. Um named mutex torna a
+    /// sequência atómica entre processos.
+    /// </summary>
+    private static readonly Mutex WriteLock = new(initiallyOwned: false, "OficinaDiag.ScanHistory");
+
+    private static void Lock()
+    {
+        try { WriteLock.WaitOne(); }
+        catch (AbandonedMutexException) { /* dono anterior morreu — a posse passa para nós */ }
+    }
+
     public void Add(DeviceReport report)
     {
-        Directory.CreateDirectory(Path.GetDirectoryName(_file)!);
-        File.AppendAllText(_file, JsonSerializer.Serialize(report, Opts) + Environment.NewLine);
-        Prune();
+        Lock();
+        try
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(_file)!);
+            File.AppendAllText(_file, JsonSerializer.Serialize(report, Opts) + Environment.NewLine);
+            Prune();
+        }
+        finally { WriteLock.ReleaseMutex(); }
     }
 
     /// <summary>
@@ -56,19 +75,24 @@ public sealed class ScanHistory
 
     public IReadOnlyList<DeviceReport> All()
     {
-        var list = new List<DeviceReport>();
-        if (!File.Exists(_file)) return list;
-        foreach (var line in File.ReadLines(_file))
+        Lock(); // ler a meio de uma poda noutro processo apanhava linhas truncadas
+        try
         {
-            if (string.IsNullOrWhiteSpace(line)) continue;
-            try
+            var list = new List<DeviceReport>();
+            if (!File.Exists(_file)) return list;
+            foreach (var line in File.ReadLines(_file))
             {
-                var r = JsonSerializer.Deserialize<DeviceReport>(line);
-                if (r is not null) list.Add(r);
+                if (string.IsNullOrWhiteSpace(line)) continue;
+                try
+                {
+                    var r = JsonSerializer.Deserialize<DeviceReport>(line);
+                    if (r is not null) list.Add(r);
+                }
+                catch { /* linha corrompida — ignora */ }
             }
-            catch { /* linha corrompida — ignora */ }
+            return list;
         }
-        return list;
+        finally { WriteLock.ReleaseMutex(); }
     }
 
     /// <summary>Scans anteriores de um serial, mais antigo primeiro — base do antes/depois.</summary>

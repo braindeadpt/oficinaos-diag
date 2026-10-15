@@ -75,6 +75,28 @@ public sealed class ScanHistoryTests : IDisposable
     }
 
     [Fact]
+    public void RoundTrip_ResultsMantemCaseInsensitive()
+    {
+        // Regressão: JsonInclude+private set criava um Dictionary novo com o
+        // comparer por defeito — a chave guardada como "battery.capacity"
+        // deixava de responder a "BATTERY.CAPACITY" depois do reload.
+        _h.Add(Rep("AAA", "91%"));
+        var r = _h.All()[0];
+        Assert.True(r.Results.TryGetValue("BATTERY.CAPACITY", out var c));
+        Assert.Equal("91%", c!.Value);
+    }
+
+    [Fact]
+    public void Add_EntreInstancias_NaoPerdeLinhas()
+    {
+        // Duas instâncias no mesmo ficheiro (app + segundo processo) — o
+        // named mutex serializa append+poda.
+        var h2 = new ScanHistory(_file);
+        Parallel.For(0, 20, i => (i % 2 == 0 ? _h : h2).Add(Rep($"S{i:D2}")));
+        Assert.Equal(20, _h.All().Count);
+    }
+
+    [Fact]
     public void Prune_MantemFicheiroBaixoDoTeto()
     {
         // >8 MB de linhas → a poda corre no próximo Add.

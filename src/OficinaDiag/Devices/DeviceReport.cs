@@ -43,10 +43,12 @@ public sealed class DeviceReport
 
     /// <summary>Check name → result. Sent verbatim to the AI report endpoint.</summary>
     /// <remarks>
-    /// Setter privado + JsonInclude: o STJ não povoa coleções get-only na
-    /// desserialização — sem isto o histórico (JSONL) perdia todos os checks.
+    /// Populate (não Replace): com setter privado o STJ criava um Dictionary
+    /// novo com o comparer por defeito — o OrdinalIgnoreCase perdia-se no
+    /// round-trip do histórico e lookups case-insensitive falhavam.
     /// </remarks>
     [JsonInclude]
+    [JsonObjectCreationHandling(JsonObjectCreationHandling.Populate)]
     public Dictionary<string, CheckResult> Results { get; private set; } = new(StringComparer.OrdinalIgnoreCase);
 
     /// <summary>Raw key/value grabs kept for debugging — never sent to the AI.</summary>

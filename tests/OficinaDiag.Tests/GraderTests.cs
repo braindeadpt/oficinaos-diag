@@ -171,6 +171,34 @@ public sealed class GraderTests
         r.Set("scan", "fail", "timeout");
         r.Set("battery.capacity", "pass", "95%");
         var g = Grader.Compute(r);
+        // Recolha incompleta nunca sai A — teto B mesmo com tudo lido OK.
+        Assert.Equal("B", g.Grade);
         Assert.Contains(g.Reasons, x => x.Contains("incompleta"));
+    }
+
+    [Fact]
+    public void ScanFalhadoSemCriticos_GrauIndeterminado()
+    {
+        // Scan morreu a meio: leu só o modelo — sem bateria/IMEI/bootloader
+        // não há base para decidir retoma.
+        var r = new DeviceReport { Platform = "android" };
+        r.Set("scan", "fail", "timeout");
+        r.Set("identity.model", "info", "SM-A525F");
+        var g = Grader.Compute(r);
+        Assert.Equal("—", g.Grade);
+        Assert.Contains(g.Reasons, x => x.Contains("checks críticos"));
+    }
+
+    [Fact]
+    public void ScanFalhadoComDanosLidos_MantemPiorTeto()
+    {
+        // scan:fail dá teto B, mas um defeito já lido (líquido) mantém D —
+        // "incompleto" nunca esconde um problema confirmado.
+        var r = new DeviceReport { Platform = "android" };
+        r.Set("scan", "fail", "timeout");
+        r.Set("battery.capacity", "pass", "95%");
+        r.Set("checklist.liquid", "fail", null);
+        var g = Grader.Compute(r);
+        Assert.Equal("D", g.Grade);
     }
 }

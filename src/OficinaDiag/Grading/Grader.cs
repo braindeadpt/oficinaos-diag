@@ -45,6 +45,15 @@ public static class Grader
         "security.mdm", "device.activation",
     ];
 
+    /// <summary>
+    /// Checks sem os quais não há base para um grau — se o scan falhou antes
+    /// de ler qualquer um destes, o relatório fica sem grau ("—").
+    /// </summary>
+    private static readonly string[] CriticalChecks =
+    [
+        "battery.capacity", "identity.imei", "security.bootloader",
+    ];
+
     public static GradeResult Compute(DeviceReport r)
     {
         var reasons = new List<string>();
@@ -177,6 +186,14 @@ public static class Grader
         if (Stat("logs.panics") is "fail" or "warn")
             Cap(2, $"kernel panics / falhas de sistema no histórico ({Val("logs.panics")}) — investigar placa");
 
+        // ── scan falhado: recolha incompleta — teto B, nunca A ───────────
+        // Um scan que morreu a meio leu só parte do aparelho. E se nem um
+        // check crítico foi lido, não há base para grau nenhum ("—" abaixo).
+        var criticalRead = CriticalChecks.Any(r.Results.ContainsKey);
+        var scanFailed = Stat("scan") is "fail";
+        if (scanFailed && criticalRead)
+            Cap(1, "recolha incompleta — o grau reflete só o que foi lido");
+
         // ── montagem do veredicto ────────────────────────────────────────
         var grade = "ABCD"[ceiling].ToString();
         // "scan" é meta-estado da recolha, não um check do aparelho — sem o
@@ -192,12 +209,15 @@ public static class Grader
             reasons.Clear();
             reasons.Add("sem dados de scan — liga um telefone ou corre o SCAN primeiro");
         }
-        else
+        else if (scanFailed && !criticalRead)
         {
-            if (Stat("scan") is "fail")
-                reasons.Add("recolha incompleta — o grau reflete só o que foi lido");
-            if (checklistDone == 0)
-                reasons.Add("checklist físico por preencher — o grau pode melhorar ou piorar");
+            grade = "—";
+            reasons.Clear();
+            reasons.Add("scan falhou antes de ler os checks críticos (bateria, IMEI, bootloader) — sem base para um grau");
+        }
+        else if (checklistDone == 0)
+        {
+            reasons.Add("checklist físico por preencher — o grau pode melhorar ou piorar");
         }
 
         var verdict = reasons.Count == 0
