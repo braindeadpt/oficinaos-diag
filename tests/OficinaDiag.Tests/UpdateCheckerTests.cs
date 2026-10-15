@@ -114,6 +114,30 @@ public class UpdateCheckerTests
     }
 
     [Fact]
+    public void AcceptsSignedSumsWithCommitLine()
+    {
+        // Formato novo: linha "commit <sha-40>" entre version e ficheiros.
+        // É metadado assinado — o updater ignora-a e valida na mesma.
+        var (pub, sig, sums) = SignedFixture(
+            "version 0.3.0\ncommit 0123456789abcdef0123456789abcdef01234567\nabc123  oficinaos-diag-v0.3.0-win-x64.zip\n");
+        Assert.Null(UpdateChecker.ValidateSums(sums, sig, "v0.3.0", new Version(0, 2, 0), pub));
+    }
+
+    [Fact]
+    public void CommitLineIsNotAFileEntry()
+    {
+        // A linha "commit <sha>" não pode ser confundida com a entrada do
+        // zip — o pin do ficheiro continua a vir da linha de hash própria.
+        var sums = Encoding.UTF8.GetBytes(
+            "version 0.3.0\ncommit 0123456789abcdef0123456789abcdef01234567\nabc123  oficinaos-diag-v0.3.0-win-x64.zip\n");
+        Assert.Equal("abc123", UpdateChecker.ExpectedHash(sums,
+            "https://github.com/braindeadpt/oficinaos-diag/releases/download/v0.3.0/oficinaos-diag-v0.3.0-win-x64.zip"));
+        // E um ficheiro que não consta do SUMS não arranja hash emprestado.
+        Assert.Null(UpdateChecker.ExpectedHash(sums,
+            "https://github.com/braindeadpt/oficinaos-diag/releases/download/v0.3.0/outro.zip"));
+    }
+
+    [Fact]
     public void RejectsValidVersionWithBadSignature()
     {
         // A ordem importa: versão válida + assinatura forjada → recusado.

@@ -91,4 +91,19 @@ public class IntakeRulesTests
         using var req = new HttpRequestMessage(HttpMethod.Post, "https://cloud.example/x");
         Assert.ThrowsAny<ArgumentException>(() => req.WithIdempotencyKey(key));
     }
+
+    // Defesa em profundidade do redeem (CloudClient.RedeemPairingAsync):
+    // scope "full" na resposta é recusado; "diag" passa; ausente passa.
+    [Theory]
+    [InlineData("full")]
+    [InlineData("admin")]
+    [InlineData("")]
+    public void RedeemScopeNaoDiag_ERecusado(string scope) =>
+        Assert.Equal(scope, IntakeRules.RedeemScopeError(scope));
+
+    [Theory]
+    [InlineData("diag")]
+    [InlineData(null)] // cloud antiga não devolve scope — não partir
+    public void RedeemScopeDiagOuAusente_Passa(string? scope) =>
+        Assert.Null(IntakeRules.RedeemScopeError(scope));
 }

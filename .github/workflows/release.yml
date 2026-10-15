@@ -50,20 +50,24 @@ jobs:
 
       - name: Checksum
         shell: pwsh
-        # Formato: linha "version <x.y.z>" (a assinatura passa a cobrir a
-        # versão declarada) + "<hash>  <filename>". A release sai como DRAFT —
-        # a assinatura é OFFLINE (tools/sign-release.ps1 na máquina do dono),
-        # porque uma chave no CI deixava de provar origem: quem tivesse push
-        # no repo assinava o que quisesse. Ver docs/RELEASE.md.
+        # Formato: "version <x.y.z>" + "commit <sha>" + "<hash>  <filename>".
+        # A assinatura cobre a versão declarada (anti-replay) e o commit que
+        # gerou o build (um tag movido para outro commit depois do build é
+        # recusado pelo sign-release.ps1). A release sai como DRAFT — a
+        # assinatura é OFFLINE, porque uma chave no CI deixava de provar
+        # origem. Ver docs/RELEASE.md.
         run: >-
           "version $($env:VERSION.TrimStart('v'))"
           | Out-File -Encoding ascii SHA256SUMS.txt;
+          "commit $($env:BUILD_SHA)"
+          | Out-File -Append -Encoding ascii SHA256SUMS.txt;
           "$((
           Get-FileHash "oficinaos-diag-v$($env:VERSION.TrimStart('v'))-win-x64.zip" -Algorithm SHA256
           ).Hash.ToLower())  oficinaos-diag-v$($env:VERSION.TrimStart('v'))-win-x64.zip"
           | Out-File -Append -Encoding ascii SHA256SUMS.txt
         env:
           VERSION: ${{ github.ref_name }}
+          BUILD_SHA: ${{ github.sha }}
 
       - name: GitHub release (draft)
         uses: softprops/action-gh-release@v2
