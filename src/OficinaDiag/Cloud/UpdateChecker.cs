@@ -8,23 +8,18 @@ namespace OficinaDiag.Cloud;
 /// <summary>
 /// Checks GitHub Releases for a newer build and self-updates in place:
 /// downloads the win-x64 zip, verifies its SHA-256 against the release's
-/// SHA256SUMS asset, then a staged PowerShell script waits for this process
-/// to exit, extracts over the app dir, and relaunches.
+/// SHA256SUMS asset — and, before any of that, verifies the ECDSA P-256
+/// signature of SHA256SUMS against the public key embedded below — then a
+/// staged PowerShell script waits for this process to exit, extracts over
+/// the app dir, and relaunches.
 ///
-/// LIMITAÇÃO DE SEGURANÇA (revisão 2026-10): o SHA256SUMS vem da MESMA
-/// release que o zip, por isso só prova INTEGRIDADE (download completo e
-/// não corrompido), não AUTENTICIDADE. Quem comprometer a conta GitHub ou o
-/// workflow de release publica um zip e um checksum coerentes, e o updater
-/// executa-os. O que fazemos aqui: fixar o publicador — só aceitamos assets
-/// servidos de https://github.com/braindeadpt/oficinaos-diag/releases/download/&lt;tag&gt;/.
-/// Isso trava URLs manipulados/redirecionados para outro repo, mas não um
-/// repo comprometido.
-///
-/// TODO(security): verificar a assinatura do SHA256SUMS com uma chave pública
-/// embutida no exe (minisign / Ed25519; a chave privada fica fora do GitHub,
-/// ex. num cofre offline) — ou assinar o exe com Authenticode / Azure Trusted
-/// Signing e validar o certificado antes de aplicar (resolve também o
-/// SmartScreen). Ver o PR fix/review-2026-10 para o plano.
+/// AUTENTICIDADE (resolvido 2026-10): o SHA256SUMS só prova integridade se
+/// vier assinado. A release.yml assina o ficheiro com a chave privada
+/// RELEASE_SIGNING_KEY (GitHub secret + cópia offline do dono — nunca no
+/// repo). Uma conta GitHub comprometida já não chega: sem a chave, o .sig
+/// não valida e a atualização é recusada. Rotação: gerar novo par com
+/// tools/generate-release-key.ps1, embutir a nova pública, e só então
+/// trocar o secret — um exe antigo continua a validar com a chave que traz.
 /// </summary>
 public sealed class UpdateChecker
 {
@@ -42,11 +37,20 @@ public sealed class UpdateChecker
         DownloadHttp.DefaultRequestHeaders.UserAgent.ParseAdd("oficinaos-diag");
     }
 
-    public sealed record UpdateInfo(Version Version, string Tag, string ZipUrl, string ChecksumUrl);
+    public sealed record UpdateInfo(Version Version, string Tag, string ZipUrl, string ChecksumUrl, string SigUrl);
 
     /// <summary>Repo publicador fixo — os assets de atualização só podem vir daqui.</summary>
     public const string TrustedOwner = "braindeadpt";
     public const string TrustedRepo = "oficinaos-diag";
+
+    /// <summary>
+    /// Chave pública EC P-256 (SubjectPublicKeyInfo, base64) que assina o
+    /// SHA256SUMS de cada release. A privada vive fora do repo (secret
+    /// RELEASE_SIGNING_KEY no GitHub Actions + cópia offline do dono).
+    /// Gerada com tools/generate-release-key.ps1.
+    /// </summary>
+    internal const string ReleaseSigningPublicKey =
+        "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEi01EhWqaWUkR8auOG7WnVuS9oGlI4jxQaUCOmqrzPw7cYOaCP2RzZLSnYuoZ1j2axpucL9UU4gO/kd+guVletg==";
 
     /// <summary>
     /// True só para <c>https://github.com/braindeadpt/oficinaos-diag/releases/download/&lt;tag&gt;/&lt;ficheiro&gt;</c>
@@ -86,11 +90,13 @@ public sealed class UpdateChecker
                 .ToList();
             var zip = urls.FirstOrDefault(u => u?.EndsWith(".zip") == true);
             var sums = urls.FirstOrDefault(u => u?.EndsWith("SHA256SUMS.txt") == true);
-            // Fail closed: a release without checksums is never applied.
-            if (zip is null || sums is null) return null;
+            var sig = urls.FirstOrDefault(u => u?.EndsWith("SHA256SUMS.sig") == true);
+            // Fail closed: a release without checksums or signature is never applied.
+            if (zip is null || sums is null || sig is null) return null;
             // Fail closed: assets fora do repo publicador fixo nunca são aplicados.
-            if (!IsTrustedAssetUrl(zip, tag) || !IsTrustedAssetUrl(sums, tag)) return null;
-            return new UpdateInfo(remote, tag, zip, sums);
+            if (!IsTrustedAssetUrl(zip, tag) || !IsTrustedAssetUrl(sums, tag) || !IsTrustedAssetUrl(sig, tag))
+                return null;
+            return new UpdateInfo(remote, tag, zip, sums, sig);
         }
         catch { return null; } // offline or rate-limited — never block startup
     }
@@ -107,8 +113,19 @@ public sealed class UpdateChecker
         try
         {
             // Defesa em profundidade — CheckAsync já filtra, mas o UpdateInfo é público.
-            if (!IsTrustedAssetUrl(info.ZipUrl, info.Tag) || !IsTrustedAssetUrl(info.ChecksumUrl, info.Tag))
+            if (!IsTrustedAssetUrl(info.ZipUrl, info.Tag)
+                || !IsTrustedAssetUrl(info.ChecksumUrl, info.Tag)
+                || !IsTrustedAssetUrl(info.SigUrl, info.Tag))
                 return (false, "Origem da atualização não reconhecida — atualização recusada.");
+
+            // ANTES de gastar 100 MB de download: a assinatura do SHA256SUMS
+            // tem de validar contra a chave pública embutida. Sem assinatura
+            // válida, quem controla o repo não controla a atualização.
+            var sumsBytes = await Http.GetByteArrayAsync(info.ChecksumUrl);
+            var sigB64 = (await Http.GetStringAsync(info.SigUrl)).Trim();
+            if (!VerifySumsSignature(sumsBytes, sigB64))
+                return (false, "Assinatura da release inválida — atualização recusada.");
+
             var zipPath = Path.Combine(Path.GetTempPath(), $"oficinaos-diag-{info.Tag}.zip");
 
             // Stream to disk — the self-contained zip is 100+ MB and does not
@@ -117,7 +134,7 @@ public sealed class UpdateChecker
             using (var dst = File.Create(zipPath))
                 await src.CopyToAsync(dst);
 
-            var expected = await ExpectedHashAsync(info);
+            var expected = ExpectedHash(sumsBytes, info.ZipUrl);
             string actual;
             await using (var fs = File.OpenRead(zipPath))
                 actual = Convert.ToHexString(await SHA256.HashDataAsync(fs)).ToLowerInvariant();
@@ -170,14 +187,33 @@ public sealed class UpdateChecker
     }
 
     /// <summary>
-    /// Fetches the SHA256SUMS release asset and returns the hash recorded for
-    /// the downloaded zip's filename, or null when the file/line is absent.
+    /// Verifies the base64 ECDSA P-256 signature over the raw SHA256SUMS
+    /// bytes against the embedded release public key. Any parse/verify
+    /// problem returns false — updates fail closed, never open.
     /// </summary>
-    private static async Task<string?> ExpectedHashAsync(UpdateInfo info)
+    internal static bool VerifySumsSignature(byte[] sumsBytes, string sigB64, string? publicKeyB64 = null)
     {
-        var sums = await Http.GetStringAsync(info.ChecksumUrl);
-        var fileName = info.ZipUrl.Split('/').Last();
-        foreach (var line in sums.Split('\n'))
+        try
+        {
+            using var ec = ECDsa.Create();
+            ec.ImportSubjectPublicKeyInfo(
+                Convert.FromBase64String(publicKeyB64 ?? ReleaseSigningPublicKey), out _);
+            var sig = Convert.FromBase64String(sigB64);
+            return ec.VerifyData(sumsBytes, sig, HashAlgorithmName.SHA256,
+                DSASignatureFormat.IeeeP1363FixedFieldConcatenation);
+        }
+        catch { return false; }
+    }
+
+    /// <summary>
+    /// Returns the hash recorded in the (already signature-verified)
+    /// SHA256SUMS payload for the downloaded zip's filename, or null when
+    /// the file/line is absent.
+    /// </summary>
+    private static string? ExpectedHash(byte[] sumsBytes, string zipUrl)
+    {
+        var fileName = zipUrl.Split('/').Last();
+        foreach (var line in System.Text.Encoding.UTF8.GetString(sumsBytes).Split('\n'))
         {
             var parts = line.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries);
             if (parts.Length >= 2 && parts[^1].TrimStart('*') == fileName)

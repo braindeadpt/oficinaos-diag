@@ -677,6 +677,17 @@ public partial class MainWindow : Window
             if (tdlg.ShowDialog() != true) return;
             token = tdlg.Token;
             lang = tdlg.Lang;
+            // Código de emparelhamento (XXXX-YYYY da app da loja) → trocamos
+            // por um token scoped "diag": este PC nunca guarda o token
+            // completo da loja. Um token direto (legacy) passa como antes.
+            if (Cloud.CloudClient.IsPairingCode(token))
+            {
+                Log(L10n.T("log.pairing"));
+                var (pOk, pToken, pShop, pErr) = await _cloud.RedeemPairingAsync(token);
+                if (!pOk) { Log(L10n.F("log.pairing.fail", pErr)); return; }
+                Log(L10n.F("log.pairing.ok", pShop));
+                token = pToken;
+            }
             if (tdlg.Remember)
             {
                 _config.SetShopToken(token);

@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.IO;
+using System.Runtime.InteropServices;
 using System.Xml.Linq;
 using iMobileDevice;
 using iMobileDevice.iDevice;
@@ -21,9 +22,28 @@ public sealed class IosCollector
 
     public IReadOnlyList<string> ListDevices()
     {
+        // Native direto: o wrapper managed (ReadOnlyCollection<string>) nunca
+        // chama idevice_device_list_free — o char** ficava alocado e cada poll
+        // do DeviceDetector vazava N ponteiros. Aqui controlamos a vida toda.
         var count = 0;
-        var ret = _idevice.idevice_get_device_list(out var udids, ref count);
-        return ret == iDeviceError.Success ? udids : Array.Empty<string>();
+        var ret = iDeviceNativeMethods.idevice_get_device_list(out IntPtr listPtr, ref count);
+        if (ret != iDeviceError.Success || listPtr == IntPtr.Zero || count <= 0)
+            return Array.Empty<string>();
+        try
+        {
+            var udids = new List<string>(count);
+            for (var i = 0; i < count; i++)
+            {
+                var p = Marshal.ReadIntPtr(listPtr, i * IntPtr.Size);
+                var s = p == IntPtr.Zero ? null : Marshal.PtrToStringUTF8(p);
+                if (!string.IsNullOrEmpty(s)) udids.Add(s!);
+            }
+            return udids;
+        }
+        finally
+        {
+            iDeviceNativeMethods.idevice_device_list_free(listPtr);
+        }
     }
 
     private string? GetValue(LockdownClientHandle client, string? domain, string key)

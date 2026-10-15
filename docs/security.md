@@ -1,54 +1,62 @@
-# Segurança — riscos conhecidos e plano
+# Segurança — estado dos riscos
 
-Revisão do ecossistema de 2026-10. Este ficheiro lista o que **ainda não está
-resolvido** no diag e o caminho recomendado. Atualizar quando cada ponto fechar.
+Revisões do ecossistema de 2026-10. Este ficheiro regista o que era risco
+conhecido e como cada ponto foi fechado.
 
-## 1. Atualizações: integridade ≠ autenticidade
+## 1. Atualizações: assinatura ECDSA P-256 — **resolvido**
 
-**Hoje:** `Cloud/UpdateChecker.cs` descarrega o zip da última release do
-GitHub e verifica o SHA-256 contra o `SHA256SUMS.txt` **da mesma release**.
-Isto apanha downloads corrompidos ou incompletos (integridade), mas não prova
-quem publicou (autenticidade): quem comprometer a conta GitHub ou o workflow
-de release publica um zip e um checksum coerentes, e o updater executa-os
-(PowerShell `-ExecutionPolicy Bypass`).
+**Antes:** o updater verificava o SHA-256 do zip contra o `SHA256SUMS.txt`
+**da mesma release** — provava integridade, não autenticidade. Uma conta
+GitHub comprometida publicava zip + checksum coerentes e o updater aplicava.
 
-**Mitigação já feita (fix/review-2026-10):** o publicador está fixo — só são
-aceites assets em
-`https://github.com/braindeadpt/oficinaos-diag/releases/download/<tag>/…`
-(https, host `github.com`, sem porta/userinfo/query, mesma tag da release).
-Trava URLs manipulados ou desviados para outro repo; **não** trava um repo
-comprometido.
+**Agora:**
+- `release.yml` assina o `SHA256SUMS.txt` com uma chave EC P-256 privada
+  (GitHub secret `RELEASE_SIGNING_KEY`, gerado com
+  `tools/generate-release-key.ps1` — a privada nunca está no repo; cópia
+  offline do dono em `release-signing-key.pem`, gitignored).
+- `UpdateChecker` traz a chave pública embutida
+  (`ReleaseSigningPublicKey`, SubjectPublicKeyInfo base64) e verifica a
+  assinatura P1363 do SHA256SUMS **antes** de descarregar o zip. Sem
+  `SHA256SUMS.sig` válido → a release nem sequer é considerada update
+  (fail closed em `CheckAsync` e outra vez em `DownloadAndStageAsync`).
+- O pin do publicador mantém-se: assets só de
+  `https://github.com/braindeadpt/oficinaos-diag/releases/download/<tag>/`.
+- Rotação: gerar par novo, embutir a pública nova, publicar essa versão,
+  e só depois trocar o secret — exes antigos validam com a chave que trazem.
+- Sem `RELEASE_SIGNING_KEY` o workflow de release falha — não saem
+  releases não assinadas por engano.
 
-**Correção recomendada (escolher uma):**
+Limite honesto que fica: quem comprometer a conta GitHub **e** o secret
+consegue assinar — a chave de assinatura é a raiz de confiança. Authenticode
+(Azure Trusted Signing) continua a ser o upgrade seguinte e resolve também
+o aviso SmartScreen.
 
-- **minisign / Ed25519 (barato, recomendado já):**
-  1. `minisign -G` numa máquina offline; a chave privada **nunca** entra no
-     GitHub (no máximo como secret de um ambiente protegido com aprovação
-     manual — mas offline é melhor).
-  2. No release: `minisign -Sm SHA256SUMS.txt` → publicar também
-     `SHA256SUMS.txt.minisig`.
-  3. Embutir a chave pública (base64, ~56 caracteres) como constante no exe
-     e verificar a assinatura Ed25519 do `SHA256SUMS.txt` antes de confiar
-     no hash (ex. NSec ou BouncyCastle; .NET 8 não traz Ed25519 nativo).
-  4. Fail closed: sem `.minisig` válido, a atualização é recusada.
-  5. Rotação: prever duas chaves públicas aceites durante a transição.
-- **Authenticode / Azure Trusted Signing:** assinar o `OficinaDiag.exe` no
-  workflow e, antes de aplicar, validar a assinatura (WinVerifyTrust) e o
-  *subject* do certificado. Tem custo, mas resolve também o aviso do
-  SmartScreen.
+## 2. Token com scope para o diag — **resolvido** (cloud + diag)
 
-Depois de qualquer das duas: lançar uma versão nova para que os clientes
-instalados passem a exigir a assinatura.
+**Antes:** o diag guardava (DPAPI) o *shop token* completo — o mesmo que
+publica o portal e muda o whatsapp-config — só para relatórios IA.
 
-## 2. Shop token completo em PCs de técnicos
+**Agora:** `ShopToken.scope` ("full" default | "diag"). O técnico cola um
+código de emparelhamento (XXXX-YYYY, o mesmo da app) nas Opções ou no
+diálogo de relatório IA; o diag troca-o por um token `scope=diag` que só
+serve `POST /reports/diagnostic` — `requireShop` é default-deny e cada rota
+autoriza scopes explicitamente. Tokens antigos `full` continuam válidos.
 
-**Hoje:** para gerar relatórios IA, o diag guarda (DPAPI, `CurrentUser`) o
-*shop token* completo — o mesmo da app, que permite publicar o portal,
-mudar o `whatsapp-config`, ler reservas, etc. O DPAPI impede copiar o
-ficheiro para outra máquina, mas não protege contra outro processo do mesmo
-utilizador do Windows num PC de bancada partilhado.
+## 3. TestServer (LAN) — **resolvido**
 
-**Follow-up recomendado (cloud + diag):** tokens com âmbito, ex.
-`scope: ["ai-reports"]`, emitidos no dashboard da Cloud só para o diag,
-um por PC, revogáveis individualmente, com rate limit próprio. O diag passa
-a pedir esse token em vez do token da loja.
+**Antes:** `TcpListener` em `IPAddress.Any` — a página de teste respondia
+em todas as interfaces (incl. NIC públicas/VPNs), sem limites de pedidos.
+
+**Agora:** bind só ao IP LAN que é anunciado no QR; read/write timeouts de
+20 s; headers ≤ 64 KB e body ≤ 256 KB; 60 pedidos/min por IP; máx. 16
+clientes em simultâneo; one-shot — após o primeiro resultado válido o
+listener fecha (a sessão de teste morreu, não fica porta aberta).
+
+## 4. `ListDevices` iOS — **resolvido**
+
+**Antes:** o wrapper managed do imobiledevice-net não libertava o `char**`
+de UDIDs — alguns bytes por poll, para sempre.
+
+**Agora:** `iDeviceNativeMethods.idevice_get_device_list` devolve o `IntPtr`
+cru; o marshal faz-se à mão e `idevice_device_list_free` liberta o array
+nativo no `finally`.

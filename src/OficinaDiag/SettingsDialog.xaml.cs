@@ -62,7 +62,7 @@ public partial class SettingsDialog : Window
 
     private static void PreviewTheme(string name) => ThemeManager.Apply(name);
 
-    private void Save_Click(object sender, RoutedEventArgs e)
+    private async void Save_Click(object sender, RoutedEventArgs e)
     {
         if (!string.IsNullOrWhiteSpace(CloudBox.Text))
         {
@@ -83,8 +83,33 @@ public partial class SettingsDialog : Window
         }
         _config.Language = L10n.Current;
         _config.Theme = ThemeManager.Current;
-        if (!string.IsNullOrEmpty(TokenBox.Password))
-            _config.SetShopToken(TokenBox.Password);
+        var pasted = TokenBox.Password;
+        if (!string.IsNullOrEmpty(pasted))
+        {
+            // Código de emparelhamento (XXXX-YYYY) → token scoped "diag".
+            // Um token direto (legacy) guarda-se como antes.
+            if (CloudClient.IsPairingCode(pasted))
+            {
+                SaveBtn.IsEnabled = false;
+                var cloud = new CloudClient(_config);
+                var (ok, token, shop, err) = await cloud.RedeemPairingAsync(pasted);
+                SaveBtn.IsEnabled = true;
+                if (!ok)
+                {
+                    MessageBox.Show(this, err, Title,
+                        MessageBoxButton.OK, MessageBoxImage.Warning);
+                    return;
+                }
+                _config.SetShopToken(token);
+                if (!string.IsNullOrEmpty(shop))
+                    MessageBox.Show(this, L10n.F("set.paired", shop), Title,
+                        MessageBoxButton.OK, MessageBoxImage.Information);
+            }
+            else
+            {
+                _config.SetShopToken(pasted);
+            }
+        }
         DialogResult = true;
     }
 

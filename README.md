@@ -40,6 +40,11 @@ scan local gratuito e relatórios Pro via [oficinaos-cloud](https://github.com/b
   diagnóstico chega à app OficinaOS da loja como pré-check — reparações,
   compra/venda de usados, grading
 
+**Ligar o diag à loja (Pro):** nas Opções cola um **código de emparelhamento**
+(XXXX-YYYY, gerado pela app OficinaOS da loja ou pelo suporte) — o diag troca-o
+por um token com scope `diag`, que só serve relatórios IA e nunca toca no resto
+da loja. Também aceita o token direto (legado).
+
 ## Suporte de dispositivos
 
 | Plataforma | Como | Requisitos no telefone | Drivers no PC |

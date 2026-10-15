@@ -34,13 +34,12 @@ public sealed class DiagConfig
 
     // Token Pro (relatórios IA) — nunca em claro no disco: guardamos a versão
     // cifrada com DPAPI (âmbito CurrentUser). Sem ele, o AI pede o token à vez.
-    // RISCO CONHECIDO (revisão 2026-10, sem redesenho nesta versão): isto é
-    // o shop token COMPLETO — o mesmo da app (publica o portal, muda o
-    // whatsapp-config, lê reservas…) — só para gerar relatórios IA. O DPAPI
-    // (CurrentUser) protege contra cópia do ficheiro para outra máquina, mas
-    // não contra outro processo do mesmo utilizador num PC de bancada.
-    // TODO(security): tokens com âmbito (ex. scope ["ai-reports"]) emitidos no
-    // dashboard da Cloud só para o diag, revogáveis por PC.
+    // RESOLVIDO (2026-10): quem cola um código de emparelhamento (XXXX-YYYY)
+    // recebe um token com scope "diag" — só serve /reports/diagnostic. Um PC
+    // de bancada comprometido deixa de poder publicar a montra ou mexer no
+    // WhatsApp da loja. O DPAPI (CurrentUser) continua a proteger contra
+    // cópia do ficheiro para outra máquina; contra outro processo do mesmo
+    // utilizador, o scope é a segunda linha de defesa.
     public string? ShopTokenProtected { get; set; }
 
     // Identidade da loja — carimbo do relatório para seguradora.

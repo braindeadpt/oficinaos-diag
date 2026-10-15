@@ -51,10 +51,24 @@ jobs:
           ).Hash.ToLower())  oficinaos-diag-win-x64.zip"
           | Out-File -Encoding ascii SHA256SUMS.txt
 
+      - name: Sign checksums
+        shell: pwsh
+        # SHA256SUMS prova integridade; a assinatura EC P-256 prova ORIGEM —
+        # só sai quem tem a chave privada (secret RELEASE_SIGNING_KEY, fora do
+        # repo). O updater embute a chave pública e falha fechado sem .sig.
+        env:
+          RELEASE_SIGNING_KEY: ${{ secrets.RELEASE_SIGNING_KEY }}
+        run: >-
+          if (-not $env:RELEASE_SIGNING_KEY) {
+          throw "RELEASE_SIGNING_KEY secret not set — refusing to ship an unsigned release"
+          }
+          ./tools/sign-release.ps1 -File ./SHA256SUMS.txt
+
       - name: GitHub release
         uses: softprops/action-gh-release@v2
         with:
           files: |
             oficinaos-diag-*.zip
             SHA256SUMS.txt
+            SHA256SUMS.sig
           generate_release_notes: true

@@ -24,6 +24,16 @@ public sealed class TestServer : IDisposable
     private readonly string _token = Guid.NewGuid().ToString("N")[..12];
     private Task? _loop;
     private bool _disposed;
+    private volatile bool _done;
+    private int _activeClients;
+
+    // A página faz ~2 pedidos no total (GET + POST). 60/min por IP é folgado
+    // para reloads e trava um flood de um peer na LAN. 16 handlers em
+    // simultâneo chegam para telemóvel + browser de conferência.
+    private const int MaxRequestsPerMinutePerIp = 60;
+    private const int MaxConcurrentClients = 16;
+    private readonly Dictionary<IPAddress, (DateTimeOffset windowStart, int count)> _rate = new();
+    private readonly object _rateLock = new();
 
     public int Port =>
         _listener.LocalEndpoint is IPEndPoint ep ? ep.Port : 0;
@@ -33,27 +43,28 @@ public sealed class TestServer : IDisposable
 
     public TestServer()
     {
-        _listener = new TcpListener(IPAddress.Any, 0); // porta efémera — sem colisões fixas
+        // Bind ao IP LAN que anunciamos — não a Any. Com IPAddress.Any a
+        // página também respondia nas outras interfaces da máquina (NIC
+        // pública, VPN, adaptadores VMware). Só o telemóvel na LAN da loja
+        // precisa de chegar aqui.
+        _listener = new TcpListener(ResolveLanAddress() ?? IPAddress.Any, 0);
     }
 
-    public string LanUrl
-    {
-        get
-        {
-            var ip = NetworkInterface.GetAllNetworkInterfaces()
-                .Where(n => n.OperationalStatus == OperationalStatus.Up
-                    && n.NetworkInterfaceType is not NetworkInterfaceType.Loopback)
-                .SelectMany(n => n.GetIPProperties().UnicastAddresses)
-                .Select(a => a.Address)
-                .Where(a => a.AddressFamily == AddressFamily.InterNetwork
-                    && !a.ToString().StartsWith("169.254.")) // APIPA — sem rede
-                // preferir a LAN típica da loja; VPNs/VMs ficam para o fim
-                .OrderBy(a => a.ToString().StartsWith("192.168.") ? 0
-                    : a.ToString().StartsWith("10.") ? 1 : 2)
-                .FirstOrDefault();
-            return $"http://{ip?.ToString() ?? "localhost"}:{Port}/{_token}/";
-        }
-    }
+    private static IPAddress? ResolveLanAddress() =>
+        NetworkInterface.GetAllNetworkInterfaces()
+            .Where(n => n.OperationalStatus == OperationalStatus.Up
+                && n.NetworkInterfaceType is not NetworkInterfaceType.Loopback)
+            .SelectMany(n => n.GetIPProperties().UnicastAddresses)
+            .Select(a => a.Address)
+            .Where(a => a.AddressFamily == AddressFamily.InterNetwork
+                && !a.ToString().StartsWith("169.254.")) // APIPA — sem rede
+            // preferir a LAN típica da loja; VPNs/VMs ficam para o fim
+            .OrderBy(a => a.ToString().StartsWith("192.168.") ? 0
+                : a.ToString().StartsWith("10.") ? 1 : 2)
+            .FirstOrDefault();
+
+    public string LanUrl =>
+        $"http://{ResolveLanAddress()?.ToString() ?? "localhost"}:{Port}/{_token}/";
 
     /// <summary>Returns false se a página de teste não existir junto ao exe.</summary>
     public bool Start()
@@ -70,7 +81,7 @@ public sealed class TestServer : IDisposable
     {
         var page = File.ReadAllText(
             Path.Combine(AppContext.BaseDirectory, "Tests", "wwwroot", "device-test.html"));
-        while (!_cts.IsCancellationRequested)
+        while (!_cts.IsCancellationRequested && !_done)
         {
             TcpClient client;
             try { client = await _listener.AcceptTcpClientAsync(_cts.Token); }
@@ -80,6 +91,49 @@ public sealed class TestServer : IDisposable
         }
     }
 
+    /// <summary>Cap de concorrência + rate por IP — a LAN não é sempre amigável.</summary>
+    private bool AllowClient(TcpClient client)
+    {
+        if (Interlocked.Increment(ref _activeClients) > MaxConcurrentClients)
+        {
+            Interlocked.Decrement(ref _activeClients);
+            return false;
+        }
+        if (client.Client.RemoteEndPoint is not IPEndPoint ep) return true;
+        lock (_rateLock)
+        {
+            var now = DateTimeOffset.UtcNow;
+            if (_rate.TryGetValue(ep.Address, out var r)
+                && now - r.windowStart < TimeSpan.FromMinutes(1))
+            {
+                if (r.count >= MaxRequestsPerMinutePerIp)
+                {
+                    Interlocked.Decrement(ref _activeClients);
+                    return false;
+                }
+                _rate[ep.Address] = (r.windowStart, r.count + 1);
+            }
+            else
+            {
+                _rate[ep.Address] = (now, 1);
+            }
+        }
+        return true;
+    }
+
+    /// <summary>
+    /// O teste é one-shot: depois do primeiro resultado válido a sessão
+    /// morreu — fecha o listener para não ficar uma porta aberta na LAN.
+    /// </summary>
+    private void Complete()
+    {
+        if (_done) return;
+        _done = true;
+        try { _listener.Stop(); } catch { }
+        // Dispose() pode já ter feito dispose do _cts — a corrida é benigna.
+        try { _cts.Cancel(); } catch (ObjectDisposedException) { }
+    }
+
     // O JSON de resultado da página tem ~1–2 KB — 256 KB chega com folga e
     // impede um cliente da LAN de declarar um Content-Length gigante e
     // encher a memória (o body ia parar a uma lista sem teto).
@@ -87,10 +141,11 @@ public sealed class TestServer : IDisposable
 
     private void HandleClient(TcpClient client, string page)
     {
-        using (client)
-        using (var stream = client.GetStream())
+        if (!AllowClient(client)) { try { client.Close(); } catch { } return; }
+        try
         {
-            try
+            using (client)
+            using (var stream = client.GetStream())
             {
                 // Sem isto um socket que liga e nunca envia nada prendia uma
                 // thread para sempre (scanner de portas, peers curiosos na LAN).
@@ -143,8 +198,14 @@ public sealed class TestServer : IDisposable
                     }
                     var body = Encoding.UTF8.GetString(buf.ToArray(), bodyStart, Math.Min(contentLen, have));
                     var data = JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(body);
-                    if (data is not null) ResultReceived?.Invoke(data);
                     Respond(stream, "200 OK", "ok", "text/plain");
+                    // 200 primeiro — o cliente tem de ver o ACK; só depois se
+                    // dispara o evento e se fecha o servidor (one-shot).
+                    if (data is not null)
+                    {
+                        ResultReceived?.Invoke(data);
+                        Complete();
+                    }
                 }
                 else if (method == "GET" && path == $"/{_token}/")
                 {
@@ -155,8 +216,9 @@ public sealed class TestServer : IDisposable
                     Respond(stream, "404 Not Found", "not found", "text/plain");
                 }
             }
-            catch { }
         }
+        catch { }
+        finally { Interlocked.Decrement(ref _activeClients); }
     }
 
     private static void Respond(NetworkStream stream, string status, string body, string contentType)
