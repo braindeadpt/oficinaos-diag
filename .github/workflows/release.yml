@@ -21,6 +21,11 @@ jobs:
         shell: pwsh
         run: ./tools/fetch-tools.ps1
 
+      - name: Test
+        # A release não sai sem os testes verdes — enviar binários sem os
+        # correr era um acidente à espera de acontecer.
+        run: dotnet test tests/OficinaDiag.Tests -c Release
+
       - name: Publish single-file exe
         # The tag IS the version — embed it so the exe's self-update check
         # can never disagree with the release it's running.

@@ -29,10 +29,17 @@ namespace OficinaDiag.Cloud;
 public sealed class UpdateChecker
 {
     private static readonly HttpClient Http = new() { Timeout = TimeSpan.FromSeconds(20) };
+    // O zip self-contained pesa ~100 MB — 20 s de timeout partia qualquer
+    // ligação mais lenta que ~5 MB/s. Download próprio: 10 minutos.
+    private static readonly HttpClient DownloadHttp = new()
+    {
+        Timeout = TimeSpan.FromMinutes(10),
+    };
 
     static UpdateChecker()
     {
         Http.DefaultRequestHeaders.UserAgent.ParseAdd("oficinaos-diag");
+        DownloadHttp.DefaultRequestHeaders.UserAgent.ParseAdd("oficinaos-diag");
     }
 
     public sealed record UpdateInfo(Version Version, string Tag, string ZipUrl, string ChecksumUrl);
@@ -106,7 +113,7 @@ public sealed class UpdateChecker
 
             // Stream to disk — the self-contained zip is 100+ MB and does not
             // belong in a byte[] on the large-object heap.
-            using (var src = await Http.GetStreamAsync(info.ZipUrl))
+            using (var src = await DownloadHttp.GetStreamAsync(info.ZipUrl))
             using (var dst = File.Create(zipPath))
                 await src.CopyToAsync(dst);
 

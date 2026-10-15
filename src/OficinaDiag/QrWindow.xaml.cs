@@ -12,7 +12,7 @@ public sealed class QrWindow : Window
 {
     public QrWindow(QRCodeData data)
     {
-        Title = "SCAN ME";
+        Title = L10n.T("qr.text");
         Width = 340; Height = 400;
         WindowStartupLocation = WindowStartupLocation.CenterScreen;
         Topmost = true;

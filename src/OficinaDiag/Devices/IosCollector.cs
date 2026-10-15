@@ -193,18 +193,54 @@ public sealed class IosCollector
         if (await Task.WhenAny(collect, Task.Delay(TimeSpan.FromSeconds(30))) != collect)
         {
             cts.Cancel(); // a task não morre na hora, mas salta as secções restantes
-            r.Set("scan", "fail", null,
+
+            // A task órfã pode estar a meio de CollectBatteryHealth/Gestalt e
+            // continuar a chamar Set() no `r` original — devolvemos uma cópia
+            // destacada que ela já não alcança, senão a UI enumera Results
+            // enquanto a task escreve (InvalidOperationException + relatório
+            // a mudar depois de apresentado).
+            var detached = new DeviceReport
+            {
+                Platform = r.Platform,
+                LogsText = r.LogsText,
+                Device =
+                {
+                    Serial = r.Device.Serial,
+                    Brand = r.Device.Brand,
+                    Model = r.Device.Model,
+                    MarketingName = r.Device.MarketingName,
+                    Os = r.Device.Os,
+                    OsVersion = r.Device.OsVersion,
+                },
+            };
+            foreach (var kv in r.SnapshotResults())
+                detached.Results[kv.Key] = kv.Value;
+            detached.Set("scan", "fail", null,
                 "Timeout — fecha a janela de importação de fotos do Windows e tenta de novo");
+            r = detached;
         }
 
         return r;
     }
 
+    /// <summary>
+    /// Ferramentas idevice*.exe — no publish ficam ao lado do exe; em builds de
+    /// dev (`dotnet run`) o NuGet deixa-as em runtimes\win-x64\native\.
+    /// </summary>
+    private static string? ToolPath(string name)
+    {
+        var baseDir = AppContext.BaseDirectory;
+        var exe = Path.Combine(baseDir, name);
+        if (File.Exists(exe)) return exe;
+        exe = Path.Combine(baseDir, "runtimes", "win-x64", "native", name);
+        return File.Exists(exe) ? exe : null;
+    }
+
     /// <summary>idevicediagnostics.exe bundled ao lado do exe — ponte para a IORegistry.</summary>
     private static string? RunTool(string udid, string args, int timeoutMs = 15000)
     {
-        var exe = Path.Combine(AppContext.BaseDirectory, "idevicediagnostics.exe");
-        if (!File.Exists(exe)) return null;
+        var exe = ToolPath("idevicediagnostics.exe");
+        if (exe is null) return null;
         try
         {
             using var p = Process.Start(new ProcessStartInfo(exe, $"-u {udid} {args}")
@@ -383,8 +419,8 @@ public sealed class IosCollector
     /// </summary>
     private void CollectCrashLogs(DeviceReport r, string udid)
     {
-        var exe = Path.Combine(AppContext.BaseDirectory, "idevicecrashreport.exe");
-        if (!File.Exists(exe)) return;
+        var exe = ToolPath("idevicecrashreport.exe");
+        if (exe is null) return;
         var dir = Path.Combine(Path.GetTempPath(), $"oficinadiag-crash-{Guid.NewGuid():N}");
         try
         {

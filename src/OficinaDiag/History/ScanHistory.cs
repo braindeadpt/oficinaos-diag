@@ -8,8 +8,11 @@ namespace OficinaDiag.History;
 /// <summary>Local JSON-lines history of past scans — offline, no account.</summary>
 public sealed class ScanHistory
 {
-    private readonly string _file =
-        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+    private readonly string _file;
+
+    public ScanHistory(string? file = null) =>
+        _file = file ?? Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
             "OficinaDiag", "history.jsonl");
 
     private static readonly JsonSerializerOptions Opts = new() { WriteIndented = false };
@@ -33,16 +36,20 @@ public sealed class ScanHistory
         {
             var info = new FileInfo(_file);
             if (!info.Exists || info.Length <= maxBytes) return;
-            var keep = File.ReadLines(_file)
-                .Where(l => !string.IsNullOrWhiteSpace(l))
-                .Reverse()
-                .TakeWhile(l => true)
-                .ToList();
-            // Mantém a cauda até ao limite sem re-parsear tudo.
+            // Linhas mais recentes primeiro, até ao teto.
+            var tail = new List<string>();
             var acc = 0L;
-            var tail = keep.TakeWhile(l => (acc += Encoding.UTF8.GetByteCount(l) + 1) <= maxBytes).ToList();
+            foreach (var l in File.ReadLines(_file).Reverse())
+            {
+                if (string.IsNullOrWhiteSpace(l)) continue;
+                if ((acc += Encoding.UTF8.GetByteCount(l) + 1) > maxBytes) break;
+                tail.Add(l);
+            }
             tail.Reverse();
-            File.WriteAllLines(_file, tail);
+            // tmp+rename — crash a meio da poda não destrói o histórico.
+            var tmp = _file + ".tmp";
+            File.WriteAllLines(tmp, tail);
+            File.Move(tmp, _file, overwrite: true);
         }
         catch { /* poda falhou — fica para a próxima vez */ }
     }
@@ -74,7 +81,8 @@ public sealed class ScanHistory
     /// <summary>Battery capacity trend for a serial — the fun longitudinal stat.</summary>
     public IReadOnlyList<(DateTimeOffset at, string capacity)> BatteryTrend(string serial) =>
         All()
-            .Where(r => r.Device.Serial == serial && r.Results.TryGetValue("battery.capacity", out _))
+            .Where(r => string.Equals(r.Device.Serial, serial, StringComparison.OrdinalIgnoreCase)
+                && r.Results.TryGetValue("battery.capacity", out _))
             .Select(r => (at: r.CollectedAt, capacity: r.Results["battery.capacity"].Value ?? "?"))
             .OrderBy(t => t.at)
             .ToList();

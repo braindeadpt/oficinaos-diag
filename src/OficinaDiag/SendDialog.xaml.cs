@@ -4,9 +4,12 @@ namespace OficinaDiag;
 
 public partial class SendDialog : Window
 {
-    public SendDialog()
+    public SendDialog(string? initialPurpose = null)
     {
         InitializeComponent();
+        // O checklist pode já ter marcado "venda" — o radio reflete isso em
+        // vez de voltar sempre a "reparação" e dessincronizar o payload.
+        PurposeSale.IsChecked = initialPurpose == "sale";
         Title = L10n.T("send.title");
         HeaderText.Text = L10n.T("send.header");
         DescText.Text = L10n.T("send.desc");

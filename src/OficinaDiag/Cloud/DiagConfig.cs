@@ -11,8 +11,16 @@ namespace OficinaDiag.Cloud;
 /// </summary>
 public sealed class DiagConfig
 {
-    private static readonly string Path =
+    // Portable-first: junto do exe para quem corre o ZIP numa pen. Quando o
+    // dir não é gravável (instalação MSIX/Store — pasta de instalação só de
+    // leitura), cai para %APPDATA%\OficinaDiag — sem o fallback o tema, o
+    // idioma e o token perdiam-se a cada arranque na versão da Store.
+    private static readonly string PortablePath =
         System.IO.Path.Combine(AppContext.BaseDirectory, "oficinaos-diag.config.json");
+    private static readonly string AppDataPath =
+        System.IO.Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+            "OficinaDiag", "oficinaos-diag.config.json");
 
     public const string DefaultCloudUrl = "https://cloud.oficinaos.app";
 
@@ -78,27 +86,42 @@ public sealed class DiagConfig
 
     public static DiagConfig Load()
     {
-        try
+        foreach (var path in new[] { PortablePath, AppDataPath })
         {
-            if (File.Exists(Path))
+            try
             {
-                var cfg = JsonSerializer.Deserialize<DiagConfig>(File.ReadAllText(Path));
-                if (cfg is not null)
-                {
-                    // URL inválido não pode partir o arranque — volta ao default.
-                    if (!TryValidateCloudUrl(cfg.CloudUrl, out _))
-                        cfg.CloudUrl = DefaultCloudUrl;
-                    return cfg;
-                }
+                if (!File.Exists(path)) continue;
+                var cfg = JsonSerializer.Deserialize<DiagConfig>(File.ReadAllText(path));
+                if (cfg is null) continue;
+                // URL inválido não pode partir o arranque — volta ao default.
+                if (!TryValidateCloudUrl(cfg.CloudUrl, out _))
+                    cfg.CloudUrl = DefaultCloudUrl;
+                return cfg;
             }
+            catch { /* corrupt config → try the next location / defaults */ }
         }
-        catch { /* corrupt config → defaults */ }
         return new DiagConfig();
     }
 
     public void Save()
     {
-        try { File.WriteAllText(Path, JsonSerializer.Serialize(this)); }
-        catch { /* read-only dir — config just won't persist */ }
+        var json = JsonSerializer.Serialize(this);
+        if (!TryWriteAtomic(PortablePath, json))
+            try { TryWriteAtomic(AppDataPath, json); } catch { /* sem disco gravável */ }
+    }
+
+    /// <summary>tmp+rename — um crash a meio da escrita não deixa JSON truncado.</summary>
+    private static bool TryWriteAtomic(string path, string content)
+    {
+        try
+        {
+            var dir = System.IO.Path.GetDirectoryName(path);
+            if (dir is not null) Directory.CreateDirectory(dir);
+            var tmp = path + ".tmp";
+            File.WriteAllText(tmp, content);
+            File.Move(tmp, path, overwrite: true);
+            return true;
+        }
+        catch { return false; }
     }
 }

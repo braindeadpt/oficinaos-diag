@@ -19,6 +19,9 @@
     <Compile Include="..\..\src\OficinaDiag\Cloud\IntakeRules.cs" Link="Linked\IntakeRules.cs" />
     <Compile Include="..\..\src\OficinaDiag\Cloud\UpdateChecker.cs" Link="Linked\UpdateChecker.cs" />
     <Compile Include="..\..\src\OficinaDiag\Devices\DeviceReport.cs" Link="Linked\DeviceReport.cs" />
+    <Compile Include="..\..\src\OficinaDiag\Devices\PowerSession.cs" Link="Linked\PowerSession.cs" />
+    <Compile Include="..\..\src\OficinaDiag\Grading\Grader.cs" Link="Linked\Grader.cs" />
+    <Compile Include="..\..\src\OficinaDiag\History\ScanHistory.cs" Link="Linked\ScanHistory.cs" />
     <Compile Include="..\..\src\OficinaDiag\Reports\ReportBuilder.cs" Link="Linked\ReportBuilder.cs" />
     <Compile Include="..\..\src\OficinaDiag\Reports\InsuranceForm.cs" Link="Linked\InsuranceForm.cs" />
   </ItemGroup>

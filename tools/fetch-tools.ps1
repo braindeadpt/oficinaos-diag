@@ -15,5 +15,14 @@ $zip = Join-Path $env:TEMP "platform-tools.zip"
 Invoke-WebRequest "https://dl.google.com/android/repository/platform-tools-latest-windows.zip" -OutFile $zip
 Expand-Archive $zip -DestinationPath $tools -Force
 Remove-Item $zip
-Write-Output "OK: $pt\adb.exe"
+
+# A URL "-latest-" é mutável — a Google não publica hash. A assinatura
+# Authenticode é a verificação de autenticidade disponível: um zip
+# adulterado/trocado não assina como Google.
+$sig = Get-AuthenticodeSignature "$pt\adb.exe"
+if ($sig.Status -ne "Valid" -or $sig.SignerCertificate.Subject -notmatch "Google") {
+    Remove-Item $pt -Recurse -Force
+    throw "adb.exe signature check failed (status: $($sig.Status), signer: $($sig.SignerCertificate.Subject)) — refusing to bundle unverified platform-tools"
+}
+Write-Output "OK: $pt\adb.exe (assinado: $($sig.SignerCertificate.Subject))"
 Write-Output "iPhone: imobiledevice-net ships via NuGet (nothing to download)."

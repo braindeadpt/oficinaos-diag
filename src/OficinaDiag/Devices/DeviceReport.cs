@@ -42,7 +42,12 @@ public sealed class DeviceReport
     public DeviceIdentity Device { get; set; } = new();
 
     /// <summary>Check name → result. Sent verbatim to the AI report endpoint.</summary>
-    public Dictionary<string, CheckResult> Results { get; } = new(StringComparer.OrdinalIgnoreCase);
+    /// <remarks>
+    /// Setter privado + JsonInclude: o STJ não povoa coleções get-only na
+    /// desserialização — sem isto o histórico (JSONL) perdia todos os checks.
+    /// </remarks>
+    [JsonInclude]
+    public Dictionary<string, CheckResult> Results { get; private set; } = new(StringComparer.OrdinalIgnoreCase);
 
     /// <summary>Raw key/value grabs kept for debugging — never sent to the AI.</summary>
     [JsonIgnore]
@@ -68,8 +73,24 @@ public sealed class DeviceReport
     /// base64 só na renderização HTML. Não viajam para a cloud (os payloads
     /// de intake/IA são construídos campo a campo, sem este).
     /// </summary>
-    public List<string> PhotoPaths { get; } = [];
+    [JsonInclude]
+    public List<string> PhotoPaths { get; private set; } = [];
 
-    public void Set(string key, string status, string? value, string? detail = null) =>
-        Results[key] = new CheckResult { Status = status, Value = value, Detail = detail };
+    // No timeout do scan iOS a task órfã pode continuar a chamar Set() —
+    // o gate torna essa escrita segura e o snapshot dá uma cópia estável.
+    private readonly object _gate = new();
+
+    public void Set(string key, string status, string? value, string? detail = null)
+    {
+        lock (_gate)
+            Results[key] = new CheckResult { Status = status, Value = value, Detail = detail };
+    }
+
+    /// <summary>Cópia consistente de <see cref="Results"/> — os CheckResult são
+    /// partilhados mas nunca mutados (Set substitui sempre o objeto inteiro).</summary>
+    public Dictionary<string, CheckResult> SnapshotResults()
+    {
+        lock (_gate)
+            return new Dictionary<string, CheckResult>(Results, Results.Comparer);
+    }
 }

@@ -80,6 +80,11 @@ public sealed class TestServer : IDisposable
         }
     }
 
+    // O JSON de resultado da página tem ~1–2 KB — 256 KB chega com folga e
+    // impede um cliente da LAN de declarar um Content-Length gigante e
+    // encher a memória (o body ia parar a uma lista sem teto).
+    private const int MaxBodyBytes = 256 * 1024;
+
     private void HandleClient(TcpClient client, string page)
     {
         using (client)
@@ -87,6 +92,11 @@ public sealed class TestServer : IDisposable
         {
             try
             {
+                // Sem isto um socket que liga e nunca envia nada prendia uma
+                // thread para sempre (scanner de portas, peers curiosos na LAN).
+                client.ReceiveTimeout = 20_000;
+                client.SendTimeout = 20_000;
+
                 // Lê o pedido até ao fim dos headers (\r\n\r\n)
                 var buf = new List<byte>();
                 var b = new byte[4096];
@@ -111,11 +121,17 @@ public sealed class TestServer : IDisposable
 
                 if (method == "POST" && path == $"/{_token}/result")
                 {
-                    // lê o corpo conforme Content-Length
+                    // lê o corpo conforme Content-Length (com teto — ver const acima)
                     var lenMatch = System.Text.RegularExpressions.Regex.Match(
                         request, "Content-Length:\\s*(\\d+)",
                         System.Text.RegularExpressions.RegexOptions.IgnoreCase);
-                    var contentLen = lenMatch.Success ? int.Parse(lenMatch.Groups[1].Value) : 0;
+                    if (!lenMatch.Success
+                        || !int.TryParse(lenMatch.Groups[1].Value, out var contentLen)
+                        || contentLen > MaxBodyBytes)
+                    {
+                        Respond(stream, "413 Content Too Large", "too large", "text/plain");
+                        return;
+                    }
                     var bodyStart = headerEnd + 4;
                     var have = buf.Count - bodyStart;
                     while (have < contentLen)

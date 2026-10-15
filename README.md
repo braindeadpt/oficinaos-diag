@@ -1,7 +1,7 @@
 # oficinaos-diag
 
 Ferramenta Windows de diagnóstico de telemóveis por USB — visual terminal retro anos 90/2000,
-scan local gratuito e relatórios Pro via [oficinaos-cloud] para lojas aderentes ao
+scan local gratuito e relatórios Pro via [oficinaos-cloud](https://github.com/braindeadpt/oficinaos-cloud) para lojas aderentes ao
 [OficinaOS](https://github.com/braindeadpt/OficinaOS).
 
 > **Ecossistema:** este é 1 de 4 repos (app da loja `reparilo`, `oficinaos-cloud`,

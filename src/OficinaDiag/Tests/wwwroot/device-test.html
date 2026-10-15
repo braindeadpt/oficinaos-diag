@@ -12,6 +12,10 @@
   .cell.edge{border-color:#033}
   .cell.hit{background:#0f0}
   .cell.edge.hit{background:#3af}
+  #gridUi{display:none;position:fixed;top:0;left:0;right:0;z-index:5;pointer-events:none;
+    font-size:13px;color:#0f0;text-align:center}
+  #gridUi .row{pointer-events:auto;display:flex;justify-content:space-between;align-items:center;padding:6px 10px;background:rgba(0,0,0,.6)}
+  #gridNext{background:#020;border:1px solid #0f0;color:#0f0;font:inherit;font-size:12px;padding:8px 14px}
   #mtouch{display:none;position:fixed;inset:0;background:#000;color:#0f0;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:16px}
   #mtouch .count{font-size:64px;margin:20px 0}
   #sensors{display:none;position:fixed;inset:0;background:#000;color:#0f0;flex-direction:column;padding:16px;overflow-y:auto}
@@ -27,6 +31,10 @@
 <body>
 <div id="stage">TOCA PARA COMEÇAR<br><small>teste de cores + toque + sensores</small></div>
 <div id="grid"></div>
+<div id="gridUi"><div class="row">
+  <span id="gridCount">0/60 zonas</span>
+  <button id="gridNext">NÃO CONSIGO COBRIR TUDO → CONTINUAR</button>
+</div></div>
 <div id="mtouch">
   <div>COLOCA 5 DEDOS NO ECRÃ<br><small>deteta multi-toque e zonas mortas</small></div>
   <div class="count" id="mtCount">0</div>
@@ -54,7 +62,7 @@
   <button id="permBtn" style="display:none">PERMITIR SENSORES (iPhone)</button>
   <button id="endBtn">TERMINAR TESTE</button>
 </div>
-<div id="done">✓ TESTE COMPLETO<br><small>podes voltar ao PC</small></div>
+<div id="done">✓ TESTE COMPLETO<br><small id="doneNote">podes voltar ao PC</small></div>
 <script>
 const stage = document.getElementById('stage');
 const grid = document.getElementById('grid');
@@ -87,6 +95,7 @@ stage.onclick = () => {
 /* ── fase 2: grelha de toque — bordas contadas à parte ── */
 function startGrid(){
   grid.style.display='grid';
+  document.getElementById('gridUi').style.display='block';
   const hit = new Set(), edgeHit = new Set();
   const COLS=6, ROWS=10;
   for(let i=0;i<COLS*ROWS;i++){
@@ -98,11 +107,13 @@ function startGrid(){
     grid.appendChild(c);
   }
   result.edgeTotal = grid.querySelectorAll('.cell.edge').length;
+  const counter = document.getElementById('gridCount');
   const mark = (t)=>{
     const el = document.elementFromPoint(t.clientX, t.clientY);
     if(el && el.classList.contains('cell')){
       el.classList.add('hit'); hit.add(el.dataset.i);
       if(el.dataset.edge) edgeHit.add(el.dataset.i);
+      counter.textContent = hit.size+'/'+(COLS*ROWS)+' zonas';
     }
   };
   grid.addEventListener('touchstart',e=>{[...e.touches].forEach(mark)},{passive:true});
@@ -112,11 +123,18 @@ function startGrid(){
   },{passive:true});
   grid.onmousemove = e=>{ if(e.buttons) mark(e); };
   grid.onclick = e=>{ mark(e); if(hit.size>=55) startMultiTouch(hit.size, edgeHit.size); };
+  // Escape: um ecrã com zonas mortas nunca chega a 55 — sem este botão o
+  // teste ficava preso e a falha real nunca chegava ao relatório.
+  document.getElementById('gridNext').onclick=()=>{
+    document.getElementById('gridUi').style.display='none';
+    startMultiTouch(hit.size, edgeHit.size);
+  };
 }
 
 /* ── fase 3: multi-toque — conta dedos simultâneos ── */
 function startMultiTouch(touchHit, edgeHitCount){
   grid.style.display='none';
+  document.getElementById('gridUi').style.display='none';
   const panel=document.getElementById('mtouch');
   panel.style.display='flex';
   result.touchHit = touchHit;
@@ -214,7 +232,7 @@ function startSensors(){
 
   const mt = result.multiTouch;
   setSt('s-touch', mt>0 ? mt+' dedos' : 'não testado', mt>=5?'ok':mt>0?'warn':'warn');
-  result.sensors.multitouch = mt>0 ? (mt>=5?'ok':'ok') : 'no-data';
+  result.sensors.multitouch = mt>=5 ? 'ok' : mt>0 ? 'warn' : 'no-data';
 
   if(navigator.getBattery){
     navigator.getBattery().then(b=>{
@@ -262,9 +280,27 @@ document.getElementById('endBtn').onclick=()=>{ finish(); };
 
 function finish(){
   result.colorsViewed = colors.length;
-  fetch('result',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(result)});
+  const note = document.getElementById('doneNote');
   document.getElementById('sensors').style.display='none';
   document.getElementById('done').style.display='flex';
+  // Fire-and-forget escondia falhas: PC adormecido/Wi-Fi trocada = ecrã dizia
+  // "completo" e o relatório ficava sem os testes. Retry até entregar; se
+  // esgotar, avisa para reenviar em vez de fingir sucesso.
+  const body = JSON.stringify(result);
+  let tries = 0;
+  const send = ()=>{
+    tries++;
+    note.textContent = 'a enviar o resultado ao PC…';
+    fetch('result',{method:'POST',headers:{'Content-Type':'application/json'},body})
+      .then(r=>{
+        if(r.ok){ note.textContent='resultado entregue — podes voltar ao PC'; }
+        else if(tries<8){ setTimeout(send,1500); }
+        else{ note.textContent='NÃO consegui entregar — aproxima o telefone do PC e volta a abrir a página'; }
+      })
+      .catch(()=>{ if(tries<8){ setTimeout(send,1500); }
+        else{ note.textContent='NÃO consegui entregar — aproxima o telefone do PC e volta a abrir a página'; } });
+  };
+  send();
 }
 </script>
 </body>

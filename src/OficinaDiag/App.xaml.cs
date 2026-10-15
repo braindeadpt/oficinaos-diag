@@ -19,6 +19,8 @@ public partial class App : Application
         DispatcherUnhandledException += (_, args) =>
         {
             Log.AppLog.Exception("UI", args.Exception);
+            // Estamos na thread da UI — mostra na consola, não só no ficheiro.
+            (Current.MainWindow as MainWindow)?.LogError("UI", args.Exception);
             args.Handled = true; // regista e deixa a app viva — o utilizador vê o erro na consola
         };
         AppDomain.CurrentDomain.UnhandledException += (_, args) =>

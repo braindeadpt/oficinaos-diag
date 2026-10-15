@@ -220,6 +220,10 @@ public partial class MainWindow : Window
         OficinaDiag.Log.AppLog.Write(line);
     }
 
+    /// <summary>Erros vindos do handler global (App) — visíveis na consola da app.</summary>
+    internal void LogError(string where, Exception ex) =>
+        Log($"! {where}: {ex.GetType().Name}: {ex.Message}");
+
     private async void Scan_Click(object sender, RoutedEventArgs e)
     {
         ScanButton.IsEnabled = false;
@@ -596,11 +600,13 @@ public partial class MainWindow : Window
     private async void Send_Click(object sender, RoutedEventArgs e)
     {
         if (_report is null) return;
-        var dlg = new SendDialog { Owner = this };
+        var dlg = new SendDialog(_report.Purpose) { Owner = this };
         if (dlg.ShowDialog() != true) return;
         Log(L10n.F("log.send.start", dlg.ShopCode));
         SendButton.IsEnabled = false; // double-submit criava pedidos duplicados na loja
-        if (dlg.Purpose == "sale") _report.Purpose = "sale";
+        // Sincroniza nos dois sentidos: um envio explícito como "reparação"
+        // limpa o "sale" que o checklist possa ter deixado.
+        _report.Purpose = dlg.Purpose == "sale" ? "sale" : null;
         try
         {
             var (ok, msg) = await _cloud.SendToShopAsync(

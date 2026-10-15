@@ -161,7 +161,8 @@ public static class Grader
             checklistDone++;
             if (s is "warn" or "fail")
             {
-                Cap(item.Weight, $"{item.LabelPt} — defeito marcado pelo técnico");
+                // Weight → teto: 0=cosmético→B(1) · 1=funcional→C(2) · 2=crítico→D(3).
+                Cap(item.Weight + 1, $"{item.LabelPt} — defeito marcado pelo técnico");
                 var part = PartFor(item.Key);
                 if (part is not null) parts.Add(part);
             }
@@ -178,18 +179,25 @@ public static class Grader
 
         // ── montagem do veredicto ────────────────────────────────────────
         var grade = "ABCD"[ceiling].ToString();
+        // "scan" é meta-estado da recolha, não um check do aparelho — sem o
+        // excluir, um scan falhado (só com scan:fail) passava no coverage e
+        // recebia grau A.
         var coverage = r.Results.Count(kv =>
             !kv.Key.StartsWith("grade.", StringComparison.Ordinal)
-            && !kv.Key.StartsWith("suggest.", StringComparison.Ordinal));
+            && !kv.Key.StartsWith("suggest.", StringComparison.Ordinal)
+            && kv.Key != "scan");
         if (coverage == 0)
         {
             grade = "—";
             reasons.Clear();
             reasons.Add("sem dados de scan — liga um telefone ou corre o SCAN primeiro");
         }
-        else if (checklistDone == 0)
+        else
         {
-            reasons.Add("checklist físico por preencher — o grau pode melhorar ou piorar");
+            if (Stat("scan") is "fail")
+                reasons.Add("recolha incompleta — o grau reflete só o que foi lido");
+            if (checklistDone == 0)
+                reasons.Add("checklist físico por preencher — o grau pode melhorar ou piorar");
         }
 
         var verdict = reasons.Count == 0
