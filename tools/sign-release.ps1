@@ -107,11 +107,13 @@ $author = $commit.commit.author.name
 $msg = ($commit.commit.message -split "`n")[0]
 Write-Host "commit: $short — $author — $msg"
 
-# ancestor de main? compare/<sha>...main devolve "behind" (sha ⊆ main) ou
-# "identical"; "ahead"/"diverged" = tem commits que não estão em main.
+# ancestor de main? compare/<sha>...main descreve o HEAD (main) face à
+# BASE (sha): "ahead" = main contém o sha e mais (ancestor ✓); "identical"
+# = mesmo commit; "behind" = o tag tem commits que main não tem; e
+# "diverged" = histórias separadas. Só os dois primeiros são assináveis.
 $cmp = gh api "repos/$Repo/compare/$sha...main" | ConvertFrom-Json
-if ($cmp.status -ne 'identical' -and $cmp.status -ne 'behind') {
-    Write-Error "$short não é ancestor de main (compare: $($cmp.status), ahead_by $($cmp.ahead_by)) — recuso assinar um build de um commit fora de main"
+if ($cmp.status -ne 'identical' -and $cmp.status -ne 'ahead') {
+    Write-Error "$short não é ancestor de main (compare: $($cmp.status), behind_by $($cmp.behind_by)) — recuso assinar um build de um commit fora de main"
 }
 
 if (-not $Force) {
