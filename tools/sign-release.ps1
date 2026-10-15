@@ -45,9 +45,19 @@ if (-not $KeyFile) {
 if (-not (Test-Path $KeyFile)) { Write-Error "key file not found: $KeyFile" }
 $KeyPem = [System.IO.File]::ReadAllText((Resolve-Path $KeyFile))
 
-# --- draft release + assets via API (gh release download não serve drafts) ---
+# --- draft release + assets via API (gh release download não serve drafts;
+# e /releases/tags/:tag não resolve drafts cujo git tag ainda não existe) ---
 Write-Host "a ler a release $Tag ..."
-$rel = gh api "repos/$Repo/releases/tags/$Tag" | ConvertFrom-Json
+$all = gh api "repos/$Repo/releases" | ConvertFrom-Json
+# Se houver duplicados do tag (drafts manuais esquecidos), o draft ganha —
+# publicar o que já está live é recusado a seguir de qualquer forma.
+$stub = $all | Where-Object { $_.tag_name -eq $Tag -and $_.draft } | Select-Object -First 1
+if (-not $stub) {
+    $stub = $all | Where-Object { $_.tag_name -eq $Tag } | Select-Object -First 1
+}
+if (-not $stub) { Write-Error "release $Tag não encontrada — correu o tag push / release.yml?" }
+# A lista vem sem assets completos — busca a release inteira por id.
+$rel = gh api "repos/$Repo/releases/$($stub.id)" | ConvertFrom-Json
 if (-not $rel.draft) { Write-Error "$Tag já está publicada — recuso re-assinar uma release live" }
 $sums = $rel.assets | Where-Object { $_.name -eq 'SHA256SUMS.txt' } | Select-Object -First 1
 if (-not $sums) { Write-Error "draft sem SHA256SUMS.txt — o release.yml correu completo?" }
