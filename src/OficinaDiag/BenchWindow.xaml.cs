@@ -58,17 +58,18 @@ public sealed partial class BenchWindow : Window
         _cts = new CancellationTokenSource();
         var samples = new List<PowerSample>();
         var sw = Stopwatch.StartNew();
+        var loadApplied = false;
         try
         {
             Instr.Text = L10n.T("bench.phase1");
             await RunPhase(samples, 1, sw, sw.Elapsed + TimeSpan.FromSeconds(BaseSec));
 
             Instr.Text = L10n.T(_loadOn is not null ? "bench.phase2.auto" : "bench.phase2.ios");
-            if (_loadOn is not null) await _loadOn();
+            if (_loadOn is not null) { await _loadOn(); loadApplied = true; }
             await RunPhase(samples, 2, sw, sw.Elapsed + TimeSpan.FromSeconds(LoadSec));
 
             Instr.Text = L10n.T(_loadOff is not null ? "bench.phase3.auto" : "bench.phase3.ios");
-            if (_loadOff is not null) await _loadOff();
+            if (_loadOff is not null) { await _loadOff(); loadApplied = false; }
             await RunPhase(samples, 3, sw, sw.Elapsed + TimeSpan.FromSeconds(RecoverSec));
 
             Instr.Text = L10n.T("bench.done");
@@ -82,6 +83,11 @@ public sealed partial class BenchWindow : Window
         }
         catch (Exception ex)
         {
+            // Abort a meio da fase 2 (janela fechada, probe morto) — repõe
+            // o estado do telefone, senão o stay-on ficava ligado no aparelho
+            // do cliente.
+            if (loadApplied && _loadOff is not null)
+                try { await _loadOff(); } catch { /* telefone pode ter saído */ }
             Verdict.Text = L10n.F("bench.aborted", ex.Message);
             if (samples.Count > 10)
             {

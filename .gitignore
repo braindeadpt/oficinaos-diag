@@ -7,3 +7,7 @@ publish/
 oficinaos-diag-*.zip
 out/
 out-store/
+# Release-signing private key — lives only on the owner's machine (and as a
+# GitHub Actions secret). generate-release-key.ps1 writes it here.
+release-signing-key.pem
+*.sig

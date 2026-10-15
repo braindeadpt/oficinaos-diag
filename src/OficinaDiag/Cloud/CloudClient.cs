@@ -134,6 +134,43 @@ public sealed class CloudClient
     }
 
     /// <summary>
+    /// Troca um código de emparelhamento por um token com scope "diag" — o
+    /// PC de bancada fica com um token que só serve relatórios IA; se for
+    /// comprometido não pode publicar a montra nem mexer no WhatsApp da loja.
+    /// </summary>
+    public async Task<(bool ok, string token, string shopName, string error)> RedeemPairingAsync(string code)
+    {
+        try
+        {
+            var payload = JsonSerializer.Serialize(new
+            {
+                code = code.Trim().ToUpperInvariant(),
+                scope = "diag",
+                label = "oficinaos-diag",
+            });
+            var res = await SendWithRetryAsync(() => new HttpRequestMessage(
+                HttpMethod.Post, new Uri(BaseUri, "pairing/redeem"))
+            {
+                Content = new StringContent(payload, Encoding.UTF8, "application/json"),
+            });
+            var body = await res.Content.ReadAsStringAsync();
+            if (!res.IsSuccessStatusCode)
+            {
+                if (body.Contains("INVALID_OR_EXPIRED_CODE"))
+                    return (false, "", "", "Código inválido ou expirado — gera um novo na app da loja.");
+                if (body.Contains("RATE_LIMITED"))
+                    return (false, "", "", "Demasiadas tentativas — espera um pouco e tenta outra vez.");
+                return (false, "", "", $"Servidor respondeu {(int)res.StatusCode} — {body}");
+            }
+            using var doc = JsonDocument.Parse(body);
+            var token = doc.RootElement.GetProperty("shopToken").GetString() ?? "";
+            var shopName = doc.RootElement.TryGetProperty("shopName", out var s) ? s.GetString() ?? "" : "";
+            return (true, token, shopName, "");
+        }
+        catch (Exception ex) { return (false, "", "", ex.Message); }
+    }
+
+    /// <summary>
     /// Technician-facing: AI report via the shop's cloud token (Pro module
     /// ai-reports). O token vem das Opções (guardado cifrado) ou é pedido
     /// mascarado à vez — nunca fica em claro em ficheiros.

@@ -1,7 +1,7 @@
 # oficinaos-diag
 
 Ferramenta Windows de diagnóstico de telemóveis por USB — visual terminal retro anos 90/2000,
-scan local gratuito e relatórios Pro via [oficinaos-cloud] para lojas aderentes ao
+scan local gratuito e relatórios Pro via [oficinaos-cloud](https://github.com/braindeadpt/oficinaos-cloud) para lojas aderentes ao
 [OficinaOS](https://github.com/braindeadpt/OficinaOS).
 
 > **Ecossistema:** este é 1 de 4 repos (app da loja `reparilo`, `oficinaos-cloud`,
@@ -39,6 +39,11 @@ scan local gratuito e relatórios Pro via [oficinaos-cloud] para lojas aderentes
 - **Enviar à loja** (`intake`): o cliente em casa mete o código da loja e o
   diagnóstico chega à app OficinaOS da loja como pré-check — reparações,
   compra/venda de usados, grading
+
+**Ligar o diag à loja (Pro):** nas Opções cola um **código de emparelhamento**
+(XXXX-YYYY, gerado pela app OficinaOS da loja ou pelo suporte) — o diag troca-o
+por um token com scope `diag`, que só serve relatórios IA e nunca toca no resto
+da loja. Também aceita o token direto (legado).
 
 ## Suporte de dispositivos
 

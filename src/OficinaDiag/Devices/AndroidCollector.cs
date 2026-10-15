@@ -38,8 +38,15 @@ public sealed class AndroidCollector
     private async Task<string?> PropAsync(string serial, string name) =>
         (await AdbAsync(serial, $"shell getprop {name}"))?.Trim();
 
-    private static string? Match(string? text, string pattern) =>
-        text is null ? null : Regex.Match(text, pattern).Groups[1].Value.Trim();
+    /// <summary>Grupo 1 do regex, ou null quando não casa — "" nunca é dado.</summary>
+    private static string? Match(string? text, string pattern)
+    {
+        if (text is null) return null;
+        var m = Regex.Match(text, pattern);
+        if (!m.Success) return null;
+        var v = m.Groups[1].Value.Trim();
+        return v.Length == 0 ? null : v;
+    }
 
     /// <summary>
     /// `service call iphonesubinfo` devolve um Parcel com o IMEI em ASCII
@@ -112,8 +119,12 @@ public sealed class AndroidCollector
         // Bootloader / tamper indicators
         var vbState = await PropAsync(serial, "ro.boot.verifiedbootstate");
         var buildTags = await PropAsync(serial, "ro.build.tags");
-        r.Set("security.bootloader", vbState == "green" ? "pass" : "warn", vbState,
-            "Bootloader verification state (green = stock, locked)");
+        r.Set("security.bootloader",
+            vbState is null ? "skipped" : vbState == "green" ? "pass" : "warn",
+            vbState ?? "prop ausente",
+            vbState is null
+                ? "ro.boot.verifiedbootstate não exposto neste Android — não verificável"
+                : "Bootloader verification state (green = stock, locked)");
         if (buildTags?.Contains("test-keys") == true)
             r.Set("security.build", "warn", buildTags, "Test-keys build — software modificado");
         else
@@ -204,10 +215,14 @@ public sealed class AndroidCollector
         var health = Match(batt, @"health: (\d+)");
         var healthText = health switch { "2" => "good", "3" => "overheat", "4" => "dead", "5" => "over-voltage", "6" => "failure", _ => health };
         r.Set("battery.level", "info", level is null ? null : $"{level}%");
+        // Sem leitura válida o valor fica null — nunca um "0°C" inventado.
+        var tempOk = double.TryParse(temp, out var t);
         r.Set("battery.temperature",
-            double.TryParse(temp, out var t) && t / 10 > 40 ? "warn" : "info",
-            temp is null ? null : $"{t / 10:0.#}°C");
-        r.Set("battery.health", healthText == "good" ? "pass" : "warn", healthText);
+            tempOk && t / 10 > 40 ? "warn" : "info",
+            tempOk ? $"{t / 10:0.#}°C" : null);
+        // Sem leitura de health não há check — ausência de dado não é defeito.
+        if (healthText is not null)
+            r.Set("battery.health", healthText == "good" ? "pass" : "warn", healthText);
 
         // Estado de carga + fonte — "a carregar por USB a X%" distingue
         // porta lenta de carregador de parede quando o cliente diz "não carrega".
@@ -314,7 +329,14 @@ public sealed class AndroidCollector
         // é que sugerem hardware.
         await CollectLogsAsync(r, serial);
 
-        r.Set("scan", "pass", "completo", $"Recolha via ADB em {(r.Device.Model ?? "dispositivo")}");
+        // Se nem modelo nem OS vieram, o aparelho não respondeu (unauthorized,
+        // adb morto, driver) — reportar "completo" aqui escondia uma recolha vazia.
+        if (r.Device.Model is null && r.Device.Brand is null && r.Device.OsVersion is null)
+            r.Set("scan", "fail", "sem resposta",
+                "o aparelho não respondeu ao adb — verifica a autorização USB no telefone");
+        else
+            r.Set("scan", "pass", "completo",
+                $"Recolha via ADB em {(r.Device.Model ?? "dispositivo")}");
         return r;
     }
 

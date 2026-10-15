@@ -21,6 +21,11 @@ jobs:
         shell: pwsh
         run: ./tools/fetch-tools.ps1
 
+      - name: Test
+        # A release não sai sem os testes verdes — enviar binários sem os
+        # correr era um acidente à espera de acontecer.
+        run: dotnet test tests/OficinaDiag.Tests -c Release
+
       - name: Publish single-file exe
         # The tag IS the version — embed it so the exe's self-update check
         # can never disagree with the release it's running.
@@ -34,22 +39,39 @@ jobs:
 
       - name: Package
         shell: pwsh
-        run: Compress-Archive -Path out/* -DestinationPath "oficinaos-diag-win-x64.zip"
+        # O nome do zip leva a versão — fica pinned no SHA256SUMS e o updater
+        # valida-a contra o tag (anti-downgrade: um SUMS antigo republicado
+        # num tag mais alto é recusado).
+        run: >-
+          Compress-Archive -Path out/*
+          -DestinationPath "oficinaos-diag-v$($env:VERSION.TrimStart('v'))-win-x64.zip"
+        env:
+          VERSION: ${{ github.ref_name }}
 
       - name: Checksum
         shell: pwsh
-        # The in-app updater verifies this file before extracting — a tampered
-        # or partial zip must fail closed. Format: "<hash>  <filename>".
+        # Formato: linha "version <x.y.z>" (a assinatura passa a cobrir a
+        # versão declarada) + "<hash>  <filename>". A release sai como DRAFT —
+        # a assinatura é OFFLINE (tools/sign-release.ps1 na máquina do dono),
+        # porque uma chave no CI deixava de provar origem: quem tivesse push
+        # no repo assinava o que quisesse. Ver docs/RELEASE.md.
         run: >-
+          "version $($env:VERSION.TrimStart('v'))"
+          | Out-File -Encoding ascii SHA256SUMS.txt;
           "$((
-          Get-FileHash oficinaos-diag-win-x64.zip -Algorithm SHA256
-          ).Hash.ToLower())  oficinaos-diag-win-x64.zip"
-          | Out-File -Encoding ascii SHA256SUMS.txt
+          Get-FileHash "oficinaos-diag-v$($env:VERSION.TrimStart('v'))-win-x64.zip" -Algorithm SHA256
+          ).Hash.ToLower())  oficinaos-diag-v$($env:VERSION.TrimStart('v'))-win-x64.zip"
+          | Out-File -Append -Encoding ascii SHA256SUMS.txt
+        env:
+          VERSION: ${{ github.ref_name }}
 
-      - name: GitHub release
+      - name: GitHub release (draft)
         uses: softprops/action-gh-release@v2
         with:
+          # Draft: invisível para releases/latest até a assinatura offline
+          # publicar (sign-release.ps1 faz upload do .sig e dá publish).
+          draft: true
           files: |
-            oficinaos-diag-*.zip
+            oficinaos-diag-v*-win-x64.zip
             SHA256SUMS.txt
           generate_release_notes: true

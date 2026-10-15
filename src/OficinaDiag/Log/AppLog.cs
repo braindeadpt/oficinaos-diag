@@ -15,6 +15,10 @@ public static class AppLog
 
     public static string FilePath => File;
 
+    // Sem teto o log crescia para sempre — uploads de suporte iam cada vez
+    // maiores e a cauda útil ficava enterrada. Mantém os últimos ~1 MB.
+    private const long MaxBytes = 1_000_000;
+
     public static void Write(string line)
     {
         try
@@ -22,10 +26,27 @@ public static class AppLog
             lock (Gate)
             {
                 Directory.CreateDirectory(System.IO.Path.GetDirectoryName(File)!);
+                TrimIfNeeded();
                 System.IO.File.AppendAllText(File, $"{DateTime.Now:yyyy-MM-dd HH:mm:ss} {line}{Environment.NewLine}");
             }
         }
         catch { /* logging nunca derruba a app */ }
+    }
+
+    private static void TrimIfNeeded()
+    {
+        var info = new FileInfo(File);
+        if (!info.Exists || info.Length <= MaxBytes) return;
+        // Ainda raro — corre uma vez por ~1 MB de linhas.
+        using (var fs = new FileStream(File, FileMode.Open, FileAccess.ReadWrite, FileShare.Read))
+        {
+            var keep = (int)Math.Min(fs.Length, MaxBytes / 2);
+            fs.Seek(-keep, SeekOrigin.End);
+            var buf = new byte[keep];
+            var read = fs.Read(buf, 0, keep);
+            fs.SetLength(0);
+            fs.Write(buf, 0, read);
+        }
     }
 
     public static void Exception(string where, System.Exception ex) =>

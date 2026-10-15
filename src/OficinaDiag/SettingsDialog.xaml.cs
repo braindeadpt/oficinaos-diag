@@ -62,7 +62,7 @@ public partial class SettingsDialog : Window
 
     private static void PreviewTheme(string name) => ThemeManager.Apply(name);
 
-    private void Save_Click(object sender, RoutedEventArgs e)
+    private async void Save_Click(object sender, RoutedEventArgs e)
     {
         if (!string.IsNullOrWhiteSpace(CloudBox.Text))
         {
@@ -83,8 +83,34 @@ public partial class SettingsDialog : Window
         }
         _config.Language = L10n.Current;
         _config.Theme = ThemeManager.Current;
-        if (!string.IsNullOrEmpty(TokenBox.Password))
-            _config.SetShopToken(TokenBox.Password);
+        var pasted = TokenBox.Password;
+        if (!string.IsNullOrEmpty(pasted))
+        {
+            // Só o código de emparelhamento (XXXX-YYYY da app da loja) entra
+            // aqui — é trocado na cloud por um token scoped "diag". Um token
+            // completo colado é recusado: este PC nunca deve guardar poder
+            // total sobre a loja.
+            if (!IntakeRules.IsPairingCode(pasted))
+            {
+                MessageBox.Show(this, L10n.T("set.token.codeonly"), Title,
+                    MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+            SaveBtn.IsEnabled = false;
+            var cloud = new CloudClient(_config);
+            var (ok, token, shop, err) = await cloud.RedeemPairingAsync(pasted);
+            SaveBtn.IsEnabled = true;
+            if (!ok)
+            {
+                MessageBox.Show(this, err, Title,
+                    MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+            _config.SetShopToken(token, "diag");
+            if (!string.IsNullOrEmpty(shop))
+                MessageBox.Show(this, L10n.F("set.paired", shop), Title,
+                    MessageBoxButton.OK, MessageBoxImage.Information);
+        }
         DialogResult = true;
     }
 

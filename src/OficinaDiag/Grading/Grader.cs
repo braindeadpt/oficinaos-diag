@@ -45,6 +45,15 @@ public static class Grader
         "security.mdm", "device.activation",
     ];
 
+    /// <summary>
+    /// Checks sem os quais não há base para um grau — se o scan falhou antes
+    /// de ler qualquer um destes, o relatório fica sem grau ("—").
+    /// </summary>
+    private static readonly string[] CriticalChecks =
+    [
+        "battery.capacity", "identity.imei", "security.bootloader",
+    ];
+
     public static GradeResult Compute(DeviceReport r)
     {
         var reasons = new List<string>();
@@ -161,7 +170,8 @@ public static class Grader
             checklistDone++;
             if (s is "warn" or "fail")
             {
-                Cap(item.Weight, $"{item.LabelPt} — defeito marcado pelo técnico");
+                // Weight → teto: 0=cosmético→B(1) · 1=funcional→C(2) · 2=crítico→D(3).
+                Cap(item.Weight + 1, $"{item.LabelPt} — defeito marcado pelo técnico");
                 var part = PartFor(item.Key);
                 if (part is not null) parts.Add(part);
             }
@@ -176,16 +186,34 @@ public static class Grader
         if (Stat("logs.panics") is "fail" or "warn")
             Cap(2, $"kernel panics / falhas de sistema no histórico ({Val("logs.panics")}) — investigar placa");
 
+        // ── scan falhado: recolha incompleta — teto B, nunca A ───────────
+        // Um scan que morreu a meio leu só parte do aparelho. E se nem um
+        // check crítico foi lido, não há base para grau nenhum ("—" abaixo).
+        var criticalRead = CriticalChecks.Any(r.Results.ContainsKey);
+        var scanFailed = Stat("scan") is "fail";
+        if (scanFailed && criticalRead)
+            Cap(1, "recolha incompleta — o grau reflete só o que foi lido");
+
         // ── montagem do veredicto ────────────────────────────────────────
         var grade = "ABCD"[ceiling].ToString();
+        // "scan" é meta-estado da recolha, não um check do aparelho — sem o
+        // excluir, um scan falhado (só com scan:fail) passava no coverage e
+        // recebia grau A.
         var coverage = r.Results.Count(kv =>
             !kv.Key.StartsWith("grade.", StringComparison.Ordinal)
-            && !kv.Key.StartsWith("suggest.", StringComparison.Ordinal));
+            && !kv.Key.StartsWith("suggest.", StringComparison.Ordinal)
+            && kv.Key != "scan");
         if (coverage == 0)
         {
             grade = "—";
             reasons.Clear();
             reasons.Add("sem dados de scan — liga um telefone ou corre o SCAN primeiro");
+        }
+        else if (scanFailed && !criticalRead)
+        {
+            grade = "—";
+            reasons.Clear();
+            reasons.Add("scan falhou antes de ler os checks críticos (bateria, IMEI, bootloader) — sem base para um grau");
         }
         else if (checklistDone == 0)
         {

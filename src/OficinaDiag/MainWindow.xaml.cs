@@ -89,6 +89,10 @@ public partial class MainWindow : Window
         Log(L10n.F("log.screen", wa.Width, wa.Height, Width, Height, Left, Top));
         Log(L10n.T("log.boot"));
         Log(L10n.T("log.tagline"));
+        // Token guardado antes dos scopes foi apagado no Load() — pede ao
+        // utilizador para emparelhar outra vez com o código da loja.
+        if (_config.LegacyTokenWiped)
+            Log(L10n.T("log.pairing.wiped"));
         if (!File.Exists(_adbPath))
             Log(L10n.T("log.adbmissing"));
         _detector = new DeviceDetector(_adbPath);
@@ -176,8 +180,10 @@ public partial class MainWindow : Window
         if (_update is null) return;
         UpdateButton.IsEnabled = false;
         Log(L10n.F("log.update.dl", _update.Tag));
+        var current = System.Reflection.Assembly.GetExecutingAssembly().GetName().Version
+            ?? new Version(0, 0, 0);
         var (ok, msg) = await Cloud.UpdateChecker.DownloadAndStageAsync(
-            _update, AppContext.BaseDirectory);
+            _update, AppContext.BaseDirectory, current);
         Log(ok ? $"> {msg}" : L10n.F("log.update.fail", msg));
         if (ok)
             Application.Current.Shutdown();
@@ -219,6 +225,10 @@ public partial class MainWindow : Window
         Console.ScrollToEnd();
         OficinaDiag.Log.AppLog.Write(line);
     }
+
+    /// <summary>Erros vindos do handler global (App) — visíveis na consola da app.</summary>
+    internal void LogError(string where, Exception ex) =>
+        Log($"! {where}: {ex.GetType().Name}: {ex.Message}");
 
     private async void Scan_Click(object sender, RoutedEventArgs e)
     {
@@ -443,6 +453,11 @@ public partial class MainWindow : Window
             });
 
             var url = server.LanUrl;
+            // Sem IP de LAN o servidor ficou em loopback — o QR/URL não abre
+            // no telemóvel. Avisa em vez de deixar o utilizador a ler um
+            // código condenado a falhar.
+            if (server.IsLoopbackOnly)
+                Log(L10n.T("log.test.nolan"));
             Log(L10n.F("log.test.url", url));
             if (_current?.Kind == DeviceKind.Android)
             {
@@ -596,11 +611,13 @@ public partial class MainWindow : Window
     private async void Send_Click(object sender, RoutedEventArgs e)
     {
         if (_report is null) return;
-        var dlg = new SendDialog { Owner = this };
+        var dlg = new SendDialog(_report.Purpose) { Owner = this };
         if (dlg.ShowDialog() != true) return;
         Log(L10n.F("log.send.start", dlg.ShopCode));
         SendButton.IsEnabled = false; // double-submit criava pedidos duplicados na loja
-        if (dlg.Purpose == "sale") _report.Purpose = "sale";
+        // Sincroniza nos dois sentidos: um envio explícito como "reparação"
+        // limpa o "sale" que o checklist possa ter deixado.
+        _report.Purpose = dlg.Purpose == "sale" ? "sale" : null;
         try
         {
             var (ok, msg) = await _cloud.SendToShopAsync(
@@ -671,9 +688,22 @@ public partial class MainWindow : Window
             if (tdlg.ShowDialog() != true) return;
             token = tdlg.Token;
             lang = tdlg.Lang;
+            // Só o código de emparelhamento (XXXX-YYYY da app da loja) — a
+            // cloud troca-o por um token scoped "diag". Um token completo
+            // colado é recusado: este PC nunca deve guardar poder total.
+            if (!Cloud.IntakeRules.IsPairingCode(token))
+            {
+                Log(L10n.T("log.pairing.codeonly"));
+                return;
+            }
+            Log(L10n.T("log.pairing"));
+            var (pOk, pToken, pShop, pErr) = await _cloud.RedeemPairingAsync(token);
+            if (!pOk) { Log(L10n.F("log.pairing.fail", pErr)); return; }
+            Log(L10n.F("log.pairing.ok", pShop));
+            token = pToken;
             if (tdlg.Remember)
             {
-                _config.SetShopToken(token);
+                _config.SetShopToken(token, "diag");
                 _config.Save();
             }
         }

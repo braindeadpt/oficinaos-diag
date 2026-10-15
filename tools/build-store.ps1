@@ -44,6 +44,20 @@ Remove-Item "$layout\*.pdb" -ErrorAction SilentlyContinue
 Copy-Item $manifest (Join-Path $layout "AppxManifest.xml") -Force
 Copy-Item $assets (Join-Path $layout "Assets") -Recurse -Force
 
+# A versão do csproj tem de entrar no Identity do manifesto staged — o Partner
+# Center lê a identidade do pacote, não o nome do ficheiro. Sem isto o pacote
+# saía sempre como a versão fixa do XML fonte (submissão rejeitada ou update
+# nunca entregue). Só dentro do <Identity> — MinVersion/MaxVersionTested
+# do <TargetDeviceFamily> não podem ser tocados.
+$layoutManifest = Join-Path $layout "AppxManifest.xml"
+$manifestXml = Get-Content $layoutManifest -Raw
+$manifestXml = [regex]::Replace($manifestXml,
+    '(<Identity\b[^>]*?\bVersion=")[^"]*', "`${1}$msixVersion")
+if ($manifestXml -notmatch "<Identity\b[^>]*\bVersion=""$([regex]::Escape($msixVersion))""") {
+    throw "failed to stamp Version=$msixVersion into the staged AppxManifest.xml"
+}
+Set-Content $layoutManifest -Value $manifestXml -Encoding UTF8
+
 # --- 4. resources.pri — maps the scale-200 tile assets -------------------------
 $sdkBin = Get-ChildItem "C:\Program Files (x86)\Windows Kits\10\bin\*\x64" -Directory |
     Sort-Object FullName -Descending | Select-Object -First 1 -ExpandProperty FullName

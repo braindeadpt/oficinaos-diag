@@ -44,6 +44,19 @@ public static partial class IntakeRules
         RegexOptions.CultureInvariant)]
     private static partial Regex EmailRegex();
 
+    /// <summary>
+    /// Código de emparelhamento da app da loja (XXXX-YYYY)? O alfabeto real
+    /// exclui 0/O/1/I, mas aceitamos dígitos — quem os digita recebe o 400
+    /// legível da cloud em vez de um "formato inválido" local. Um token
+    /// completo colado NÃO passa aqui: o diag só aceita o código, que a
+    /// cloud troca por um token com scope "diag" (privilégio mínimo).
+    /// </summary>
+    public static bool IsPairingCode(string input) =>
+        PairingCodeRegex().IsMatch(input.Trim());
+
+    [GeneratedRegex(@"^[A-Z0-9]{4}-[A-Z0-9]{4}$", RegexOptions.IgnoreCase)]
+    private static partial Regex PairingCodeRegex();
+
     /// <summary>Uma chave nova por envio — reutilizada em todas as tentativas desse envio.</summary>
     public static string NewIdempotencyKey() => Guid.NewGuid().ToString("D");
 

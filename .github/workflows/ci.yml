@@ -1,0 +1,21 @@
+name: ci
+
+# O projeto de testes é net8.0 puro (liga os ficheiros sem UI) — corre em
+# Linux, não precisa do runner Windows nem das platform-tools.
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+
+      - name: Test
+        run: dotnet test tests/OficinaDiag.Tests -c Release

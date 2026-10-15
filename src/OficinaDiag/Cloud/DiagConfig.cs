@@ -11,8 +11,16 @@ namespace OficinaDiag.Cloud;
 /// </summary>
 public sealed class DiagConfig
 {
-    private static readonly string Path =
+    // Portable-first: junto do exe para quem corre o ZIP numa pen. Quando o
+    // dir não é gravável (instalação MSIX/Store — pasta de instalação só de
+    // leitura), cai para %APPDATA%\OficinaDiag — sem o fallback o tema, o
+    // idioma e o token perdiam-se a cada arranque na versão da Store.
+    private static readonly string PortablePath =
         System.IO.Path.Combine(AppContext.BaseDirectory, "oficinaos-diag.config.json");
+    private static readonly string AppDataPath =
+        System.IO.Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+            "OficinaDiag", "oficinaos-diag.config.json");
 
     public const string DefaultCloudUrl = "https://cloud.oficinaos.app";
 
@@ -26,14 +34,23 @@ public sealed class DiagConfig
 
     // Token Pro (relatórios IA) — nunca em claro no disco: guardamos a versão
     // cifrada com DPAPI (âmbito CurrentUser). Sem ele, o AI pede o token à vez.
-    // RISCO CONHECIDO (revisão 2026-10, sem redesenho nesta versão): isto é
-    // o shop token COMPLETO — o mesmo da app (publica o portal, muda o
-    // whatsapp-config, lê reservas…) — só para gerar relatórios IA. O DPAPI
-    // (CurrentUser) protege contra cópia do ficheiro para outra máquina, mas
-    // não contra outro processo do mesmo utilizador num PC de bancada.
-    // TODO(security): tokens com âmbito (ex. scope ["ai-reports"]) emitidos no
-    // dashboard da Cloud só para o diag, revogáveis por PC.
+    // RESOLVIDO (2026-10): a app só aceita o código de emparelhamento
+    // (XXXX-YYYY), trocado na cloud por um token com scope "diag" — só serve
+    // /reports/diagnostic. Um PC de bancada comprometido não pode publicar a
+    // montra nem mexer no WhatsApp da loja. O DPAPI (CurrentUser) continua a
+    // proteger contra cópia do ficheiro para outra máquina; contra outro
+    // processo do mesmo utilizador, o scope é a segunda linha de defesa.
     public string? ShopTokenProtected { get; set; }
+
+    /// <summary>Scope declarado quando o token foi emitido ("diag").</summary>
+    public string? ShopTokenScope { get; set; }
+
+    /// <summary>
+    /// True quando o Load() encontrou um token pré-scope e o apagou — a UI
+    /// usa-o para pedir novo emparelhamento em vez de falhar sem explicação.
+    /// </summary>
+    [System.Text.Json.Serialization.JsonIgnore]
+    public bool LegacyTokenWiped { get; private set; }
 
     // Identidade da loja — carimbo do relatório para seguradora.
     // Guardada localmente; pedida na 1ª emissão e pré-preenchida depois.
@@ -59,7 +76,9 @@ public sealed class DiagConfig
 
     public string? GetShopToken()
     {
-        if (string.IsNullOrEmpty(ShopTokenProtected)) return null;
+        // DPAPI só existe em Windows; noutros runtimes devolve null em vez
+        // de PlatformNotSupported — a app é Windows-only, mas os testes não.
+        if (string.IsNullOrEmpty(ShopTokenProtected) || !OperatingSystem.IsWindows()) return null;
         try
         {
             var raw = ProtectedData.Unprotect(
@@ -69,36 +88,63 @@ public sealed class DiagConfig
         catch { return null; } // cifrado por outro utilizador/máquina — pede de novo
     }
 
-    public void SetShopToken(string? token)
+    public void SetShopToken(string? token, string? scope = null)
     {
-        ShopTokenProtected = string.IsNullOrWhiteSpace(token) ? null
+        // Sem DPAPI (não-Windows) não se guarda segredo nenhum em claro —
+        // em vez de gravar desprotegido, o token simplesmente não fica.
+        ShopTokenProtected = string.IsNullOrWhiteSpace(token) || !OperatingSystem.IsWindows() ? null
             : Convert.ToBase64String(ProtectedData.Protect(
                 Encoding.UTF8.GetBytes(token.Trim()), null, DataProtectionScope.CurrentUser));
+        ShopTokenScope = token is null || ShopTokenProtected is null ? null : scope;
     }
 
     public static DiagConfig Load()
     {
-        try
+        foreach (var path in new[] { PortablePath, AppDataPath })
         {
-            if (File.Exists(Path))
+            try
             {
-                var cfg = JsonSerializer.Deserialize<DiagConfig>(File.ReadAllText(Path));
-                if (cfg is not null)
+                if (!File.Exists(path)) continue;
+                var cfg = JsonSerializer.Deserialize<DiagConfig>(File.ReadAllText(path));
+                if (cfg is null) continue;
+                // URL inválido não pode partir o arranque — volta ao default.
+                if (!TryValidateCloudUrl(cfg.CloudUrl, out _))
+                    cfg.CloudUrl = DefaultCloudUrl;
+                // Token guardado antes dos scopes ("full" da loja) — demasiado
+                // poder para um PC de bancada. Apaga-se e pede emparelhamento;
+                // o código XXXX-YYYY emite um token "diag" de privilégio mínimo.
+                if (cfg.ShopTokenProtected is not null && cfg.ShopTokenScope != "diag")
                 {
-                    // URL inválido não pode partir o arranque — volta ao default.
-                    if (!TryValidateCloudUrl(cfg.CloudUrl, out _))
-                        cfg.CloudUrl = DefaultCloudUrl;
-                    return cfg;
+                    cfg.ShopTokenProtected = null;
+                    cfg.ShopTokenScope = null;
+                    cfg.LegacyTokenWiped = true;
                 }
+                return cfg;
             }
+            catch { /* corrupt config → try the next location / defaults */ }
         }
-        catch { /* corrupt config → defaults */ }
         return new DiagConfig();
     }
 
     public void Save()
     {
-        try { File.WriteAllText(Path, JsonSerializer.Serialize(this)); }
-        catch { /* read-only dir — config just won't persist */ }
+        var json = JsonSerializer.Serialize(this);
+        if (!TryWriteAtomic(PortablePath, json))
+            try { TryWriteAtomic(AppDataPath, json); } catch { /* sem disco gravável */ }
+    }
+
+    /// <summary>tmp+rename — um crash a meio da escrita não deixa JSON truncado.</summary>
+    private static bool TryWriteAtomic(string path, string content)
+    {
+        try
+        {
+            var dir = System.IO.Path.GetDirectoryName(path);
+            if (dir is not null) Directory.CreateDirectory(dir);
+            var tmp = path + ".tmp";
+            File.WriteAllText(tmp, content);
+            File.Move(tmp, path, overwrite: true);
+            return true;
+        }
+        catch { return false; }
     }
 }
