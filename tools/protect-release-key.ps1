@@ -79,12 +79,11 @@ try {
         $pkcs8, $entropy, [System.Security.Cryptography.DataProtectionScope]::CurrentUser)
     New-Item -ItemType Directory -Force (Split-Path $DpapiFile -Parent) | Out-Null
     [IO.File]::WriteAllBytes($DpapiFile, $prot)
-    $acl = Get-Acl $DpapiFile
-    $acl.SetAccessRuleProtection($true, $false)
-    foreach ($r in @($acl.Access)) { $acl.RemoveAccessRule($r) | Out-Null }
-    $acl.AddAccessRule([System.Security.AccessControl.FileSystemAccessRule]::new(
-        [System.Security.Principal.WindowsIdentity]::GetCurrent().Name, 'FullControl', 'Allow'))
-    Set-Acl -Path $DpapiFile -AclObject $acl
+    # ACL só para este utilizador — icacls em vez de Set-Acl (Set-Acl pede
+    # SeSecurityPrivilege quando o ficheiro já tem ACL endurecida).
+    $sid = [System.Security.Principal.WindowsIdentity]::GetCurrent().User.Value
+    & icacls $DpapiFile /inheritance:r /grant:r "*${sid}:F" | Out-Null
+    if ($LASTEXITCODE -ne 0) { Write-Error "icacls falhou em $DpapiFile" }
     Write-Host "gravada: $DpapiFile (DPAPI, só este utilizador nesta máquina)"
 
     # --- 2b. backup re-cifrado com passphrase NOVA (duas vezes, sem eco) ---
