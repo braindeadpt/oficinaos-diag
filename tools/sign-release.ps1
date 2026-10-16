@@ -11,16 +11,25 @@
 #      tag (um tag movido depois do build selava o build errado), resolve o
 #      commit do tag e recusa se não for ancestor de main (a chave offline
 #      só sela builds que vieram de main), pede confirmação, assina com a
-#      PEM local e faz upload do .sig.
+#      chave local e faz upload do .sig.
 #   3. Só então publica o draft.
 #
-#   .\tools\sign-release.ps1 -Tag v0.3.0
-#   .\tools\sign-release.ps1 -Tag v0.3.0 -KeyFile E:\cofre\release-key.pem
-#   .\tools\sign-release.ps1 -Tag v0.3.0 -Force   # salta a confirmação
+#   .\tools\sign-release.ps1 -Tag v0.3.0                  # chave via DPAPI, sem prompt
+#   .\tools\sign-release.ps1 -Tag v0.3.0 -KeyFile E:\oficinaos-release-key.enc.pem
+#   .\tools\sign-release.ps1 -Tag v0.3.0 -Confirm:$false  # salta a confirmação (automação)
 #
-# A PEM vive FORA do repo e fora do CI (cofre/pen cifrada). Quem tiver push
-# no repo consegue criar um draft, mas sem a chave não produz um .sig válido
-# — e o updater falha fechado sem ele. Requer: pwsh 7+, gh autenticado.
+# A chave vive FORA do repo e fora do CI, em duas formas criadas por
+# tools/protect-release-key.ps1 (corre uma vez por máquina):
+#   - %LOCALAPPDATA%\OficinaOS\release-key.dpapi — PKCS#8 protegido com
+#     DPAPI/CurrentUser: só esta conta nesta máquina o abre, sem prompt.
+#     É o caminho por omissão.
+#   - .enc.pem cifrado por passphrase (backup, idealmente noutro disco ou
+#     pen): com -KeyFile o script pede a passphrase (Read-Host
+#     -AsSecureString) e decifra só em memória.
+# Em NENHUM caminho a chave é escrita em disco em plaintext.
+# Quem tiver push no repo consegue criar um draft, mas sem a chave não
+# produz um .sig válido — e o updater falha fechado sem ele.
+# Requer: pwsh 7+, gh autenticado, Windows (DPAPI no caminho por omissão).
 param(
     [Parameter(Mandatory = $true)][string]$Tag,
     [string]$KeyFile,
@@ -28,8 +37,9 @@ param(
     # -NoPublish: testa o fluxo num draft (download→valida→assina→upload)
     # sem publicar — o draft continua invisível para o updater.
     [switch]$NoPublish,
-    # -Force: salta a confirmação interativa "Assinar <tag> @ <sha>?".
-    [switch]$Force
+    # -Confirm:$false salta a confirmação "Assinar <tag> @ <sha>?" — para
+    # automação. Por omissão a confirmação corre sempre.
+    [bool]$Confirm = $true
 )
 $ErrorActionPreference = 'Stop'
 
@@ -40,17 +50,9 @@ if (-not $Tag.StartsWith('v')) { Write-Error "tag must look like v0.3.0 — got 
 if (-not (Get-Command gh -ErrorAction SilentlyContinue)) {
     Write-Error "gh CLI not found — needed to reach the draft release"
 }
-
-if (-not $KeyFile) {
-    $candidates = @(
-        (Join-Path $env:USERPROFILE 'oficinaos-release-key.pem'),
-        (Join-Path $env:USERPROFILE 'release-signing-key.pem')
-    )
-    $KeyFile = $candidates | Where-Object { Test-Path $_ } | Select-Object -First 1
-    if (-not $KeyFile) { Write-Error "no -KeyFile and none of: $($candidates -join ', ')" }
+if ($KeyFile -and -not (Test-Path $KeyFile)) {
+    Write-Error "key file not found: $KeyFile"
 }
-if (-not (Test-Path $KeyFile)) { Write-Error "key file not found: $KeyFile" }
-$KeyPem = [System.IO.File]::ReadAllText((Resolve-Path $KeyFile))
 
 # --- draft release + assets via API (gh release download não serve drafts;
 # e /releases/tags/:tag não resolve drafts cujo git tag ainda não existe) ---
@@ -141,15 +143,48 @@ if ($cmp.status -ne 'identical' -and $cmp.status -ne 'ahead') {
     Write-Error "$sha não é ancestor de main (compare: $($cmp.status), behind_by $($cmp.behind_by)) — recuso assinar um build de um commit fora de main"
 }
 
-if (-not $Force) {
+if ($Confirm) {
     $ans = Read-Host "Assinar $Tag @ $sha ? [s/N]"
     if ($ans -notmatch '^(s|sim|y|yes)$') { Write-Error "assinatura cancelada — nada foi carregado" }
 }
 
-# --- assinar ---
+# --- carregar a chave só agora, e nunca em plaintext para disco ---------
+# Omissão: release-key.dpapi (DPAPI CurrentUser — abre sem prompt, só
+# nesta conta/máquina). -KeyFile: .enc.pem pede a passphrase e decifra em
+# memória; um PEM plaintext ainda é aceite por compatibilidade (pen antiga).
 $ec = [System.Security.Cryptography.ECDsa]::Create()
+$pkcs8 = $null; $prot = $null; $sig = $null; $pass = $null
 try {
-    $ec.ImportFromPem($KeyPem)
+    if ($KeyFile) {
+        $keyPem = [System.IO.File]::ReadAllText((Resolve-Path $KeyFile))
+        if ($keyPem -match 'BEGIN ENCRYPTED PRIVATE KEY') {
+            $sec = Read-Host "Passphrase de $KeyFile" -AsSecureString
+            $pass = [System.Net.NetworkCredential]::new('k', $sec).Password
+            $sec.Dispose()
+            try {
+                $ec.ImportFromEncryptedPem($keyPem, $pass)
+            } catch {
+                Write-Error "passphrase errada ou ficheiro corrompido: $KeyFile"
+            }
+            $pass = $null
+        } else {
+            $ec.ImportFromPem($keyPem)
+        }
+        $keyPem = $null
+    } else {
+        $dpapiFile = Join-Path $env:LOCALAPPDATA 'OficinaOS\release-key.dpapi'
+        if (-not (Test-Path $dpapiFile)) {
+            Write-Error "sem $dpapiFile — corre .\tools\protect-release-key.ps1 uma vez, ou passa -KeyFile <.enc.pem>"
+        }
+        $prot = [System.IO.File]::ReadAllBytes($dpapiFile)
+        $pkcs8 = [System.Security.Cryptography.ProtectedData]::Unprotect(
+            $prot,
+            [Text.Encoding]::UTF8.GetBytes('oficinaos-release'),
+            [System.Security.Cryptography.DataProtectionScope]::CurrentUser)
+        $ec.ImportPkcs8PrivateKey($pkcs8, [ref]$null)
+    }
+
+    # --- assinar ---
     $bytes = [System.IO.File]::ReadAllBytes($sumsPath)
     $sig = $ec.SignData(
         $bytes,
@@ -158,6 +193,10 @@ try {
     $sigPath = "$sumsPath.sig"
     [System.IO.File]::WriteAllText($sigPath, [Convert]::ToBase64String($sig))
 } finally {
+    foreach ($b in @($pkcs8, $prot, $sig)) {
+        if ($b) { [Array]::Clear($b, 0, $b.Length) }
+    }
+    $pass = $null
     $ec.Dispose()
 }
 
