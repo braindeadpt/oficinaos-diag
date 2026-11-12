@@ -75,6 +75,40 @@ public sealed class TestServerTests
     public void SoLoopbackERfc1918(string ip, bool allowed) =>
         Assert.Equal(allowed, TestServer.IsAllowedRemote(IPAddress.Parse(ip)));
 
+    [Fact]
+    public async Task OrigemNaoAutorizadaEFechadaSemReceberAPagina()
+    {
+        // Não há IP público falso em loopback: o filtro é injetado para provar
+        // que a ligação morre ANTES de a página ser escrita.
+        using var server = new TestServer { RemoteAllowed = _ => false };
+        Assert.True(server.Start());
+        var port = new Uri(server.LanUrl).Port;
+
+        using var tcp = new TcpClient();
+        await tcp.ConnectAsync(IPAddress.Loopback, port);
+        using var stream = tcp.GetStream();
+        await stream.WriteAsync(Encoding.ASCII.GetBytes("GET / HTTP/1.1\r\nHost: x\r\n\r\n"));
+
+        var buf = new byte[512];
+        // EOF imediato: o servidor fechou sem responder nada.
+        var n = await stream.ReadAsync(buf).AsTask().WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.Equal(0, n);
+    }
+
+    [Fact]
+    public async Task LigacaoAutorizadaContinuaASerServidaDepoisDeUmaRejeitada()
+    {
+        using var server = new TestServer();
+        Assert.True(server.Start());
+        var uri = new Uri(server.LanUrl);
+        var token = uri.AbsolutePath.Trim('/');
+        using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(10) };
+
+        // loopback é permitido pelo filtro real (caminho do adb reverse).
+        var res = await http.GetAsync($"http://127.0.0.1:{uri.Port}/{token}/");
+        Assert.Equal(HttpStatusCode.OK, res.StatusCode);
+    }
+
     // ── B-10b: paths e headers ─────────────────────────────────────────
 
     [Fact]

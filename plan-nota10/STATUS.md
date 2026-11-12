@@ -53,6 +53,21 @@
 
 ---
 
+## Limitações por verificar (leitura final dos tickets T-01…T-10)
+
+Checklist do que **não** foi provado nesta máquina. Nenhum destes pontos bloqueia código já commitado; exigem Windows, MSIX real, hardware OEM/impressoras ou CI no GitHub.
+
+- **T-01** — instalação MSIX real e execução do updater num Windows; `sign-release.ps1`/`build-store.ps1` validados só por parser (sem `gh`, sem MSIX).
+- **T-02** — app WPF com iPhone ligado (o coletor usa `idevicediagnostics.exe`, só Windows); ausência de processos órfãos após timeout não observada em execução. Fixture e parser estão cobertos.
+- **T-03** — telemóvel OEM real (Samsung/MediaTek/Huawei) para a polaridade de `current_now` e os limiares de `health`; o rig não tem bateria nem `sysfs`.
+- **T-04** — servidor a pendurar-se de facto (timeouts revistos por código, sem injeção de rede lenta) e rotação real do `diag.log` (caminho fixo em `%APPDATA%`).
+- **T-05** — iPhone/iOS Safari real (permissão de sensores, botão de Silêncio); ranking de interfaces testado só por unidade, sem VirtualBox nem Wi-Fi de loja.
+- **T-06** — WPF a correr: troca Terminal→Fluent/Win95 na `ResultsList` e diálogos, fechar o `SettingsDialog` a meio do pairing e alocações do `ScopeView` por frame (cache por tema revista por código).
+- **T-07** — `fetch-tools.ps1` executado (sem `pwsh` aqui) e CI Linux real; `publish` win-x64 single-file foi feito e contém `Data/models.json` + `Tests/wwwroot`.
+- **T-08** — workflow no GitHub (só validado localmente) e `ChargeStatus == "pass"` no caminho literal do ticket (coberto por equivalente em `PowerAnalyzerTests`).
+- **T-09** — dois telemóveis em simultâneo no seletor (UI não vista a correr), `fastboot devices` real, `mSavedBatteryAsoc` em Samsung real. **Pixel ficou de fora do catálogo de propósito** (códigos não verificáveis aqui).
+- **T-10** — microfone/auricular em hardware real, rotação 90° da etiqueta em rolos verticais (só escala) e impressão em Brother/Dymo/Zebra. `adb reverse` foi exercitado no rig (página servida em `127.0.0.1` e túnel removido).
+
 ## Rig de Teste Android (InstaBox) — útil para T-05 e T-10
 
 Máquina `diag-android` no [InstaBox](https://instabox.sh) (plano free, 4 vCPU / 8 GB): Android 14 (`redroid14_x86_64`, SDK 34), ecrã 720×1280, `adb` id `emulator-5554`. Pausa sozinha após 30 min idle (estado do Android sobrevive ao resume).
@@ -75,6 +90,8 @@ Correr o `AndroidCollector` contra este rig revelou dois falsos positivos reais 
 ---
 
 ## Registo de Handoff entre Sessões / Agentes
+
+- **2026-11-12 (fecho — Buffy):** o `Test_Click` deixou de bloquear a UI: `RunAdb` passou a `RunAdbAsync` (`WaitForExitAsync` + `CancellationTokenSource` de 10 s, streams lidas em paralelo) e o `ClearReverseAsync` corre no arranque do teste, no fim, no resultado e no `OnClosing`. O `TestServer` ganhou `RemoteAllowed` injetável para provar o fecho: ligação de origem não autorizada recebe **EOF sem um byte de resposta** e uma ligação loopback depois disso continua a receber 200. **Verificação:** `dotnet test -c Release` **189/189** (+2), build WPF 0 erros. Limitações de hardware/Windows de todos os tickets ficaram listadas na secção «Limitações por verificar» acima.
 
 - **2026-11-12 (T-10 — Buffy):** `TestServer` escuta em `IPAddress.Any` para servir `127.0.0.1` (túnel USB) **e** o IP LAN na mesma sessão, com `IsAllowedRemote` a aceitar só loopback e RFC1918 (VPN/NIC pública ficam de fora) e `LoopbackUrl` para o túnel. `Test_Click` faz `adb reverse tcp:<port>` antes de abrir a página, guarda o túnel e remove-o sempre (`ClearReverse` no fim do teste, ao iniciar outro, no `OnClosing`), com fallback para o URL LAN se o reverse falhar. Na `device-test.html`: tom grave de 320 Hz para o auricular (`sensors.earpiece`) e microfone com `getUserMedia`+`AnalyserNode` (pico em 5 s, `stream.stop()` no fim; sem contexto seguro fica `skip`, não `fail`); o `ApplyTestResult` mapeia `sensor.earpiece`/`sensor.mic`, o `Grader` dá `Cap(2)` + peça «auricular»/«microfone» e o `ReportBuilder` rotula as chaves novas. RGPD: `DiagConfig.HistoryRetentionDays` (90 por omissão, 0 = sem limite), `ScanHistory.RetentionDays` a podar na escrita **e** na leitura, `ClearAll()` e Opções com 30/90/sem limite + «LIMPAR HISTÓRICO» confirmado. Etiqueta: escala para a área útil do rolo (Brother 62 mm/Dymo/Zebra) e mantém 70×40 mm em A4. **Verificação:** `dotnet test -c Release` **187/187** (retention, sem-limite, `ClearAll`, RFC1918), build WPF 0 erros, `node --check` da página, e no rig Android `adb reverse tcp:8804` + `http://127.0.0.1:8804/<token>/` abriu a página nova no WebView (dois frames distintos com um toque) e `reverse --remove` limpou o túnel. **Não verificado:** rotação 90° da etiqueta em rolos verticais (só escala), microfone/auricular em hardware real, e a UI WPF (sem Windows).
 

@@ -120,8 +120,11 @@ public partial class MainWindow : Window
         if (!Cloud.UpdateChecker.IsPackagedApp()) _ = CheckForUpdateAsync();
     }
 
-    /// <summary>adb com timeout curto — o telefone pode estar a dormir.</summary>
-    private bool RunAdb(string serial, string args)
+    /// <summary>
+    /// adb assíncrono com timeout — o telefone pode estar a dormir e três
+    /// chamadas encadeadas bloqueavam a UI até ~10 s.
+    /// </summary>
+    private async Task<bool> RunAdbAsync(string serial, string args)
     {
         try
         {
@@ -136,24 +139,26 @@ public partial class MainWindow : Window
             if (p is null) return false;
             var outTask = p.StandardOutput.ReadToEndAsync();
             var errTask = p.StandardError.ReadToEndAsync();
-            if (!p.WaitForExit(5000))
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+            try { await p.WaitForExitAsync(cts.Token); }
+            catch (OperationCanceledException)
             {
                 try { p.Kill(entireProcessTree: true); } catch { }
                 return false;
             }
-            _ = outTask.GetAwaiter().GetResult();
-            _ = errTask.GetAwaiter().GetResult();
+            await outTask;
+            await errTask;
             return p.ExitCode == 0;
         }
         catch { return false; }
     }
 
     /// <summary>Remove o túnel USB — tem de correr mesmo que o teste seja cancelado.</summary>
-    private void ClearReverse()
+    private async Task ClearReverseAsync()
     {
         if (_reverse is not { } r) return;
         _reverse = null;
-        RunAdb(r.Serial, $"reverse --remove tcp:{r.Port}");
+        await RunAdbAsync(r.Serial, $"reverse --remove tcp:{r.Port}");
     }
 
     /// <summary>Texto do header por estado — recovery/fastboot não são "detetado".</summary>
@@ -476,11 +481,11 @@ public partial class MainWindow : Window
         Process.Start(new ProcessStartInfo(dlg.FileName) { UseShellExecute = true });
     }
 
-    private void Test_Click(object sender, RoutedEventArgs e)
+    private async void Test_Click(object sender, RoutedEventArgs e)
     {
         try
         {
-            ClearReverse(); // túnel da sessão anterior não fica pendurado no telefone
+            await ClearReverseAsync(); // túnel da sessão anterior não fica pendurado
             _testServer?.Dispose(); // sessão anterior abandonada — liberta a porta
             var server = _testServer = new TestServer();
             if (!server.Start())
@@ -587,7 +592,7 @@ public partial class MainWindow : Window
                 }
                 Log(L10n.T("log.test.received"));
                 ApplyGrade();
-                ClearReverse(); // o telefone não precisa mais do túnel
+                _ = ClearReverseAsync(); // o telefone não precisa mais do túnel
                 server.Dispose();
                 if (ReferenceEquals(_testServer, server)) _testServer = null;
             });
@@ -606,16 +611,16 @@ public partial class MainWindow : Window
                 // também destranca o teste de microfone no browser.
                 var serial = _current.Id.TrimEnd('!');
                 var loop = server.LoopbackUrl;
-                if (RunAdb(serial, $"reverse tcp:{server.Port} tcp:{server.Port}"))
+                if (await RunAdbAsync(serial, $"reverse tcp:{server.Port} tcp:{server.Port}"))
                 {
                     _reverse = (serial, server.Port);
-                    RunAdb(serial, $"shell am start -a android.intent.action.VIEW -d {loop}");
+                    await RunAdbAsync(serial, $"shell am start -a android.intent.action.VIEW -d {loop}");
                     Log(L10n.T("log.test.reverse"));
                 }
                 else
                 {
                     // adb sem reverse: fica o caminho LAN (Wi-Fi) como antes.
-                    RunAdb(serial, $"shell am start -a android.intent.action.VIEW -d {url}");
+                    await RunAdbAsync(serial, $"shell am start -a android.intent.action.VIEW -d {url}");
                 }
                 Log(L10n.T("log.test.android"));
             }
@@ -892,7 +897,7 @@ public partial class MainWindow : Window
     {
         // Sem estas saídas o MainWindow ficava refletido em L10n/ThemeManager
         // e continuava a ser notificado depois de fechado.
-        ClearReverse(); // fechar a app não deixa o túnel adb montado
+        _ = ClearReverseAsync(); // fechar a app não deixa o túnel adb montado
         L10n.Changed -= ApplyStrings;
         ThemeManager.Changed -= ApplyStrings;
         _testServer?.Dispose();

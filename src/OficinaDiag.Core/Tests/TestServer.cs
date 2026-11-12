@@ -68,6 +68,13 @@ public sealed class TestServer : IDisposable
     /// públicas ficam de fora: a página devolve resultados de hardware de um
     /// cliente e não pode andar na rede aberta.
     /// </summary>
+    /// <summary>
+    /// Filtro de origem aplicado antes de ler um único byte do pedido.
+    /// Injetável porque não há IP público falso em localhost: os testes
+    /// provam assim que a ligação é fechada sem receber a página.
+    /// </summary>
+    internal Func<IPAddress, bool> RemoteAllowed { get; set; } = IsAllowedRemote;
+
     internal static bool IsAllowedRemote(IPAddress address)
     {
         if (IPAddress.IsLoopback(address)) return true;
@@ -179,7 +186,7 @@ public sealed class TestServer : IDisposable
             return false;
         }
         if (client.Client.RemoteEndPoint is not IPEndPoint ep) return true;
-        if (!IsAllowedRemote(ep.Address)) return false;
+        if (!RemoteAllowed(ep.Address)) return false;
         lock (_rateLock)
         {
             var now = DateTimeOffset.UtcNow;
