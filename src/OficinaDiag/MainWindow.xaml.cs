@@ -160,7 +160,21 @@ public partial class MainWindow : Window
     {
         if (_reverse is not { } r) return;
         _reverse = null;
-        await RunAdbAsync(r.Serial, $"reverse --remove tcp:{r.Port}").ConfigureAwait(false);
+        if (!await RunAdbAsync(r.Serial, $"reverse --remove tcp:{r.Port}").ConfigureAwait(false))
+            WarnTunnelLeft(r.Port);
+    }
+
+    /// <summary>
+    /// O remove falhou: o túnel pode continuar montado e o telefone fica a
+    /// chegar a 127.0.0.1 sem ninguém à escuta. No OnClosing a UI está
+    /// bloqueada à espera deste task — despachar para o dispatcher daria
+    /// deadlock, por isso fora da UI o aviso vai só para o diag.log.
+    /// </summary>
+    private void WarnTunnelLeft(int port)
+    {
+        var msg = L10n.F("log.test.reverse.fail", port);
+        if (Dispatcher.CheckAccess()) Log(msg);
+        else OficinaDiag.Log.AppLog.Write(msg);
     }
 
     /// <summary>
