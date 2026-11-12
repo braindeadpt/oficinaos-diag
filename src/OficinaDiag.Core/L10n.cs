@@ -54,6 +54,11 @@ public static class L10n
             // chrome — janela principal
             ["status.watching"] = "a vigiar USB…",
             ["status.detected"] = "{0} detetado",
+            ["status.unauthorized"] = "{0} — autoriza a depuração USB no telefone",
+            ["status.recovery"] = "{0} — em recovery: arranca o Android para escanear",
+            ["status.sideload"] = "{0} — em sideload: sai do modo para escanear",
+            ["status.fastboot"] = "{0} — no bootloader (fastboot): arranca o Android para escanear",
+            ["log.devswitch"] = "> a passar para {0}",
             ["results.header"] = "RESULTADOS",
             ["btn.scan"] = "SCAN",
             ["btn.bench"] = "SCAN+",
@@ -277,6 +282,11 @@ public static class L10n
         {
             ["status.watching"] = "watching USB…",
             ["status.detected"] = "{0} detected",
+            ["status.unauthorized"] = "{0} — allow USB debugging on the phone",
+            ["status.recovery"] = "{0} — in recovery: boot Android to scan",
+            ["status.sideload"] = "{0} — in sideload: leave the mode to scan",
+            ["status.fastboot"] = "{0} — in the bootloader (fastboot): boot Android to scan",
+            ["log.devswitch"] = "> switching to {0}",
             ["results.header"] = "RESULTS",
             ["btn.scan"] = "SCAN",
             ["btn.bench"] = "SCAN+",

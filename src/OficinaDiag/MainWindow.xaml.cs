@@ -2,7 +2,9 @@
 using System.Globalization;
 using System.IO;
 using System.Text.Json;
+using System.Collections.ObjectModel;
 using System.Windows;
+using System.Windows.Controls;
 using System.Windows.Data;
 using System.Windows.Media;
 using Microsoft.Win32;
@@ -52,6 +54,8 @@ public partial class MainWindow : Window
     private DeviceDetector? _detector;
     private Tests.TestServer? _testServer;
     private readonly ScanHistory _history = new();
+    /// <summary>Dispositivos ligados agora — alimenta o seletor do header.</summary>
+    private readonly ObservableCollection<Devices.DetectedDevice> _devices = new();
     private readonly Cloud.DiagConfig _config = Cloud.DiagConfig.Load();
     private readonly Cloud.CloudClient _cloud;
     private DetectedDevice? _current;
@@ -67,6 +71,7 @@ public partial class MainWindow : Window
     {
         _cloud = new Cloud.CloudClient(_config);
         InitializeComponent();
+        DeviceSelector.ItemsSource = _devices;
         Loaded += OnLoaded;
     }
 
@@ -99,28 +104,91 @@ public partial class MainWindow : Window
         _detector.Attached += d => Dispatcher.Invoke(() =>
         {
             Log(L10n.F("log.attached", d.Label, d.Id));
-            _current = d;
-            StatusText.Text = L10n.F("status.detected", d.Label);
-            ScanButton.IsEnabled = true;
-            BenchButton.IsEnabled = true;
-            StartTelemetry(d);
+            AttachDevice(d);
         });
         _detector.Detached += d => Dispatcher.Invoke(() =>
         {
             Log(L10n.F("log.detached", d.Label));
-            // Só o aparelho ativo manda no estado: desligar um 2.º telemóvel
-            // não pode limpar o header nem desativar os botões de quem ficou.
-            if (_current?.Id != d.Id) return;
-            _current = null;
+            DetachDevice(d);
+        });
+        ScanButton.IsEnabled = true; // permite tentar mesmo sem evento
+        // MSIX/Store não tem auto-update: nem vale a pena bater no GitHub.
+        if (!Cloud.UpdateChecker.IsPackagedApp()) _ = CheckForUpdateAsync();
+    }
+
+    /// <summary>Texto do header por estado — recovery/fastboot não são "detetado".</summary>
+    private static string StatusFor(Devices.DetectedDevice d) => d.State switch
+    {
+        "unauthorized" => L10n.F("status.unauthorized", d.Label),
+        "recovery" => L10n.F("status.recovery", d.Label),
+        "sideload" => L10n.F("status.sideload", d.Label),
+        "fastboot" => L10n.F("status.fastboot", d.Label),
+        _ => L10n.F("status.detected", d.Label),
+    };
+
+    private void AttachDevice(Devices.DetectedDevice d)
+    {
+        var existing = _devices.FirstOrDefault(x => x.Id == d.Id);
+        if (existing is not null) _devices[_devices.IndexOf(existing)] = d; // label/estado atualiza
+        else _devices.Add(d);
+        SyncSelector();
+        // Um segundo telemóvel ligado não rouba a bancada de quem lá está.
+        if (_current is null) SelectDevice(d, announce: false);
+    }
+
+    private void DetachDevice(Devices.DetectedDevice d)
+    {
+        var existing = _devices.FirstOrDefault(x => x.Id == d.Id);
+        if (existing is not null) _devices.Remove(existing);
+        SyncSelector();
+        // Só o aparelho ativo manda no estado.
+        if (_current?.Id != d.Id) return;
+        // Fica outro ligado? Passa-se para ele em vez de deixar a bancada morta.
+        var next = _devices.FirstOrDefault(x => x.State == "ready") ?? _devices.FirstOrDefault();
+        if (next is not null) SelectDevice(next, announce: true);
+        else SelectDevice(null, announce: false);
+    }
+
+    private void DeviceSelector_Changed(object sender, SelectionChangedEventArgs e)
+    {
+        if (DeviceSelector.SelectedItem is not Devices.DetectedDevice d) return;
+        if (_current?.Id == d.Id) return;
+        SelectDevice(d, announce: true);
+    }
+
+    /// <summary>O seletor só aparece quando há mais do que um aparelho.</summary>
+    private void SyncSelector()
+    {
+        DeviceSelector.Visibility = _devices.Count > 1 ? Visibility.Visible : Visibility.Collapsed;
+        if (_current is not null)
+            DeviceSelector.SelectedItem = _devices.FirstOrDefault(x => x.Id == _current.Id);
+    }
+
+    /// <summary>Aplica o dispositivo ativo e o que ele permite fazer.</summary>
+    private void SelectDevice(Devices.DetectedDevice? d, bool announce)
+    {
+        _current = d;
+        if (announce && d is not null) Log(L10n.F("log.devswitch", d.Label));
+        if (d is null)
+        {
             StatusText.Text = L10n.T("status.watching");
             TelemetryText.Text = "";
             _telemetryCts?.Cancel();
             TestButton.IsEnabled = false;
             BenchButton.IsEnabled = false;
-        });
-        ScanButton.IsEnabled = true; // permite tentar mesmo sem evento
-        // MSIX/Store não tem auto-update: nem vale a pena bater no GitHub.
-        if (!Cloud.UpdateChecker.IsPackagedApp()) _ = CheckForUpdateAsync();
+            ScanButton.IsEnabled = true; // permite tentar mesmo sem evento
+            return;
+        }
+
+        StatusText.Text = StatusFor(d);
+        // Sem OS completo (recovery/sideload/bootloader/sem autorização) não há
+        // scan, teste no ecrã nem bancada de potência — o resto continua vivo.
+        var ready = d.State == "ready";
+        ScanButton.IsEnabled = ready;
+        TestButton.IsEnabled = ready;
+        BenchButton.IsEnabled = ready;
+        if (ready) StartTelemetry(d);
+        else { _telemetryCts?.Cancel(); TelemetryText.Text = ""; }
     }
 
     /// <summary>
@@ -200,9 +268,7 @@ public partial class MainWindow : Window
     {
         var ver = System.Reflection.Assembly.GetExecutingAssembly().GetName().Version?.ToString(3);
         HeaderTitle.Text = $"{(ThemeManager.IsTerminal ? "█▓▒░ " : "")}OFICINA-OS // DIAG v{ver}";
-        StatusText.Text = _current is { } d
-            ? L10n.F("status.detected", d.Label)
-            : L10n.T("status.watching");
+        StatusText.Text = _current is { } d ? StatusFor(d) : L10n.T("status.watching");
         ResultsHeader.Text = L10n.Section("results.header");
         ScanButton.Content = L10n.Btn("btn.scan");
         BenchButton.Content = L10n.Btn("btn.bench");
@@ -253,6 +319,13 @@ public partial class MainWindow : Window
             _report = _current.Kind == DeviceKind.Android
                 ? await new AndroidCollector(_adbPath).CollectAsync(_current.Id.TrimEnd('!'))
                 : await new IosCollector().CollectAsync(_current.Id);
+
+            // iOS: o serial da célula não se repete — se mudou desde a última
+            // visita, a bateria foi trocada e isso tem de ficar no relatório.
+            if (_report.Results.TryGetValue("battery.serial", out var batSerial)
+                && _history.BatterySwappedSince(_report.Device.Serial ?? "", batSerial.Value) is { } swapped)
+                _report.Set("battery.swap", "info", swapped,
+                    "série da célula diferente do scan anterior deste aparelho");
 
             ResultsList.ItemsSource = _report.Results
                 .Select(kv => new ResultRow

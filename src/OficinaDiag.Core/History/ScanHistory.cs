@@ -110,6 +110,27 @@ public sealed class ScanHistory
             .OrderBy(r => r.CollectedAt)
             .ToList();
 
+    /// <summary>
+    /// Nota quando o serial da célula mudou desde o scan anterior do mesmo
+    /// aparelho: em iOS esse serial não se repete, logo é bateria trocada.
+    /// </summary>
+    public string? BatterySwappedSince(string serial, string? batterySerial)
+    {
+        if (string.IsNullOrWhiteSpace(serial) || string.IsNullOrWhiteSpace(batterySerial))
+            return null;
+        var previous = All()
+            .Where(r => string.Equals(r.Device.Serial, serial, StringComparison.OrdinalIgnoreCase))
+            .Where(r => r.Results.TryGetValue("battery.serial", out var c)
+                && !string.IsNullOrWhiteSpace(c.Value))
+            .OrderByDescending(r => r.CollectedAt)
+            .FirstOrDefault();
+        if (previous is null) return null;
+        var old = previous.Results["battery.serial"].Value!;
+        return string.Equals(old.Trim(), batterySerial.Trim(), StringComparison.OrdinalIgnoreCase)
+            ? null
+            : $"bateria substituída desde o scan de {previous.CollectedAt:dd-MM-yyyy}";
+    }
+
     /// <summary>Battery capacity trend for a serial — the fun longitudinal stat.</summary>
     public IReadOnlyList<(DateTimeOffset at, string capacity)> BatteryTrend(string serial) =>
         All()

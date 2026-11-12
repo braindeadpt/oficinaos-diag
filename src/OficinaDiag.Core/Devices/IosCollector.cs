@@ -598,6 +598,8 @@ public sealed class IosCollector
             }
 
             var panics = new List<string>();
+            // Marcador à parte: um thermalmonitord é o MESMO panic, não um segundo.
+            var thermalPanic = false;
             var jetsam = 0;
             var crashes = 0;
             var sb = new System.Text.StringBuilder();
@@ -625,8 +627,8 @@ public sealed class IosCollector
                         .Groups[1].Value.Trim();
                     panics.Add($"{name}: {(ps.Length > 0 ? ps : "panicString não extraído")}");
                     // thermalmonitord sem check-ins = flex de carga/sensor
-                    // térmico solto: entra como marcador para o destaque abaixo.
-                    if (IsThermalPanic(text)) panics.Add($"THERMAL: {ThermalPanicHint}");
+                    // térmico solto: sinaliza-se à parte, sem contar como panic extra.
+                    if (IsThermalPanic(text)) thermalPanic = true;
                 }
                 else if (isJetsam) jetsam++;
                 else crashes++;
@@ -644,8 +646,8 @@ public sealed class IosCollector
                         + (panics.Count > 1 ? $" (+{panics.Count - 1})" : ""));
             // Padrão de bancada Apple: sai salientado à parte, porque aponta
             // para peça (flex/sensor) e não para software.
-            if (panics.FirstOrDefault(p => p.StartsWith("THERMAL: ", StringComparison.Ordinal)) is { } thermal)
-                r.Set("logs.thermal", "warn", "thermalmonitord", thermal["THERMAL: ".Length..]);
+            if (thermalPanic)
+                r.Set("logs.thermal", "warn", "thermalmonitord", ThermalPanicHint);
             if (crashes + jetsam > 0)
                 r.Set("logs.crashes", "info", $"{crashes} apps · {jetsam} jetsam",
                     "crashes de apps = software; jetsam = pressão de memória, não defeito");

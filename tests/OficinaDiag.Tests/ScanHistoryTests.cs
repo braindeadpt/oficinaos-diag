@@ -132,4 +132,41 @@ public sealed class ScanHistoryTests : IDisposable
         Assert.Equal(2, trend.Count);
         Assert.Equal("79%", trend[1].capacity);
     }
+
+    [Fact]
+    public void BatterySwappedSince_DetetaCelulaNovaESoDoMesmoAparelho()
+    {
+        // Em iOS o serial da célula não se repete: série diferente entre dois
+        // scans do mesmo UDID = bateria trocada.
+        var first = new DeviceReport { Platform = "ios" };
+        first.Device.Serial = "UDID-SWAP";
+        first.CollectedAt = new DateTimeOffset(2026, 1, 5, 10, 0, 0, TimeSpan.Zero);
+        first.Set("battery.serial", "info", "OLD-1");
+        _h.Add(first);
+
+        Assert.Equal("bateria substituída desde o scan de 05-01-2026",
+            _h.BatterySwappedSince("UDID-SWAP", "NEW-2"));
+        // Mesma célula, outro aparelho ou sem série: nada a dizer.
+        Assert.Null(_h.BatterySwappedSince("UDID-SWAP", "OLD-1"));
+        Assert.Null(_h.BatterySwappedSince("OUTRO", "NEW-2"));
+        Assert.Null(_h.BatterySwappedSince("UDID-SWAP", null));
+    }
+
+    [Fact]
+    public void BatterySwappedSince_ComparaComOScanMaisRecente()
+    {
+        var older = new DeviceReport { Platform = "ios" };
+        older.Device.Serial = "UDID-2";
+        older.CollectedAt = new DateTimeOffset(2026, 1, 1, 9, 0, 0, TimeSpan.Zero);
+        older.Set("battery.serial", "info", "A");
+        var newer = new DeviceReport { Platform = "ios" };
+        newer.Device.Serial = "UDID-2";
+        newer.CollectedAt = new DateTimeOffset(2026, 2, 1, 9, 0, 0, TimeSpan.Zero);
+        newer.Set("battery.serial", "info", "B");
+        _h.Add(older);
+        _h.Add(newer);
+
+        Assert.Equal("bateria substituída desde o scan de 01-02-2026",
+            _h.BatterySwappedSince("UDID-2", "C"));
+    }
 }

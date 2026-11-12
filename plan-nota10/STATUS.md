@@ -2,7 +2,7 @@
 
 > **Instrução para qualquer agente LLM:** Atualiza este ficheiro no fim de cada ticket concluído (`[ ]` → `[x]`), preenchendo a data/commit ou nota curta em "Registo de Handoff".
 
-**Ticket em curso:** `T-09` (`tickets/T-09-multi-device-oem-health.md`) — parte Core feita (catálogo Apple, sufixo Samsung, `mSavedBatteryAsoc`, bms/qcom, panic térmico, estados do detector); **falta** o seletor no `MainWindow` e a nota de troca de bateria iOS. `T-01`–`T-08` concluídos; `B-01`–`B-20` fechados (os 18 da auditoria + `B-19`/`B-20` do rig).
+**Próximo ticket a executar:** `T-10` (`tickets/T-10-test-v3-adb-reverse-labels-gdpr.md`). `T-01`–`T-09` concluídos; `B-01`–`B-20` fechados (os 18 da auditoria + `B-19`/`B-20` do rig).
 
 ---
 
@@ -23,7 +23,7 @@
 - [x] **T-08** — Suite completa de testes de regressão (iOS PD 9V, Android OEM, `pt-PT`, XSS, paridade `L10n` e XAML) + build WPF no CI (`tickets/T-08-regression-tests-ci.md`)
 
 ### Fase 4 — Diferenciadores "Nota 10" de Bancada Profissional (`9.7 → 10.0`)
-- [~] **T-09** — Seletor multi-dispositivo na bancada, saúde avançada OEM (`mSavedBatteryAsoc`, `bms`, troca de bateria iOS, `fastboot`/`recovery`) e `models.json` Apple/Pixel (`tickets/T-09-multi-device-oem-health.md`) — *Core feito; falta o `ComboBox` do `MainWindow` e a nota de bateria trocada*
+- [x] **T-09** — Seletor multi-dispositivo na bancada, saúde avançada OEM (`mSavedBatteryAsoc`, `bms`, troca de bateria iOS, `fastboot`/`recovery`) e `models.json` Apple/Pixel (`tickets/T-09-multi-device-oem-health.md`)
 - [ ] **T-10** — On-Device Test v3 (`adb reverse` zero-Wi-Fi no Android + teste Microfone/Auricular), presets de impressora térmica e retenção RGPD no histórico (`tickets/T-10-test-v3-adb-reverse-labels-gdpr.md`)
 
 ---
@@ -75,6 +75,8 @@ Correr o `AndroidCollector` contra este rig revelou dois falsos positivos reais 
 ---
 
 ## Registo de Handoff entre Sessões / Agentes
+
+- **2026-11-12 (T-09 concluído — Buffy):** o marcador `THERMAL:` deixou de entrar na lista de panics (contava como um segundo panic e o `logs.panics` dizia «2» para um só) — passou a `bool thermalPanic`, com `logs.thermal` à parte; o `fastboot devices` só corre quando nenhum Android está em `ready` (antes era um processo a cada 2 s). `MainWindow` ganhou o `ComboBox` do header (`DeviceSelector`, visível só com >1 aparelho, escondido com 0/1): `AttachDevice`/`DetachDevice` mantêm a lista, um 2.º telemóvel não rouba a bancada, desligar o ativo passa para o próximo `ready` com aviso em `log.devswitch`, e `SelectDevice` aplica `status.unauthorized/recovery/sideload/fastboot` com `ScanButton`/`TestButton`/`BenchButton` desativados (telemetria pára) sem matar export/checklist. `ScanHistory.BatterySwappedSince` compara o `battery.serial` com o scan mais recente do mesmo serial e o `Scan_Click` grava `battery.swap`. **Verificação:** `dotnet test -c Release` **176/176** (2 novos em `ScanHistoryTests`), build WPF 0 erros. **Não exercitado:** a UI a correr (sem Windows) — seletor, auto-seleção e estados só compilados; e o fastboot/`mSavedBatteryAsoc` contra hardware real (o rig é um Android sem fastboot). **Pixel continua de fora** do `models.json` (códigos não verificáveis aqui).
 
 - **2026-11-12 (T-09 parcial — Buffy):** `models.json` ganhou a família iPhone (`iPhone10,1`…`iPhone17,5`) e iPads com ProductType conhecido; `ModelNameTable.Lookup` cai na variante europeia quando o código Samsung traz sufixo regional/dual-SIM (`SM-S918U1`, `SM-S918B/DS` → `SM-S918B`); `AdbParsing.ParseSavedAsoc` lê `mSavedBatteryAsoc` (0–100, resto é lixo) e o `AndroidCollector` usa-o como fallback de `battery.capacity` e tenta `bms`/`max170xx_battery` para `charge_full(_design)`; o `IosCollector` marca panics com «no successful checkins from thermalmonitord» em `logs.thermal`; o `DeviceDetector` passa a guardar `State` (`ready`/`unauthorized`/`recovery`/`sideload`/`fastboot`/`offline`), corre `fastboot devices` (2 s) quando o exe existe e expõe `ConnectedDevices`. **Falta:** `ComboBox` no header do `MainWindow` + auto-seleção ao desligar o ativo, instruções para estados sem OS, e a nota «bateria substituída desde dd-MM-yyyy» via `ScanHistory`. **Verificação:** `dotnet test -c Release` **174/174** (15 novos em `OemHealthTests`), build WPF 0 erros. **Não exercitado:** `fastboot devices` e dois telemóveis reais — o rig é um Android só, sem fastboot. Pixel ficou de fora do catálogo: os códigos de modelo (`G0…`, `GB…`) que eu conheço não são verificáveis aqui e inventá-los daria nomes errados ao balcão.
 

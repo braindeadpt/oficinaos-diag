@@ -76,7 +76,9 @@ public sealed class DeviceDetector : IDisposable
                                 $"Android ({state})", state),
                         });
                     }
-                    found.AddRange(FastbootDevices());
+                    // `fastboot devices` custa um processo: só vale a pena
+                    // quando nenhum Android chegou a `ready` (bootloader/recovery).
+                    if (!found.Any(d => d.State == "ready")) found.AddRange(FastbootDevices());
                 }
             }
             catch { /* adb falhou — ignora nesta ronda */ }

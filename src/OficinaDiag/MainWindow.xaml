@@ -40,6 +40,12 @@
                     <TextBlock x:Name="StatusText" VerticalAlignment="Center" Margin="20,0,0,0"
                                FontFamily="{DynamicResource UiFont}" FontSize="12"
                                Foreground="{DynamicResource HeaderDimBrush}"/>
+                    <!-- dois telemóveis na bancada: escolhe qual está ativo -->
+                    <ComboBox x:Name="DeviceSelector" VerticalAlignment="Center"
+                              Margin="16,0,0,0" MinWidth="190" FontSize="12"
+                              FontFamily="{DynamicResource UiFont}"
+                              Visibility="Collapsed"
+                              SelectionChanged="DeviceSelector_Changed"/>
                     <!-- instrumento vivo: corrente/tensão/temp/carga enquanto há dispositivo -->
                     <TextBlock x:Name="TelemetryText" VerticalAlignment="Center" Margin="20,0,0,0"
                                FontFamily="{DynamicResource MonoFont}" FontSize="12"
