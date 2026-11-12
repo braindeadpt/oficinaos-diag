@@ -1,0 +1,59 @@
+# T-04 — Sanitização XSS/HTML em `ReportBuilder`, Timeouts por Endpoint em `CloudClient` e Robustez `ScanHistory`/`AppLog`
+
+- **Fase:** 2 (Hardening, Rede & Persistência Local)
+- **Bugs Resolvidos:** `B-08`, `B-12c` (sanitização de nomes de ficheiro), `B-17`, `B-18`
+- **Dependências:** Nenhuma
+- **Ficheiros em Escopo:**
+  - `src/OficinaDiag/Reports/ReportBuilder.cs`
+  - `src/OficinaDiag/Cloud/CloudClient.cs`
+  - `src/OficinaDiag/History/ScanHistory.cs`
+  - `src/OficinaDiag/Log/AppLog.cs`
+  - `tests/OficinaDiag.Tests/ReportBuilderTests.cs`
+  - `tests/OficinaDiag.Tests/ScanHistoryTests.cs`
+- **Fora de Escopo:** Tradução das strings de `CloudClient` para Inglês fica em `T-06` (ou pode preparar já chaves se `T-06` correr depois).
+
+---
+
+## Contexto do Problema
+
+1. **Links `javascript:` em Relatórios IA e HTML Injection em `docRef` (`B-08`):**
+   - `ReportBuilder.cs:23-24` configura `Markdig` com `.DisableHtml()`, mas permite links Markdown `[Ver](javascript:alert(1))` ou `data:text/html,...`. Como o LLM recebe dados não confiáveis do aparelho (nomes Wi-Fi, logs de crash), um prompt injection pode gerar um link `javascript:` num ficheiro `.html` que a app abre automaticamente no browser local.
+   - `ReportBuilder.cs:408, 442` (`ToInsuranceHtml`) interpola `docRef` (derivado de `Device.Serial`) sem `e(docRef)`. Nas linhas `105` (`ToHtml`) e `316` (`ToClientHtml`), `c.Status` e `grade.Value` entram em `class="..."` sem sanitização alfanumérica.
+2. **Timeout único de 150s + Retry em `CloudClient` (`B-17`):**
+   - `CloudClient.cs:17, 40-59` usa `Timeout = 150s` com 1 retry em `TaskCanceledException`, fazendo o utilizador esperar **5 minutos (301.5s)** em `SendToShopAsync`, `RedeemPairingAsync` ou `SendLogAsync` se o servidor/rede pendurar. Além disso, os `HttpResponseMessage` devolvidos por `SendWithRetryAsync` não são libertados com `using`.
+3. **Mutex infinito em `ScanHistory` e corte UTF-8 em `AppLog` (`B-18`):**
+   - `ScanHistory.cs:30` chama `WriteLock.WaitOne()` sem timeout, podendo congelar a UI se outra instância travar.
+   - `AppLog.cs:38-50` faz `fs.Seek(-keep, SeekOrigin.End)` (`linha 44`) num ficheiro UTF-8, podendo cortar uma sequência multi-byte (`ã`, `ç`, `—`) a meio na primeira linha retida.
+
+---
+
+## Especificação de Implementação
+
+### 1. Hardening Total em `ReportBuilder.cs` + Helper de Nome de Ficheiro Seguro
+- Em `AiMarkdownPipeline` (`ReportBuilder.cs:23-24`), encadear `.UseUrlRewriter(link => ...)` (ou pós-processar `MarkdownDocument` / `LinkInline`) para permitir **apenas** URLs que comecem por `https://`, `http://` ou `mailto:` (qualquer outro esquema como `javascript:`, `vbscript:`, `data:`, `file:` é reescrito para `"#"`).
+- Em `ToInsuranceHtml:442`, usar `e(docRef)`.
+- Em `ToHtml:105` e `ToClientHtml:316`, criar helper `SafeCssToken(string? s)` que aceita apenas `[a-z0-9-]` (`"pass"`, `"warn"`, `"fail"`, `"info"`, `"a"`, `"b"`, `"c"`, `"d"`), caindo para `"info"` / `"d"` caso contrário.
+- Adicionar helper `public static string SafeFileToken(string? raw, string fallback = "device")` em `ReportBuilder` que substitui todos os caracteres de `Path.GetInvalidFileNameChars()` (incluindo `:`, `/`, `\`, `!`, `*`, `?`) por `'_'`, para ser usado em `MainWindow` ao exportar ficheiros (`B-12c`).
+
+### 2. Timeouts Diferenciados e `using` em `CloudClient.cs`
+- Alterar `SendWithRetryAsync(Func<HttpRequestMessage> build, TimeSpan attemptTimeout)`:
+  - Em cada tentativa criar `using var cts = new CancellationTokenSource(attemptTimeout);` e chamar `await Http.SendAsync(req, cts.Token)`.
+  - Passar `TimeSpan.FromSeconds(20)` em `SendToShopAsync`, `SendLogAsync` e `RedeemPairingAsync`, e `TimeSpan.FromSeconds(150)` (sem retry automático em timeout de 150s, apenas retry em erro rápido de ligação/5xx!) em `GenerateAiReportAsync`.
+  - Garantir `using var res = await SendWithRetryAsync(...);` nos 4 métodos públicos.
+
+### 3. Robustez em `ScanHistory.cs` e `AppLog.cs`
+- Em `ScanHistory.Append`: usar `var locked = false; try { locked = WriteLock.WaitOne(TimeSpan.FromSeconds(5)); if (!locked) return; ... } catch (AbandonedMutexException) { locked = true; ... } finally { if (locked) WriteLock.ReleaseMutex(); }` (tratar `AbandonedMutexException` evita crash se um processo anterior morreu com o mutex!).
+- Em `AppLog.TrimIfNeeded`: após ler `buf`, encontrar o primeiro `'\n'` (`var nl = Array.IndexOf(buf, (byte)'\n');`) e escrever a partir de `nl + 1` (se `nl >= 0 && nl + 1 < n`), garantindo início de linha limpo e UTF-8 100% válido.
+
+### 4. Testes Unitários (`ReportBuilderTests.cs`)
+- Testar que `[clica](javascript:alert(1))` e `[x]( JaVaScRiPt:void(0) )` em `AiReportToHtml` não produzem `href="javascript:..."`.
+- Testar que `Serial = "<img src=x onerror=alert(1)>"` em `ToInsuranceHtml`, `ToClientHtml` e `ToHtml` sai 100% escapado.
+- Testar `SafeFileToken("192.168.1.50:5555")` → `"192.168.1.50_5555"`.
+
+---
+
+## Critérios de Aceitação
+- [ ] Nenhum esquema `javascript:` ou `data:` passa pelo `AiReportToHtml`.
+- [ ] Todos os 4 formatos HTML escapam qualquer input malicioso em `Device`, `Results`, `Notes` e `InsuranceForm`.
+- [ ] `AbandonedMutexException` é tratada sem crash em `ScanHistory`.
+- [ ] `AppLog` nunca deixa bytes UTF-8 órfãos no topo após rotação.

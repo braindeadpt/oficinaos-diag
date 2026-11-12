@@ -1,5 +1,6 @@
 using System.IO;
 using System.Net.Http;
+using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Text.Json;
 
@@ -80,9 +81,34 @@ public sealed class UpdateChecker
             && seg[5].Length > 0 && !seg[5].Contains("..");
     }
 
+    /// <summary>
+    /// True quando a app corre empacotada (MSIX/Store). Aí o diretório do exe
+    /// é read-only, o tar não consegue escrever por cima e a Política 10.2.1
+    /// da Store proíbe auto-updaters externos — o updater tem de se calar.
+    /// </summary>
+    public static bool IsPackagedApp()
+    {
+        if (!OperatingSystem.IsWindows()) return false;
+        try
+        {
+            // Sem buffer só interessa o código: 15700 = APPMODEL_ERROR_NO_PACKAGE.
+            uint length = 0;
+            return GetCurrentPackageFullName(ref length, null) != AppModelErrorNoPackage;
+        }
+        catch { return false; }
+    }
+
+    private const int AppModelErrorNoPackage = 15700;
+
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode)]
+    private static extern int GetCurrentPackageFullName(
+        ref uint packageFullNameLength, System.Text.StringBuilder? packageFullName);
+
     /// <summary>Latest published release, or null when we're current/unreachable.</summary>
     public static async Task<UpdateInfo?> CheckAsync(Version current)
     {
+        // MSIX/Store: não há atualização fora da Store — nem uma chamada de rede.
+        if (IsPackagedApp()) return null;
         try
         {
             using var doc = JsonDocument.Parse(await Http.GetStringAsync(
@@ -124,6 +150,14 @@ public sealed class UpdateChecker
                 || !IsTrustedAssetUrl(info.SigUrl, info.Tag))
                 return (false, "Origem da atualização não reconhecida — atualização recusada.");
 
+            // Segunda defesa do MSIX: mesmo que a deteção de pacote falhe,
+            // gastar 100 MB para depois não conseguir escrever em appDir é pior
+            // que recusar já.
+            if (IsPackagedApp())
+                return (false, "Instalação da Microsoft Store — a atualização chega pela Store.");
+            if (!IsDirectoryWritable(appDir))
+                return (false, "Pasta da aplicação sem permissão de escrita — atualiza manualmente.");
+
             // ANTES de gastar 100 MB de download: a assinatura do SHA256SUMS
             // tem de validar contra a chave pública embutida, e a versão que
             // o SUMS declara tem de bater no tag e ser mais nova que a local —
@@ -159,25 +193,7 @@ public sealed class UpdateChecker
             // must not break (or inject into) the staged script.
             var ps1Path = Path.Combine(Path.GetTempPath(), $"oficinaos-diag-update-{info.Tag}.ps1");
             var logPath = Path.Combine(Path.GetTempPath(), "oficinaos-diag-update.log");
-            var exePath = Path.Combine(appDir, "OficinaDiag.exe");
-            var script = string.Join(Environment.NewLine, new[]
-            {
-                "Start-Sleep -Seconds 3",
-                $"$log = '{Psq(logPath)}'",
-                $"\"update {Psq(info.Tag)} @ $(Get-Date -Format o)\" | Out-File $log",
-                $"$exe = '{Psq(exePath)}'",
-                "Copy-Item $exe \"$exe.bak\" -Force -ErrorAction SilentlyContinue",
-                $"tar -xf '{Psq(zipPath)}' -C '{Psq(appDir)}' 2>&1 | Out-File $log -Append",
-                "\"exit=$LASTEXITCODE\" | Out-File $log -Append",
-                "if ($LASTEXITCODE -ne 0) {",
-                "  \"extract failed — restoring previous build\" | Out-File $log -Append",
-                "  Copy-Item \"$exe.bak\" $exe -Force -ErrorAction SilentlyContinue",
-                "}",
-                "Start-Process $exe",
-                "Remove-Item \"$exe.bak\" -ErrorAction SilentlyContinue",
-                $"Remove-Item '{Psq(zipPath)}' -ErrorAction SilentlyContinue",
-                "Remove-Item $MyInvocation.MyCommand.Path -ErrorAction SilentlyContinue",
-            });
+            var script = BuildUpdateScript(info.Tag, appDir, zipPath, logPath, Environment.ProcessId);
             await File.WriteAllTextAsync(ps1Path, script, new System.Text.UTF8Encoding(true));
 
             using var proc = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
@@ -192,6 +208,93 @@ public sealed class UpdateChecker
                 : (true, "A atualizar — a app reinicia já.");
         }
         catch (Exception ex) { return (false, ex.Message); }
+    }
+
+    /// <summary>
+    /// Sonda de escrita antes de gastar 100 MB: em C:\Program Files\WindowsApps
+    /// (ou noutra pasta protegida) o download acabava sempre em falha.
+    /// </summary>
+    private static bool IsDirectoryWritable(string dir)
+    {
+        try
+        {
+            var probe = Path.Combine(dir, $".oficinaos-write-{Guid.NewGuid():N}.tmp");
+            using var fs = new FileStream(probe, FileMode.CreateNew, FileAccess.Write,
+                FileShare.None, 1, FileOptions.DeleteOnClose);
+            return true;
+        }
+        catch { return false; }
+    }
+
+    /// <summary>
+    /// Script staged que substitui a app depois de ela sair. Separado do
+    /// download para poder ser testado sem rede e, sobretudo, para garantir
+    /// uma ordem: extrair e validar numa pasta temporária **antes** de tocar
+    /// em appDir. Um tar falhado a meio deixava a instalação híbrida.
+    /// </summary>
+    internal static string BuildUpdateScript(
+        string tag, string appDir, string zipPath, string logPath, int processId)
+    {
+        var stage = Path.Combine(Path.GetTempPath(), $"oficinaos-stage-{tag}-{Guid.NewGuid():N}");
+        var exePath = Path.Combine(appDir, "OficinaDiag.exe");
+        var adbPath = Path.Combine(appDir, "tools", "platform-tools", "adb.exe");
+        return string.Join(Environment.NewLine, new[]
+        {
+            "$ErrorActionPreference = 'Continue'",
+            $"$log = '{Psq(logPath)}'",
+            $"\"update {Psq(tag)} @ $(Get-Date -Format o)\" | Out-File $log",
+            $"$appDir = '{Psq(appDir)}'",
+            $"$exe = '{Psq(exePath)}'",
+            $"$zip = '{Psq(zipPath)}'",
+            $"$stage = '{Psq(stage)}'",
+            $"$adb = '{Psq(adbPath)}'",
+            // 1) Esperar pelo PID real. O Sleep fixo de 3 s deixava o exe
+            //    bloqueado e o tar falhava a meio da atualização.
+            $"Wait-Process -Id {processId} -Timeout 30 -ErrorAction SilentlyContinue",
+            // 2) adb/idevice seguram .exe dentro de appDir — libertar antes.
+            "if (Test-Path $adb) { & $adb kill-server 2>$null | Out-Null }",
+            "Stop-Process -Name adb,idevicediagnostics,idevicecrashreport -Force -ErrorAction SilentlyContinue",
+            // 3) Extrair para staging limpo: appDir só é tocado depois de o
+            //    zip provar que traz um OficinaDiag.exe.
+            "New-Item -ItemType Directory -Force $stage | Out-Null",
+            "tar -xf $zip -C $stage 2>&1 | Out-File $log -Append",
+            "\"extract exit=$LASTEXITCODE\" | Out-File $log -Append",
+            "if ($LASTEXITCODE -ne 0 -or -not (Test-Path (Join-Path $stage 'OficinaDiag.exe'))) {",
+            "  'extract failed — nada em appDir foi alterado' | Out-File $log -Append",
+            "  Remove-Item $stage -Recurse -Force -ErrorAction SilentlyContinue",
+            "  Start-Process $exe",
+            "  exit 1",
+            "}",
+            // 4) ZipSlip: symlink/junction ou caminho que resolva fora do
+            //    staging aborta antes de qualquer escrita em appDir.
+            "$root = [IO.Path]::GetFullPath($stage).TrimEnd('\\') + '\\'",
+            "$escaped = Get-ChildItem $stage -Recurse -Force | Where-Object {",
+            // ReparsePoint (e não .LinkType): o updater corre no powershell.exe 5.1.
+            "  ($_.Attributes -band [IO.FileAttributes]::ReparsePoint) -or -not [IO.Path]::GetFullPath($_.FullName).StartsWith($root, [StringComparison]::OrdinalIgnoreCase)",
+            "}",
+            "if ($escaped) {",
+            "  'zip com entradas fora do staging — atualização recusada' | Out-File $log -Append",
+            "  Remove-Item $stage -Recurse -Force -ErrorAction SilentlyContinue",
+            "  Start-Process $exe",
+            "  exit 1",
+            "}",
+            // 5) Só agora: backup do exe, cópia do staging e rollback no catch.
+            "try {",
+            "  Copy-Item $exe \"$exe.bak\" -Force -ErrorAction Stop",
+            "  Copy-Item (Join-Path $stage '*') $appDir -Recurse -Force -ErrorAction Stop",
+            "} catch {",
+            "  \"copy failed: $_ — a restaurar o build anterior\" | Out-File $log -Append",
+            "  if (Test-Path \"$exe.bak\") { Copy-Item \"$exe.bak\" $exe -Force -ErrorAction SilentlyContinue }",
+            "  Start-Process $exe",
+            "  Remove-Item $stage -Recurse -Force -ErrorAction SilentlyContinue",
+            "  exit 1",
+            "}",
+            "Start-Process $exe",
+            "Remove-Item \"$exe.bak\" -Force -ErrorAction SilentlyContinue",
+            "Remove-Item $stage -Recurse -Force -ErrorAction SilentlyContinue",
+            "Remove-Item $zip -Force -ErrorAction SilentlyContinue",
+            "Remove-Item $MyInvocation.MyCommand.Path -ErrorAction SilentlyContinue",
+        });
     }
 
     /// <summary>

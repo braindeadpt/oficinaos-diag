@@ -116,7 +116,8 @@ public partial class MainWindow : Window
             BenchButton.IsEnabled = false;
         });
         ScanButton.IsEnabled = true; // permite tentar mesmo sem evento
-        _ = CheckForUpdateAsync();
+        // MSIX/Store não tem auto-update: nem vale a pena bater no GitHub.
+        if (!Cloud.UpdateChecker.IsPackagedApp()) _ = CheckForUpdateAsync();
     }
 
     /// <summary>

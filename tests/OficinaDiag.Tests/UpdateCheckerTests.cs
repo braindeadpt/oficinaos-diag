@@ -147,6 +147,58 @@ public class UpdateCheckerTests
         Assert.NotNull(UpdateChecker.ValidateSums(sums, sig, "v0.3.0", new Version(0, 2, 0), otherPub));
     }
 
+    // --- MSIX/Store e script de atualização atómica ---
+
+    [Fact]
+    public void IsPackagedAppIsFalseInUnpackagedRuns()
+    {
+        // Os testes correm sempre unpackaged (Linux/macOS/Windows CI): o
+        // updater só se deve calar dentro de um pacote MSIX.
+        Assert.False(UpdateChecker.IsPackagedApp());
+    }
+
+    [Fact]
+    public void UpdateScriptWaitsForTheRealProcessAndFreesAdb()
+    {
+        var script = UpdateChecker.BuildUpdateScript(
+            "v0.3.0", @"C:\Apps\Diag", @"C:\Temp\diag-v0.3.0.zip",
+            @"C:\Temp\diag-update.log", 4242);
+
+        // O Sleep fixo deixava o exe bloqueado e o adb segurava os .exe.
+        Assert.Contains("Wait-Process -Id 4242 -Timeout 30", script);
+        Assert.DoesNotContain("Start-Sleep", script);
+        Assert.Contains("kill-server", script);
+        Assert.Contains("Stop-Process -Name adb,idevicediagnostics,idevicecrashreport", script);
+    }
+
+    [Fact]
+    public void UpdateScriptExtractsToStagingBeforeTouchingTheAppDirectory()
+    {
+        var script = UpdateChecker.BuildUpdateScript(
+            "v0.3.0", @"C:\Apps\Diag", @"C:\Temp\diag.zip", @"C:\Temp\upd.log", 1);
+
+        // Ordem obrigatória: extrair para staging e validar ANTES de copiar
+        // para appDir — um tar falhado deixava a instalação híbrida.
+        var extract = script.IndexOf("tar -xf $zip -C $stage", StringComparison.Ordinal);
+        var copy = script.IndexOf("Copy-Item (Join-Path $stage '*') $appDir", StringComparison.Ordinal);
+        Assert.True(extract >= 0, "o script tem de extrair o zip para $stage");
+        Assert.True(copy > extract, "a cópia para appDir tem de vir depois da extração");
+        Assert.Contains("oficinaos-stage-v0.3.0-", script);
+        Assert.Contains("Test-Path (Join-Path $stage 'OficinaDiag.exe')", script);
+        Assert.Contains("$LASTEXITCODE -ne 0", script);
+    }
+
+    [Fact]
+    public void UpdateScriptEscapesSingleQuotesInPaths()
+    {
+        // Uma pasta com apóstrofo não pode fechar o literal nem injetar comandos.
+        var script = UpdateChecker.BuildUpdateScript(
+            "v0.3.0", @"C:\O'Brien\Diag", @"C:\Temp\z.zip", @"C:\Temp\l.log", 7);
+
+        Assert.Contains(@"C:\O''Brien\Diag", script);
+        Assert.DoesNotContain(@"C:\O'Brien\Diag", script);
+    }
+
     [Fact]
     public void EmbeddedPublicKeyIsWellFormed()
     {

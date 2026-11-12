@@ -23,6 +23,14 @@ if ((Get-Content $manifest -Raw) -match "REPLACE_") {
     throw "AppxManifest.xml still has REPLACE_ placeholders — fill Package/Identity values from Partner Center first (docs\microsoft-store.md)."
 }
 
+# O Content do csproj tem Condition="Exists('..\..\tools\platform-tools')" —
+# sem esta guarda o publish omitia o adb em silêncio e o MSIX saía sem
+# suporte Android, sem erro nenhum até um cliente tentar ligar um telefone.
+$adb = Join-Path $root "tools\platform-tools\adb.exe"
+if (-not (Test-Path $adb)) {
+    throw "platform-tools em falta — corre .\tools\fetch-tools.ps1 antes de empacotar para a Store."
+}
+
 # --- 1. publish (self-contained single file + platform-tools alongside) -----
 Write-Host "==> dotnet publish" -ForegroundColor Cyan
 dotnet publish (Join-Path $root "src\OficinaDiag\OficinaDiag.csproj") -r win-x64 --self-contained `

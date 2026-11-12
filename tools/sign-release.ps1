@@ -77,8 +77,31 @@ if ($rel.assets | Where-Object { $_.name -eq 'SHA256SUMS.sig' }) {
 $tmp = Join-Path ([System.IO.Path]::GetTempPath()) "oficinaos-sign-$Tag"
 New-Item -ItemType Directory -Force $tmp | Out-Null
 $sumsPath = Join-Path $tmp 'SHA256SUMS.txt'
-gh api "repos/$Repo/releases/assets/$($sums.id)" -H 'Accept: application/octet-stream' > $sumsPath
-if ($LASTEXITCODE -ne 0) { Write-Error "download do SHA256SUMS falhou" }
+# `>` descodifica a stdout e volta a escrever com as quebras de linha do
+# Windows (LF→CRLF). A assinatura é feita sobre os bytes LOCAIS, mas o asset
+# no GitHub mantém os bytes ORIGINAIS — o updater validava a assinatura sobre
+# esses e recusava todas as atualizações. Copiar o BaseStream byte a byte
+# garante que assinamos exatamente o ficheiro que está publicado.
+$ghExe = (Get-Command gh -ErrorAction Stop).Source
+$psi = [System.Diagnostics.ProcessStartInfo]::new($ghExe)
+$psi.UseShellExecute = $false
+$psi.RedirectStandardOutput = $true
+$psi.RedirectStandardError = $true
+foreach ($ghArg in @('api', "repos/$Repo/releases/assets/$($sums.id)", '-H', 'Accept: application/octet-stream')) {
+    $psi.ArgumentList.Add($ghArg)
+}
+$ghProc = [System.Diagnostics.Process]::Start($psi)
+$ghErrTask = $ghProc.StandardError.ReadToEndAsync()
+$dl = [System.IO.File]::Create($sumsPath)
+try {
+    $ghProc.StandardOutput.BaseStream.CopyTo($dl)
+} finally {
+    $dl.Dispose()
+}
+$ghProc.WaitForExit()
+if ($ghProc.ExitCode -ne 0) {
+    Write-Error "download do SHA256SUMS falhou: $($ghErrTask.GetAwaiter().GetResult())"
+}
 
 # Assinamos uma afirmação: "estes hashes SÃO a versão X". A linha version
 # tem de bater no tag — senão assinávamos uma mentira (replay antigo).

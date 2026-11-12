@@ -20,12 +20,20 @@ if (Test-Path "$pt\adb.exe") {
     # verificados (antes era só o adb.exe) e o emissor tem de ser exatamente
     # O=Google LLC — um match por substring aceitava "O=Googlemal".
     $bad = @()
+    $checked = 0
     Get-ChildItem $pt -Include *.exe,*.dll -Recurse | ForEach-Object {
+        $checked++
         $sig = Get-AuthenticodeSignature $_.FullName
         $subject = $sig.SignerCertificate.Subject
         if ($sig.Status -ne "Valid" -or $subject -notmatch "(^|,\s*)O=Google LLC(,|$)") {
             $bad += "$($_.Name) (status: $($sig.Status), signer: $subject)"
         }
+    }
+    # Um zip vazio (ou uma pasta com layout diferente) passava no loop sem
+    # verificar nada e imprimia "OK" — defesa em profundidade contra isso.
+    if ($checked -eq 0) {
+        Remove-Item $pt -Recurse -Force -ErrorAction SilentlyContinue
+        throw "nenhum binário verificado em platform-tools — download vazio ou pasta inesperada"
     }
     if ($bad.Count -gt 0) {
         Remove-Item $pt -Recurse -Force
