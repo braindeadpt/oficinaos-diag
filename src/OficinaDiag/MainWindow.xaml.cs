@@ -52,6 +52,8 @@ public partial class MainWindow : Window
         Path.Combine(AppContext.BaseDirectory, "tools", "platform-tools", "adb.exe");
 
     private DeviceDetector? _detector;
+    // Túnel `adb reverse` ativo (serial, porta) — removido sempre no fim.
+    private (string Serial, int Port)? _reverse;
     private Tests.TestServer? _testServer;
     private readonly ScanHistory _history = new();
     /// <summary>Dispositivos ligados agora — alimenta o seletor do header.</summary>
@@ -72,6 +74,8 @@ public partial class MainWindow : Window
         _cloud = new Cloud.CloudClient(_config);
         InitializeComponent();
         DeviceSelector.ItemsSource = _devices;
+        // RGPD: a retenção vive no DiagConfig e aplica-se logo no arranque.
+        _history.RetentionDays = _config.HistoryRetentionDays;
         Loaded += OnLoaded;
     }
 
@@ -114,6 +118,42 @@ public partial class MainWindow : Window
         ScanButton.IsEnabled = true; // permite tentar mesmo sem evento
         // MSIX/Store não tem auto-update: nem vale a pena bater no GitHub.
         if (!Cloud.UpdateChecker.IsPackagedApp()) _ = CheckForUpdateAsync();
+    }
+
+    /// <summary>adb com timeout curto — o telefone pode estar a dormir.</summary>
+    private bool RunAdb(string serial, string args)
+    {
+        try
+        {
+            var psi = new ProcessStartInfo(_adbPath, $"-s {serial} {args}")
+            {
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+                CreateNoWindow = true,
+            };
+            using var p = Process.Start(psi);
+            if (p is null) return false;
+            var outTask = p.StandardOutput.ReadToEndAsync();
+            var errTask = p.StandardError.ReadToEndAsync();
+            if (!p.WaitForExit(5000))
+            {
+                try { p.Kill(entireProcessTree: true); } catch { }
+                return false;
+            }
+            _ = outTask.GetAwaiter().GetResult();
+            _ = errTask.GetAwaiter().GetResult();
+            return p.ExitCode == 0;
+        }
+        catch { return false; }
+    }
+
+    /// <summary>Remove o túnel USB — tem de correr mesmo que o teste seja cancelado.</summary>
+    private void ClearReverse()
+    {
+        if (_reverse is not { } r) return;
+        _reverse = null;
+        RunAdb(r.Serial, $"reverse --remove tcp:{r.Port}");
     }
 
     /// <summary>Texto do header por estado — recovery/fastboot não são "detetado".</summary>
@@ -322,6 +362,8 @@ public partial class MainWindow : Window
 
             // iOS: o serial da célula não se repete — se mudou desde a última
             // visita, a bateria foi trocada e isso tem de ficar no relatório.
+            // TEM de correr ANTES do _history.Add abaixo: depois de gravado, o
+            // scan compararia consigo próprio e a nota nunca aparecia.
             if (_report.Results.TryGetValue("battery.serial", out var batSerial)
                 && _history.BatterySwappedSince(_report.Device.Serial ?? "", batSerial.Value) is { } swapped)
                 _report.Set("battery.swap", "info", swapped,
@@ -438,6 +480,7 @@ public partial class MainWindow : Window
     {
         try
         {
+            ClearReverse(); // túnel da sessão anterior não fica pendurado no telefone
             _testServer?.Dispose(); // sessão anterior abandonada — liberta a porta
             var server = _testServer = new TestServer();
             if (!server.Start())
@@ -515,6 +558,22 @@ public partial class MainWindow : Window
                                 ? L10n.F("sensor.nodata.detail", label)
                                 : L10n.F("sensor.reading.detail", label));
                     }
+
+                    // Auricular e microfone: "fail" é defeito, "skip" não
+                    // (microfone bloqueado em HTTP LAN não é hardware).
+                    void MapAudio(string key, string okKey, string failKey, string detailKey)
+                    {
+                        if (!sensors.TryGetProperty(key, out var v) || v.ValueKind != JsonValueKind.String)
+                            return;
+                        var st = v.GetString();
+                        _report.Set($"sensor.{key}",
+                            st == "ok" ? "pass" : st == "fail" ? "fail" : "skipped",
+                            st == "ok" ? L10n.T(okKey)
+                                : st == "fail" ? L10n.T(failKey) : L10n.T("test.mic.skip"),
+                            L10n.T(detailKey));
+                    }
+                    MapAudio("earpiece", "test.earpiece.ok", "test.earpiece.fail", "test.earpiece.detail");
+                    MapAudio("mic", "test.mic.ok", "test.mic.fail", "test.mic.detail");
                 }
                 if (data.TryGetValue("vibrate", out var vib) && vib.ValueKind == JsonValueKind.String)
                 {
@@ -528,6 +587,7 @@ public partial class MainWindow : Window
                 }
                 Log(L10n.T("log.test.received"));
                 ApplyGrade();
+                ClearReverse(); // o telefone não precisa mais do túnel
                 server.Dispose();
                 if (ReferenceEquals(_testServer, server)) _testServer = null;
             });
@@ -541,9 +601,22 @@ public partial class MainWindow : Window
             Log(L10n.F("log.test.url", url));
             if (_current?.Kind == DeviceKind.Android)
             {
-                Process.Start(new ProcessStartInfo(_adbPath,
-                    $"-s {_current.Id.TrimEnd('!')} shell am start -a android.intent.action.VIEW -d {url}")
-                { CreateNoWindow = true });
+                // O cabo USB já está ligado: `adb reverse` faz o telefone chegar
+                // a 127.0.0.1 sem Wi-Fi nenhum e em contexto seguro — o que
+                // também destranca o teste de microfone no browser.
+                var serial = _current.Id.TrimEnd('!');
+                var loop = server.LoopbackUrl;
+                if (RunAdb(serial, $"reverse tcp:{server.Port} tcp:{server.Port}"))
+                {
+                    _reverse = (serial, server.Port);
+                    RunAdb(serial, $"shell am start -a android.intent.action.VIEW -d {loop}");
+                    Log(L10n.T("log.test.reverse"));
+                }
+                else
+                {
+                    // adb sem reverse: fica o caminho LAN (Wi-Fi) como antes.
+                    RunAdb(serial, $"shell am start -a android.intent.action.VIEW -d {url}");
+                }
                 Log(L10n.T("log.test.android"));
             }
             else
@@ -738,9 +811,12 @@ public partial class MainWindow : Window
 
     private void Config_Click(object sender, RoutedEventArgs e)
     {
-        var dlg = new SettingsDialog(_config) { Owner = this };
+        var dlg = new SettingsDialog(_config, _history) { Owner = this };
         if (dlg.ShowDialog() != true) return;
         _config.Save();
+        // Retenção nova aplica-se já: o histórico relido esconde o que passou
+        // do limite, sem esperar pelo próximo scan.
+        _history.RetentionDays = _config.HistoryRetentionDays;
         // o diálogo valida antes de guardar — aqui é sempre um URI parseable
         if (Cloud.DiagConfig.TryValidateCloudUrl(_config.CloudUrl, out var uri))
             _cloud.BaseUri = new Uri(uri.ToString().TrimEnd('/') + "/");
@@ -816,6 +892,7 @@ public partial class MainWindow : Window
     {
         // Sem estas saídas o MainWindow ficava refletido em L10n/ThemeManager
         // e continuava a ser notificado depois de fechado.
+        ClearReverse(); // fechar a app não deixa o túnel adb montado
         L10n.Changed -= ApplyStrings;
         ThemeManager.Changed -= ApplyStrings;
         _testServer?.Dispose();

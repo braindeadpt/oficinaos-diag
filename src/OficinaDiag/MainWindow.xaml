@@ -42,10 +42,19 @@
                                Foreground="{DynamicResource HeaderDimBrush}"/>
                     <!-- dois telemóveis na bancada: escolhe qual está ativo -->
                     <ComboBox x:Name="DeviceSelector" VerticalAlignment="Center"
-                              Margin="16,0,0,0" MinWidth="190" FontSize="12"
-                              FontFamily="{DynamicResource UiFont}"
-                              Visibility="Collapsed"
-                              SelectionChanged="DeviceSelector_Changed"/>
+                              Margin="16,0,0,0" Visibility="Collapsed"
+                              Style="{DynamicResource TermCombo}"
+                              ToolTip="{Binding Label, RelativeSource={RelativeSource Self}}"
+                              SelectionChanged="DeviceSelector_Changed">
+                        <!-- rótulo longo não estica o header: corta com reticências -->
+                        <ComboBox.ItemTemplate>
+                            <DataTemplate>
+                                <TextBlock Text="{Binding Label}" MaxWidth="210"
+                                           TextTrimming="CharacterEllipsis"
+                                           FontFamily="{DynamicResource UiFont}" FontSize="12"/>
+                            </DataTemplate>
+                        </ComboBox.ItemTemplate>
+                    </ComboBox>
                     <!-- instrumento vivo: corrente/tensão/temp/carga enquanto há dispositivo -->
                     <TextBlock x:Name="TelemetryText" VerticalAlignment="Center" Margin="20,0,0,0"
                                FontFamily="{DynamicResource MonoFont}" FontSize="12"

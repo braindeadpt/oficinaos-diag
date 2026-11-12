@@ -2,6 +2,7 @@ using System.ComponentModel;
 using System.Windows;
 using System.Windows.Controls;
 using OficinaDiag.Cloud;
+using OficinaDiag.History;
 
 namespace OficinaDiag;
 
@@ -12,15 +13,17 @@ namespace OficinaDiag;
 public partial class SettingsDialog : Window
 {
     private readonly DiagConfig _config;
+    private readonly ScanHistory? _history;
     private readonly string _origLang;
     private readonly string _origTheme;
     private readonly CancellationTokenSource _cts = new();
     private bool _closing;
     private bool _saving;
 
-    public SettingsDialog(DiagConfig config)
+    public SettingsDialog(DiagConfig config, ScanHistory? history = null)
     {
         _config = config;
+        _history = history;
         _origLang = L10n.Current;
         _origTheme = ThemeManager.Current;
         InitializeComponent();
@@ -33,6 +36,12 @@ public partial class SettingsDialog : Window
         ThemeWin95.IsChecked = ThemeManager.Current == ThemeManager.Win95;
         ThemeFluent.IsChecked = ThemeManager.Current == ThemeManager.Fluent;
         CloudBox.Text = config.CloudUrl;
+        // Retenção RGPD: 30 / 90 / sem limite (0).
+        RetentionBox.SelectedItem = RetentionBox.Items
+            .OfType<ComboBoxItem>()
+            .FirstOrDefault(i => i.Tag?.ToString() == config.HistoryRetentionDays.ToString())
+            ?? RetentionBox.Items[1];
+        ClearHistoryBtn.Visibility = history is null ? Visibility.Collapsed : Visibility.Visible;
 
         LangPt.Checked += (_, _) => PreviewLang("pt");
         LangEn.Checked += (_, _) => PreviewLang("en");
@@ -54,6 +63,15 @@ public partial class SettingsDialog : Window
         ThemeTerminal.Content = L10n.T("theme.terminal");
         ThemeWin95.Content = L10n.T("theme.win95");
         ThemeFluent.Content = L10n.T("theme.fluent");
+        RetentionLabel.Text = L10n.T("set.hist.label");
+        foreach (var item in RetentionBox.Items.OfType<ComboBoxItem>())
+            item.Content = item.Tag?.ToString() switch
+            {
+                "30" => L10n.T("set.hist.30"),
+                "90" => L10n.T("set.hist.90"),
+                _ => L10n.T("set.hist.never"),
+            };
+        ClearHistoryBtn.Content = L10n.Btn("set.hist.clear");
         SaveBtn.Content = L10n.Btn("btn.save");
         CancelBtn.Content = L10n.Btn("btn.cancel");
     }
@@ -65,6 +83,21 @@ public partial class SettingsDialog : Window
     }
 
     private static void PreviewTheme(string name) => ThemeManager.Apply(name);
+
+    private int SelectedRetention() =>
+        (RetentionBox.SelectedItem as ComboBoxItem)?.Tag?.ToString() is { } tag
+        && int.TryParse(tag, out var days) ? days : 90;
+
+    private void ClearHistory_Click(object sender, RoutedEventArgs e)
+    {
+        if (_history is null) return;
+        if (MessageBox.Show(this, L10n.T("set.hist.confirm"), Title,
+                MessageBoxButton.YesNo, MessageBoxImage.Warning) != MessageBoxResult.Yes)
+            return;
+        _history.ClearAll();
+        MessageBox.Show(this, L10n.T("set.hist.cleared"), Title,
+            MessageBoxButton.OK, MessageBoxImage.Information);
+    }
 
     private async void Save_Click(object sender, RoutedEventArgs e)
     {
@@ -141,6 +174,7 @@ public partial class SettingsDialog : Window
         if (validatedUrl is not null) _config.CloudUrl = validatedUrl;
         _config.Language = L10n.Current;
         _config.Theme = ThemeManager.Current;
+        _config.HistoryRetentionDays = SelectedRetention();
         if (token is not null) _config.SetShopToken(token, "diag");
 
         // O aviso de emparelhamento abre ANTES de fechar: depois de

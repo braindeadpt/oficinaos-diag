@@ -51,13 +51,31 @@ public sealed class TestServer : IDisposable
 
     public TestServer()
     {
-        // Bind ao IP LAN que anunciamos — não a Any. Com IPAddress.Any a
-        // página também respondia nas outras interfaces da máquina (NIC
-        // pública, VPN, adaptadores VMware). Sem IP de LAN caímos em
-        // loopback (o teste fica inutilizável, mas nada fica exposto) —
-        // nunca Any, que fingiria funcionar enquanto escutava em tudo.
+        // Escuta em Any para servir os dois caminhos na mesma sessão:
+        // 127.0.0.1 (túnel `adb reverse`, com Secure Context para o microfone)
+        // e o IP LAN do QR (iPhone/Wi-Fi). O que não é loopback nem RFC1918 é
+        // rejeitado em AllowClient — a página nunca fica exposta na NIC
+        // pública nem numa VPN.
         _bindAddress = ResolveLanAddress() ?? IPAddress.Loopback;
-        _listener = new TcpListener(_bindAddress, 0);
+        _listener = new TcpListener(IPAddress.Any, 0);
+    }
+
+    /// <summary>URL do túnel USB (`adb reverse tcp:<port>`) — sem Wi-Fi nenhum.</summary>
+    public string LoopbackUrl => $"http://127.0.0.1:{Port}/{_token}/";
+
+    /// <summary>
+    /// Só loopback e RFC1918 (10/8, 172.16/12, 192.168/16). VPNs e NIC
+    /// públicas ficam de fora: a página devolve resultados de hardware de um
+    /// cliente e não pode andar na rede aberta.
+    /// </summary>
+    internal static bool IsAllowedRemote(IPAddress address)
+    {
+        if (IPAddress.IsLoopback(address)) return true;
+        if (address.AddressFamily != AddressFamily.InterNetwork) return false;
+        var b = address.GetAddressBytes();
+        return b[0] == 10
+            || (b[0] == 172 && b[1] >= 16 && b[1] <= 31)
+            || (b[0] == 192 && b[1] == 168);
     }
 
     /// <summary>Uma interface candidata a servir a página — dados puros para o ranking.</summary>
@@ -161,6 +179,7 @@ public sealed class TestServer : IDisposable
             return false;
         }
         if (client.Client.RemoteEndPoint is not IPEndPoint ep) return true;
+        if (!IsAllowedRemote(ep.Address)) return false;
         lock (_rateLock)
         {
             var now = DateTimeOffset.UtcNow;

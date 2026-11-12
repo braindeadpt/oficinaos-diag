@@ -2,7 +2,7 @@
 
 > **Instrução para qualquer agente LLM:** Atualiza este ficheiro no fim de cada ticket concluído (`[ ]` → `[x]`), preenchendo a data/commit ou nota curta em "Registo de Handoff".
 
-**Próximo ticket a executar:** `T-10` (`tickets/T-10-test-v3-adb-reverse-labels-gdpr.md`). `T-01`–`T-09` concluídos; `B-01`–`B-20` fechados (os 18 da auditoria + `B-19`/`B-20` do rig).
+**Plano concluído:** `T-01`–`T-10` executados; `B-01`–`B-20` fechados (os 18 da auditoria + `B-19`/`B-20` do rig). Limitações por verificar em hardware/Windows estão anotadas em cada handoff.
 
 ---
 
@@ -24,7 +24,7 @@
 
 ### Fase 4 — Diferenciadores "Nota 10" de Bancada Profissional (`9.7 → 10.0`)
 - [x] **T-09** — Seletor multi-dispositivo na bancada, saúde avançada OEM (`mSavedBatteryAsoc`, `bms`, troca de bateria iOS, `fastboot`/`recovery`) e `models.json` Apple/Pixel (`tickets/T-09-multi-device-oem-health.md`)
-- [ ] **T-10** — On-Device Test v3 (`adb reverse` zero-Wi-Fi no Android + teste Microfone/Auricular), presets de impressora térmica e retenção RGPD no histórico (`tickets/T-10-test-v3-adb-reverse-labels-gdpr.md`)
+- [x] **T-10** — On-Device Test v3 (`adb reverse` zero-Wi-Fi no Android + teste Microfone/Auricular), presets de impressora térmica e retenção RGPD no histórico (`tickets/T-10-test-v3-adb-reverse-labels-gdpr.md`)
 
 ---
 
@@ -75,6 +75,8 @@ Correr o `AndroidCollector` contra este rig revelou dois falsos positivos reais 
 ---
 
 ## Registo de Handoff entre Sessões / Agentes
+
+- **2026-11-12 (T-10 — Buffy):** `TestServer` escuta em `IPAddress.Any` para servir `127.0.0.1` (túnel USB) **e** o IP LAN na mesma sessão, com `IsAllowedRemote` a aceitar só loopback e RFC1918 (VPN/NIC pública ficam de fora) e `LoopbackUrl` para o túnel. `Test_Click` faz `adb reverse tcp:<port>` antes de abrir a página, guarda o túnel e remove-o sempre (`ClearReverse` no fim do teste, ao iniciar outro, no `OnClosing`), com fallback para o URL LAN se o reverse falhar. Na `device-test.html`: tom grave de 320 Hz para o auricular (`sensors.earpiece`) e microfone com `getUserMedia`+`AnalyserNode` (pico em 5 s, `stream.stop()` no fim; sem contexto seguro fica `skip`, não `fail`); o `ApplyTestResult` mapeia `sensor.earpiece`/`sensor.mic`, o `Grader` dá `Cap(2)` + peça «auricular»/«microfone» e o `ReportBuilder` rotula as chaves novas. RGPD: `DiagConfig.HistoryRetentionDays` (90 por omissão, 0 = sem limite), `ScanHistory.RetentionDays` a podar na escrita **e** na leitura, `ClearAll()` e Opções com 30/90/sem limite + «LIMPAR HISTÓRICO» confirmado. Etiqueta: escala para a área útil do rolo (Brother 62 mm/Dymo/Zebra) e mantém 70×40 mm em A4. **Verificação:** `dotnet test -c Release` **187/187** (retention, sem-limite, `ClearAll`, RFC1918), build WPF 0 erros, `node --check` da página, e no rig Android `adb reverse tcp:8804` + `http://127.0.0.1:8804/<token>/` abriu a página nova no WebView (dois frames distintos com um toque) e `reverse --remove` limpou o túnel. **Não verificado:** rotação 90° da etiqueta em rolos verticais (só escala), microfone/auricular em hardware real, e a UI WPF (sem Windows).
 
 - **2026-11-12 (T-09 concluído — Buffy):** o marcador `THERMAL:` deixou de entrar na lista de panics (contava como um segundo panic e o `logs.panics` dizia «2» para um só) — passou a `bool thermalPanic`, com `logs.thermal` à parte; o `fastboot devices` só corre quando nenhum Android está em `ready` (antes era um processo a cada 2 s). `MainWindow` ganhou o `ComboBox` do header (`DeviceSelector`, visível só com >1 aparelho, escondido com 0/1): `AttachDevice`/`DetachDevice` mantêm a lista, um 2.º telemóvel não rouba a bancada, desligar o ativo passa para o próximo `ready` com aviso em `log.devswitch`, e `SelectDevice` aplica `status.unauthorized/recovery/sideload/fastboot` com `ScanButton`/`TestButton`/`BenchButton` desativados (telemetria pára) sem matar export/checklist. `ScanHistory.BatterySwappedSince` compara o `battery.serial` com o scan mais recente do mesmo serial e o `Scan_Click` grava `battery.swap`. **Verificação:** `dotnet test -c Release` **176/176** (2 novos em `ScanHistoryTests`), build WPF 0 erros. **Não exercitado:** a UI a correr (sem Windows) — seletor, auto-seleção e estados só compilados; e o fastboot/`mSavedBatteryAsoc` contra hardware real (o rig é um Android sem fastboot). **Pixel continua de fora** do `models.json` (códigos não verificáveis aqui).
 

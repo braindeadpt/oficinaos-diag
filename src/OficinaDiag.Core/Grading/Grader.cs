@@ -170,6 +170,18 @@ public static class Grader
             Cap(2, "altifalante sem som no teste do tom");
             parts.Add("altifalante");
         }
+        if (Stat("sensor.earpiece") is "fail")
+        {
+            Cap(2, "auricular sem som no tom grave (320 Hz)");
+            parts.Add("auricular");
+        }
+        // Só conta quando o microfone foi mesmo testado: em HTTP LAN o browser
+        // não dá contexto seguro e o resultado fica "skipped", não "fail".
+        if (Stat("sensor.mic") is "fail")
+        {
+            Cap(2, "microfone sem sinal na gravação de teste");
+            parts.Add("microfone");
+        }
 
         // ── checklist físico ─────────────────────────────────────────────
         var checklistDone = 0;

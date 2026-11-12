@@ -61,6 +61,20 @@ public sealed class TestServerTests
         Assert.Equal(IPAddress.Parse("10.1.2.3"), ip);
     }
 
+    // ── T-10: loopback (adb reverse) + LAN, nada mais ─────────────────
+
+    [Theory]
+    [InlineData("127.0.0.1", true)]
+    [InlineData("10.1.2.3", true)]
+    [InlineData("172.16.5.4", true)]
+    [InlineData("172.31.255.1", true)]
+    [InlineData("192.168.1.50", true)]
+    [InlineData("172.32.0.1", false)]
+    [InlineData("8.8.8.8", false)]
+    [InlineData("169.254.10.1", false)]
+    public void SoLoopbackERfc1918(string ip, bool allowed) =>
+        Assert.Equal(allowed, TestServer.IsAllowedRemote(IPAddress.Parse(ip)));
+
     // ── B-10b: paths e headers ─────────────────────────────────────────
 
     [Fact]

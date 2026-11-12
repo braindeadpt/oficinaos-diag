@@ -55,6 +55,13 @@
     <button id="spkYes">SIM, ouvi</button>
     <button id="spkNo">NÃO ouvi</button>
   </div>
+  <button id="earBtn">TOM GRAVE (AURICULAR) — ouviste?</button>
+  <div id="earAsk" style="display:none">
+    <button id="earYes">SIM, ouvi</button>
+    <button id="earNo">NÃO ouvi</button>
+  </div>
+  <div class="srow"><span>Microfone</span><span class="st" id="s-mic">…</span></div>
+  <button id="micBtn" style="display:none">TESTAR MICROFONE</button>
   <button id="vibBtn">VIBRAR — sentiste?</button>
   <div id="vibAsk" style="display:none">
     <button id="vibYes">SIM, vibrou</button>
@@ -270,6 +277,67 @@ document.getElementById('spkBtn').onclick=async()=>{
 };
 document.getElementById('spkYes').onclick=()=>{ result.speaker='ok'; document.getElementById('spkAsk').style.display='none'; document.getElementById('spkBtn').textContent='TOM OUVIDO ✓'; };
 document.getElementById('spkNo').onclick=()=>{ result.speaker='fail'; document.getElementById('spkAsk').style.display='none'; document.getElementById('spkBtn').textContent='NÃO ouvi o tom'; };
+
+/* auricular: tom grave (320 Hz) a volume moderado apanha membrana a vibrar
+   ou distorção que o 880 Hz do altifalante multimédia esconde */
+document.getElementById('earBtn').onclick=async()=>{
+  try{
+    audioCtx = audioCtx || new (window.AudioContext||window.webkitAudioContext)();
+    if(audioCtx.state==='suspended') await audioCtx.resume();
+    const o=audioCtx.createOscillator(), g=audioCtx.createGain();
+    o.type='sine'; o.frequency.value=320;
+    g.gain.setValueAtTime(0.22,audioCtx.currentTime);
+    o.connect(g); g.connect(audioCtx.destination);
+    o.start(); o.stop(audioCtx.currentTime+1.2);
+    document.getElementById('earAsk').style.display='block';
+  }catch(e){
+    result.sensors.earpiece='unavailable';
+    document.getElementById('earBtn').textContent='áudio não exposto';
+  }
+};
+document.getElementById('earYes').onclick=()=>{ result.sensors.earpiece='ok'; document.getElementById('earAsk').style.display='none'; document.getElementById('earBtn').textContent='TOM GRAVE OUVIDO ✓'; };
+document.getElementById('earNo').onclick=()=>{ result.sensors.earpiece='fail'; document.getElementById('earAsk').style.display='none'; document.getElementById('earBtn').textContent='NÃO ouvi o tom grave'; };
+
+/* microfone: só em contexto seguro (https ou 127.0.0.1 via adb reverse).
+   Mede o pico 5 s e liberta o stream logo no fim — nada fica a gravar. */
+if(window.isSecureContext && navigator.mediaDevices && navigator.mediaDevices.getUserMedia){
+  const mb=document.getElementById('micBtn');
+  mb.style.display='block';
+  mb.onclick=async()=>{
+    mb.disabled=true;
+    try{
+      const stream=await navigator.mediaDevices.getUserMedia({audio:true});
+      const ctx=new (window.AudioContext||window.webkitAudioContext)();
+      const src=ctx.createMediaStreamSource(stream);
+      const an=ctx.createAnalyser(); an.fftSize=1024;
+      src.connect(an);
+      const buf=new Uint8Array(an.fftSize);
+      let peak=0;
+      const t0=Date.now();
+      const tick=()=>{
+        an.getByteTimeDomainData(buf);
+        for(const v of buf){ const d=Math.abs(v-128)/128; if(d>peak) peak=d; }
+        if(Date.now()-t0<5000){ requestAnimationFrame(tick); return; }
+        stream.getTracks().forEach(t=>t.stop());
+        try{ ctx.close(); }catch(e){}
+        const ok=peak>0.08;
+        result.sensors.mic=ok?'ok':'fail';
+        setSt('s-mic', ok?'sinal ✓':'sem sinal', ok?'ok':'no');
+        mb.textContent=ok?'MICROFONE OK ✓':'NÃO ouviu nada — repetir';
+      };
+      setSt('s-mic','a ouvir…','warn');
+      tick();
+    }catch(e){
+      // Permissão recusada não é defeito de hardware.
+      result.sensors.mic='skip';
+      setSt('s-mic','sem permissão','warn');
+      mb.textContent='MICROFONE BLOQUEADO';
+    }
+  };
+} else {
+  result.sensors.mic='skip';
+  setSt('s-mic','precisa de https ou 127.0.0.1','warn');
+}
 
 function armSensorTimeouts(){
   if(window.__sensorTimersArmed) return;

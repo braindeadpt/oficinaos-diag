@@ -54,4 +54,19 @@
             </Setter.Value>
         </Setter>
     </Style>
+    <!-- Seletor de dispositivos: mesma linguagem do botão, altura fixa para
+         não esticar o header quando há dois telemóveis na bancada. -->
+    <Style x:Key="TermCombo" TargetType="ComboBox">
+        <Setter Property="Background" Value="{DynamicResource PanelBrush}"/>
+        <Setter Property="Foreground" Value="{DynamicResource FgBrush}"/>
+        <Setter Property="BorderBrush" Value="{DynamicResource FgBrush}"/>
+        <Setter Property="BorderThickness" Value="1"/>
+        <Setter Property="FontFamily" Value="{DynamicResource MonoFont}"/>
+        <Setter Property="FontSize" Value="12"/>
+        <Setter Property="Padding" Value="6,2"/>
+        <Setter Property="Height" Value="26"/>
+        <Setter Property="MinWidth" Value="150"/>
+        <Setter Property="MaxWidth" Value="240"/>
+        <Setter Property="VerticalContentAlignment" Value="Center"/>
+    </Style>
 </ResourceDictionary>

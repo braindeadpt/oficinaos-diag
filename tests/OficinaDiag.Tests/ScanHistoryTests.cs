@@ -134,6 +134,48 @@ public sealed class ScanHistoryTests : IDisposable
     }
 
     [Fact]
+    public void Retention_ExpiraAntigasNaLeituraENaEscrita()
+    {
+        var old = Rep("S-OLD");
+        old.CollectedAt = DateTimeOffset.UtcNow.AddDays(-40);
+        var fresh = Rep("S-NEW");
+        fresh.CollectedAt = DateTimeOffset.UtcNow.AddDays(-2);
+        _h.Add(old);
+        _h.Add(fresh);
+        Assert.Equal(2, _h.All().Count);
+
+        _h.RetentionDays = 30;
+        Assert.Single(_h.All());
+        Assert.Equal("S-NEW", _h.All()[0].Device.Serial);
+
+        // A escrita seguinte também limpa o ficheiro (o antigo não volta).
+        var third = Rep("S-THIRD");
+        _h.Add(third);
+        Assert.Equal(2, _h.All().Count);
+        Assert.DoesNotContain(_h.All(), r => r.Device.Serial == "S-OLD");
+    }
+
+    [Fact]
+    public void RetentionSemLimite_NaoApagaNada()
+    {
+        var old = Rep("S-KEEP");
+        old.CollectedAt = DateTimeOffset.UtcNow.AddDays(-400);
+        _h.Add(old);
+        _h.RetentionDays = 0;
+        Assert.Single(_h.All());
+    }
+
+    [Fact]
+    public void ClearAll_ApagaOHistoricoInteiro()
+    {
+        _h.Add(Rep("S1"));
+        _h.Add(Rep("S2"));
+        Assert.Equal(2, _h.All().Count);
+        _h.ClearAll();
+        Assert.Empty(_h.All());
+    }
+
+    [Fact]
     public void BatterySwappedSince_DetetaCelulaNovaESoDoMesmoAparelho()
     {
         // Em iOS o serial da célula não se repete: série diferente entre dois

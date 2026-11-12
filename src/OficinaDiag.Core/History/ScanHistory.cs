@@ -36,6 +36,12 @@ public sealed class ScanHistory
         catch (AbandonedMutexException) { return true; }
     }
 
+    /// <summary>
+    /// Dias de retenção do histórico (RGPD, Opções). 0 = sem limite. Aplica-se
+    /// na escrita e na leitura, para baixar o limite ter efeito imediato.
+    /// </summary>
+    public int RetentionDays { get; set; }
+
     public void Add(DeviceReport report)
     {
         if (!TryLock(TimeSpan.FromSeconds(5))) return; // outra instância presa — não bloqueia
@@ -43,9 +49,48 @@ public sealed class ScanHistory
         {
             Directory.CreateDirectory(Path.GetDirectoryName(_file)!);
             File.AppendAllText(_file, JsonSerializer.Serialize(report, Opts) + Environment.NewLine);
+            PruneExpired();
             Prune();
         }
         finally { WriteLock.ReleaseMutex(); }
+    }
+
+    /// <summary>Remove entradas mais velhas que a retenção. Chamar com o lock tomado.</summary>
+    private void PruneExpired()
+    {
+        if (RetentionDays <= 0) return;
+        try
+        {
+            if (!File.Exists(_file)) return;
+            var cutoff = DateTimeOffset.UtcNow.AddDays(-RetentionDays);
+            var keep = new List<string>();
+            var changed = false;
+            foreach (var line in File.ReadLines(_file))
+            {
+                if (string.IsNullOrWhiteSpace(line)) continue;
+                try
+                {
+                    var r = JsonSerializer.Deserialize<DeviceReport>(line);
+                    if (r is not null && r.CollectedAt < cutoff) { changed = true; continue; }
+                }
+                catch { /* linha corrompida cai fora na mesma */ changed = true; continue; }
+                keep.Add(line);
+            }
+            if (!changed) return;
+            var tmp = _file + ".tmp";
+            File.WriteAllLines(tmp, keep);
+            File.Move(tmp, _file, overwrite: true);
+        }
+        catch { /* poda falhou — fica para a próxima escrita */ }
+    }
+
+    /// <summary>RGPD: apaga o histórico local inteiro (IMT/seriais de clientes).</summary>
+    public void ClearAll()
+    {
+        if (!TryLock(TimeSpan.FromSeconds(5))) return;
+        try { if (File.Exists(_file)) File.Delete(_file); }
+        catch { /* sem disco — nada a apagar */ }
+        finally { try { WriteLock.ReleaseMutex(); } catch { } }
     }
 
     /// <summary>
@@ -97,6 +142,13 @@ public sealed class ScanHistory
                     if (r is not null) list.Add(r);
                 }
                 catch { /* linha corrompida — ignora */ }
+            }
+            // Retenção aplicada também na leitura: mudar 90 → 30 dias nas
+            // Opções tem de esconder já o que passou do limite.
+            if (RetentionDays > 0)
+            {
+                var cutoff = DateTimeOffset.UtcNow.AddDays(-RetentionDays);
+                list.RemoveAll(r => r.CollectedAt < cutoff);
             }
             return list;
         }

@@ -59,6 +59,12 @@ public sealed class DiagConfig
     public string? ShopPhone { get; set; }
     public string? ShopAddress { get; set; }
 
+    /// <summary>
+    /// RGPD: quantos dias o histórico local (IMT/seriais) é guardado.
+    /// 0 = sem limite (só a pedido explícito da loja).
+    /// </summary>
+    public int HistoryRetentionDays { get; set; } = 90;
+
     /// <summary>URL http/https absoluto? Rejeita lixo que partiria `new Uri` no arranque.</summary>
     public static bool TryValidateCloudUrl(string? url, out Uri uri)
     {
