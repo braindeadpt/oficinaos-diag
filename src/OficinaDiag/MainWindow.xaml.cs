@@ -508,7 +508,9 @@ public partial class MainWindow : Window
                 Log(L10n.F("log.test.fail", L10n.T("err.test.htmlmissing")));
                 return;
             }
-            server.ResultReceived += data => Dispatcher.Invoke(() =>
+            // InvokeAsync + await: a UI atualiza já e a limpeza do túnel espera
+            // fora do dispatcher, sem prender a janela 3 s.
+            server.ResultReceived += data => Dispatcher.InvokeAsync(async () =>
             {
                 if (_report is null) return;
                 if (data.TryGetValue("touchHit", out var hit) && data.TryGetValue("touchTotal", out var tot))
@@ -605,7 +607,7 @@ public partial class MainWindow : Window
                 }
                 Log(L10n.T("log.test.received"));
                 ApplyGrade();
-                ClearReverseBlocking(); // o telefone não precisa mais do túnel
+                await ClearReverseAsync(); // o telefone não precisa mais do túnel
                 server.Dispose();
                 if (ReferenceEquals(_testServer, server)) _testServer = null;
             });
