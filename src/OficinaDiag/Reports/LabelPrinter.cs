@@ -36,8 +36,10 @@ public static class LabelPrinter
 
         var root = new Border
         {
-            Width = 280,            // ~74mm a 96dpi
-            Height = 150,           // ~40mm
+            // As constantes vêm do Core: o desenho e o cálculo de rotação/
+            // escala (LabelLayout) não podem divergir.
+            Width = LabelLayout.LabelWidth,   // ~74mm a 96dpi
+            Height = LabelLayout.LabelHeight, // ~40mm
             BorderBrush = Brushes.Black,
             BorderThickness = new Thickness(1),
             Background = Brushes.White,
@@ -76,8 +78,8 @@ public static class LabelPrinter
             FontSize = 9, Foreground = Brushes.DimGray, Margin = new Thickness(0, 4, 0, 0),
         });
 
-        root.Measure(new Size(280, 150));
-        root.Arrange(new Rect(0, 0, 280, 150));
+        root.Measure(new Size(LabelLayout.LabelWidth, LabelLayout.LabelHeight));
+        root.Arrange(new Rect(0, 0, LabelLayout.LabelWidth, LabelLayout.LabelHeight));
         return root;
     }
 
@@ -87,7 +89,7 @@ public static class LabelPrinter
         var dlg = new PrintDialog();
         if (dlg.ShowDialog() != true) return false;
         var visual = BuildVisual(r);
-        // A etiqueta é desenhada em 280×150 DIP (~74×40 mm) e a geometria
+        // A etiqueta é desenhada em LabelLayout.LabelWidth×LabelHeight DIP (~74×40 mm) e a geometria
         // vive no Core (`LabelLayout.Fit`, testada sem WPF): roda 90° em
         // rolos térmicos verticais estreitos (Brother 62 mm, Dymo 57×32,
         // Zebra 50×30) para o lado comprido seguir o rolo, encolhe quando
