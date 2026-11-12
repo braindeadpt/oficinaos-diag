@@ -2,7 +2,7 @@
 
 > **Instrução para qualquer agente LLM:** Atualiza este ficheiro no fim de cada ticket concluído (`[ ]` → `[x]`), preenchendo a data/commit ou nota curta em "Registo de Handoff".
 
-**Próximo ticket a executar:** `T-07` (`tickets/T-07-extract-oficinadiag-core.md`). `T-01`–`T-06` concluídos; `B-01`–`B-20` fechados (os 18 da auditoria + `B-19`/`B-20` do rig).
+**Próximo ticket a executar:** `T-08` (`tickets/T-08-regression-tests-ci.md`). `T-01`–`T-07` concluídos; `B-01`–`B-20` fechados (os 18 da auditoria + `B-19`/`B-20` do rig).
 
 ---
 
@@ -19,7 +19,7 @@
 - [x] **T-06** — Estabilidade `SettingsDialog`, `Detached` multi-dispositivo, temas dinâmicos WPF, cache `ScopeView` e Inglês 100% em `L10n` (`tickets/T-06-wpf-themes-l10n.md`)
 
 ### Fase 3 — Arquitetura `OficinaDiag.Core` & Testes de Regressão + CI (`9.3 → 9.7`)
-- [ ] **T-07** — Extrair biblioteca `src/OficinaDiag.Core` (`net8.0`), criar `OficinaDiag.sln` e remover ficheiros `<Compile Link=...>` (`tickets/T-07-extract-oficinadiag-core.md`)
+- [x] **T-07** — Extrair biblioteca `src/OficinaDiag.Core` (`net8.0`), criar `OficinaDiag.sln` e remover ficheiros `<Compile Link=...>` (`tickets/T-07-extract-oficinadiag-core.md`)
 - [ ] **T-08** — Suite completa de testes de regressão (iOS PD 9V, Android OEM, `pt-PT`, XSS, paridade `L10n` e XAML) + build WPF no CI (`tickets/T-08-regression-tests-ci.md`)
 
 ### Fase 4 — Diferenciadores "Nota 10" de Bancada Profissional (`9.7 → 10.0`)
@@ -75,6 +75,8 @@ Correr o `AndroidCollector` contra este rig revelou dois falsos positivos reais 
 ---
 
 ## Registo de Handoff entre Sessões / Agentes
+
+- **2026-11-12 (T-07 concluído — Buffy):** novo `src/OficinaDiag.Core/OficinaDiag.Core.csproj` (`net8.0`, `RootNamespace=OficinaDiag`, `InternalsVisibleTo` app/testes) com os 22 ficheiros movidos por `git mv` (`Devices/*` incl. `AdbParsing`, `Cloud/*`, `Grading`, `History`, `Log`, `Reports` exceto `LabelPrinter`, `Tests/TestServer.cs` + `wwwroot`, `Data/models.json`, `L10n.cs`) e as packages `iMobileDevice-net`/`Markdig`/`ProtectedData`; a app fica `net8.0-windows` + `UseWPF` com `ProjectReference`, só `QRCoder` e o bundling de `tools/platform-tools`. `L10n` deixa de tocar em `ThemeManager` (`UseTerminalChrome`, sincronizado em `ThemeManager.Apply` mesmo quando o tema não muda), `DeviceReport.ToolVersion` passa a ler o **entry** assembly (o `/p:Version=` injeta na app, não no Core), `tests/*.csproj` troca os 11 `<Compile Link>` por `ProjectReference` (e larga `Markdig`/`ProtectedData`), `OficinaDiag.sln` criado e `tools/fetch-tools.ps1` procura a versão em `OficinaDiag.Core.csproj` com fallback para o da app. **Verificação:** `dotnet build src/OficinaDiag.Core` corre em macOS sem SDK Windows; `dotnet test -c Release` **150/150**; build WPF 0 erros; `dotnet publish -r win-x64 --self-contained /p:PublishSingleFile=true` produz `OficinaDiag.exe` (68 MB) + `Data/models.json` + `Tests/wwwroot/device-test.html`; a regex do `fetch-tools.ps1` casa `1.3.17` no csproj novo. **Não executado:** `fetch-tools.ps1` a correr (sem `pwsh` nesta máquina) e CI Linux real.
 
 - **2026-11-12 (T-06 concluído — Buffy):** `SettingsDialog.Save_Click` valida a URL e o código **antes** de tocar em `_config`, constrói o `CloudClient` sobre a URL por gravar e só grava URL/idioma/tema/token de uma vez, imediatamente antes de `DialogResult = true`; `_closing` + `_cts` + `if (_closing || !IsLoaded) return;` depois do `await` (fechar a meio do pairing já não lança) e `OnClosing` deixa de repor o preview do que foi guardado. `MainWindow`: `Detached` de um 2.º telemóvel só regista o log (`_current?.Id != d.Id → return`), `Ai_Click` usa `L10n.Current` e desativa `AiButton` a cobrir o `RedeemPairingAsync`, `ApplyStrings` chama `RefreshResults()` e `OnClosing` desubscreve `L10n.Changed`/`ThemeManager.Changed`. Os 5 diálogos passam a `Style="{DynamicResource TermButton}"`, o `Win95.xaml` lê `Background`/`BorderBrush` por `TemplateBinding` (com belezas padrão nos setters) e o `ScopeView` reutiliza 4 `Pen` congeladas em cache por tema (zero alocações entre frames). `CloudClient`, `CompareWindow` e o aviso de `device-test.html` saem em `L10n` (novas chaves `cloud.*`, `cmp.grade`, `cmp.checks`, `err.test.htmlmissing` em PT e EN); `TokenDialog` arranca no idioma da app e o `BenchWindow` distingue `OperationCanceledException` (fecho da janela) de falha real. **Verificação:** build WPF (`-p:EnableWindowsTargeting=true`) 0 erros, `dotnet test` **150/150**. **Rig Android:** `device-test.html` nova servida por `adb reverse` e aberta no WebView — cada toque no palco muda o frame (hashes distintos), logo HTML/JS novos correm; **não** percorri as 4 fases até ao `POST` nesta sessão (os botões das fases seguintes precisam das coordenadas que só se tiram de imagem e o CLI do InstaBox não transfere ficheiros). **Não exercitado:** WPF a correr com temas/diálogos (sem máquina Windows aqui) — troca Terminal→Fluent e o fecho do `SettingsDialog` a meio do pairing ficam por confirmar visualmente. Próximo: `T-07`.
 

@@ -1,0 +1,37 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Lógica pura do diag: coletores, parsing, grading, relatórios, cloud e o
+    servidor de teste on-device. net8.0 sem UseWPF para `dotnet test` correr
+    em Linux/macOS/Windows sem o SDK Windows Desktop.
+    RootNamespace = OficinaDiag preserva todos os namespaces já usados.
+  -->
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>OficinaDiag</RootNamespace>
+    <AssemblyName>OficinaDiag.Core</AssemblyName>
+    <Version>0.2.1</Version>
+    <Description>OficinaOS Diag — core (coletores, relatórios, cloud)</Description>
+    <Company>Oficina de Sistemas</Company>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="iMobileDevice-net" Version="1.3.17" />
+    <PackageReference Include="Markdig" Version="1.4.0" />
+    <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="8.0.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="OficinaDiag" />
+    <InternalsVisibleTo Include="OficinaDiag.Tests" />
+  </ItemGroup>
+
+  <!-- partilhados com a app e com os testes: a página real e a tabela de modelos -->
+  <ItemGroup>
+    <Content Include="Tests\wwwroot\**" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="Data\models.json" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
+
+</Project>

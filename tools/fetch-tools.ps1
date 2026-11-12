@@ -102,7 +102,12 @@ $sha256ByVersion = @{
     }
 }
 
-$csproj = Get-Content (Join-Path $root "src\OficinaDiag\OficinaDiag.csproj") -Raw
+# A versão do iMobileDevice-net vive em OficinaDiag.Core desde o T-07;
+# fallback para o csproj da app mantém o script a funcionar em checkouts antigos.
+$coreProj = Join-Path $root "src\OficinaDiag.Core\OficinaDiag.Core.csproj"
+$appProj = Join-Path $root "src\OficinaDiag\OficinaDiag.csproj"
+$projPath = if (Test-Path $coreProj) { $coreProj } else { $appProj }
+$csproj = Get-Content $projPath -Raw
 $imVersion = [regex]::Match($csproj, 'iMobileDevice-net" Version="([^"]+)"').Groups[1].Value
 if (-not $imVersion) { throw "versão do iMobileDevice-net não encontrada no csproj" }
 $imPins = $sha256ByVersion[$imVersion]
@@ -114,7 +119,7 @@ $imPins = $imPins.Clone() # o foreach abaixo consome o clone, não a tabela
 $nugetRoot = if ($env:NUGET_PACKAGES) { $env:NUGET_PACKAGES } else { Join-Path $env:USERPROFILE ".nuget\packages" }
 $native = Join-Path $nugetRoot "imobiledevice-net\$imVersion\runtimes\win-x64\native"
 if (-not (Test-Path $native)) {
-    dotnet restore (Join-Path $root "src\OficinaDiag\OficinaDiag.csproj") --nologo -v q
+    dotnet restore $projPath --nologo -v q
 }
 if (-not (Test-Path $native)) {
     throw "imobiledevice-net $imVersion não está no cache NuGet ($native) — corre 'dotnet restore' primeiro"

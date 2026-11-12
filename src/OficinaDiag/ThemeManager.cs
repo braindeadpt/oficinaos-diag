@@ -25,13 +25,18 @@ public static class ThemeManager
     {
         if (!All.Contains(name)) name = Terminal;
         var uri = $"pack://application:,,,/Themes/{name}.xaml";
+        var previous = Current;
         var merged = Application.Current.Resources.MergedDictionaries;
         for (var i = merged.Count - 1; i >= 0; i--)
             if (merged[i].Source?.OriginalString.Contains("/Themes/") == true)
                 merged.RemoveAt(i);
         merged.Add(new ResourceDictionary { Source = new Uri(uri) });
-        if (Current == name) return;
         Current = name;
+        // O Core não conhece WPF: publica-se aqui se o chrome [ ]/── é o certo.
+        // Atualiza-se mesmo quando o tema não mudou — a app pode arrancar com
+        // o tema já aplicado e o valor por omissão do L10n não servir.
+        L10n.UseTerminalChrome = IsTerminal;
+        if (previous == name) return;
         Changed?.Invoke();
     }
 }

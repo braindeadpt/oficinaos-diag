@@ -35,13 +35,17 @@ public static class L10n
     public static string F(string key, params object?[] args) =>
         string.Format(CultureInfo.InvariantCulture, T(key), args);
 
+    // O tema vive na app WPF; o Core só precisa de saber se o chrome terminal
+    // está ativo. ThemeManager.Apply sincroniza isto a cada troca de tema.
+    public static bool UseTerminalChrome { get; set; } = true;
+
     /// <summary>Button caption — terminal theme wraps it in [ ].</summary>
     public static string Btn(string key) =>
-        ThemeManager.IsTerminal ? $"[ {T(key)} ]" : T(key);
+        UseTerminalChrome ? $"[ {T(key)} ]" : T(key);
 
     /// <summary>Section header — terminal theme draws ── dashes.</summary>
     public static string Section(string key) =>
-        ThemeManager.IsTerminal ? $"── {T(key)} ────────────────" : T(key).ToUpperInvariant();
+        UseTerminalChrome ? $"── {T(key)} ────────────────" : T(key).ToUpperInvariant();
 
     private static readonly Dictionary<string, Dictionary<string, string>> D = new()
     {

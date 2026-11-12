@@ -35,7 +35,11 @@ public sealed class DeviceReport
 {
     public string Tool { get; set; } = "oficinaos-diag";
     public string ToolVersion { get; set; } =
-        System.Reflection.Assembly.GetExecutingAssembly().GetName().Version?.ToString(3) ?? "0.0.0";
+        // O Core tem a sua própria versão: quem manda é a da app publicada
+        // (o `/p:Version=` injeta no executável, não nesta biblioteca).
+        (System.Reflection.Assembly.GetEntryAssembly()
+            ?? System.Reflection.Assembly.GetExecutingAssembly()).GetName().Version?.ToString(3)
+        ?? "0.0.0";
     public DateTimeOffset CollectedAt { get; set; } = DateTimeOffset.UtcNow;
 
     public string Platform { get; set; } = "unknown"; // android | ios
