@@ -115,21 +115,21 @@ public sealed class CloudClient
                 Content = new StringContent(json, Encoding.UTF8, "application/json"),
             }.WithIdempotencyKey(idempotencyKey), TimeSpan.FromSeconds(20));
             if (res.IsSuccessStatusCode)
-                return (true, "Relatório enviado à loja — eles veem-no na app.");
+                return (true, L10n.T("cloud.send.ok"));
             var body = await res.Content.ReadAsStringAsync();
             if ((int)res.StatusCode == 402)
-                return (false, "Esta loja não aceita diagnósticos remotos (módulo inativo).");
+                return (false, L10n.T("cloud.send.nomodule"));
             if ((int)res.StatusCode == 404)
-                return (false, "Código de loja inválido — confirma com a loja.");
-            return (false, $"Servidor respondeu {(int)res.StatusCode} — {body}");
+                return (false, L10n.T("cloud.send.badcode"));
+            return (false, L10n.F("cloud.status", (int)res.StatusCode, body));
         }
         catch (TaskCanceledException)
         {
-            return (false, "O servidor demorou demasiado — verifica a net e tenta outra vez.");
+            return (false, L10n.T("cloud.timeout"));
         }
         catch (HttpRequestException)
         {
-            return (false, "Sem ligação ao servidor — verifica a net e tenta outra vez.");
+            return (false, L10n.T("cloud.offline"));
         }
         catch (Exception ex) { return (false, ex.Message); }
     }
@@ -156,9 +156,9 @@ public sealed class CloudClient
                 Content = new StringContent(payload, Encoding.UTF8, "application/json"),
             }, TimeSpan.FromSeconds(20));
             if (res.IsSuccessStatusCode)
-                return (true, "Log enviado — obrigado, ajuda-nos a corrigir.");
+                return (true, L10n.T("cloud.log.ok"));
             var body = await res.Content.ReadAsStringAsync();
-            return (false, $"Servidor respondeu {(int)res.StatusCode} — {body}");
+            return (false, L10n.F("cloud.status", (int)res.StatusCode, body));
         }
         catch (Exception ex) { return (false, ex.Message); }
     }
@@ -187,10 +187,10 @@ public sealed class CloudClient
             if (!res.IsSuccessStatusCode)
             {
                 if (body.Contains("INVALID_OR_EXPIRED_CODE"))
-                    return (false, "", "", "Código inválido ou expirado — gera um novo na app da loja.");
+                    return (false, "", "", L10n.T("cloud.pair.badcode"));
                 if (body.Contains("RATE_LIMITED"))
-                    return (false, "", "", "Demasiadas tentativas — espera um pouco e tenta outra vez.");
-                return (false, "", "", $"Servidor respondeu {(int)res.StatusCode} — {body}");
+                    return (false, "", "", L10n.T("cloud.pair.rate"));
+                return (false, "", "", L10n.F("cloud.status", (int)res.StatusCode, body));
             }
             using var doc = JsonDocument.Parse(body);
             // Defesa em profundidade: scope declarado na resposta tem de
@@ -199,8 +199,7 @@ public sealed class CloudClient
             {
                 var scope = sc.ValueKind == JsonValueKind.String ? sc.GetString() : "";
                 if (IntakeRules.RedeemScopeError(scope) is { } bad)
-                    return (false, "", "",
-                        $"A cloud devolveu um token com scope \"{bad}\" — recuso guardar algo que não seja \"diag\". Atualiza a cloud ou reporta o problema.");
+                    return (false, "", "", L10n.F("cloud.pair.scope", bad));
             }
             var token = doc.RootElement.GetProperty("shopToken").GetString() ?? "";
             var shopName = doc.RootElement.TryGetProperty("shopName", out var s) ? s.GetString() ?? "" : "";
@@ -239,7 +238,7 @@ public sealed class CloudClient
         }
         catch (TaskCanceledException)
         {
-            return (false, "O servidor de IA demorou demasiado a responder — tenta outra vez.");
+            return (false, L10n.T("cloud.ai.timeout"));
         }
         catch (Exception ex) { return (false, ex.Message); }
     }

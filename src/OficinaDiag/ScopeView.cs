@@ -10,14 +10,32 @@ namespace OficinaDiag;
 /// </summary>
 public sealed class ScopeView : FrameworkElement
 {
-    // Pens resolvem-se do tema ativo a cada render — troca de tema repinta sozinha.
-    private static Pen Pen(string key, double width) =>
-        new(Application.Current.TryFindResource(key) as Brush ?? Brushes.Gray, width);
+    // Pens congeladas e reutilizadas: criar ~18 Pen por frame (60 fps numa
+    // sessão SCAN+) era lixo constante na gen0. A cache é invalidada quando
+    // o tema muda, porque aí as brushes resolvidas são outras.
+    private static string? _penTheme;
+    private static Pen? _gridPen;
+    private static Pen? _ampPen;
+    private static Pen? _voltPen;
+    private static Pen? _tempPen;
 
-    private static Pen GridPen => Pen("LineBrush", 1);
-    private static Pen AmpPen => Pen("FgBrush", 1.6);
-    private static Pen VoltPen => Pen("DimBrush", 1);
-    private static Pen TempPen => Pen("WarnBrush", 1.2);
+    private static Pen Make(string key, double width)
+    {
+        var pen = new Pen(Application.Current.TryFindResource(key) as Brush ?? Brushes.Gray, width);
+        if (pen.CanFreeze) pen.Freeze();
+        return pen;
+    }
+
+    private static void EnsurePens()
+    {
+        var theme = ThemeManager.Current;
+        if (_penTheme == theme && _gridPen is not null) return;
+        _penTheme = theme;
+        _gridPen = Make("LineBrush", 1);
+        _ampPen = Make("FgBrush", 1.6);
+        _voltPen = Make("DimBrush", 1);
+        _tempPen = Make("WarnBrush", 1.2);
+    }
 
     private readonly List<PowerSample> _samples = new();
     private double _windowSec = 90;
@@ -41,11 +59,13 @@ public sealed class ScopeView : FrameworkElement
         var h = ActualHeight;
         if (w < 10 || h < 10) return;
 
+        EnsurePens();
+        var grid = _gridPen!;
         for (var i = 1; i < 6; i++)
-            dc.DrawLine(GridPen, new Point(0, h * i / 6), new Point(w, h * i / 6));
+            dc.DrawLine(grid, new Point(0, h * i / 6), new Point(w, h * i / 6));
         for (var i = 1; i < 10; i++)
-            dc.DrawLine(GridPen, new Point(w * i / 10, 0), new Point(w * i / 10, h));
-        dc.DrawRectangle(null, GridPen, new Rect(0, 0, w, h));
+            dc.DrawLine(grid, new Point(w * i / 10, 0), new Point(w * i / 10, h));
+        dc.DrawRectangle(null, grid, new Rect(0, 0, w, h));
 
         if (_samples.Count < 2) return;
         var t0 = _samples[0].T;
@@ -53,9 +73,9 @@ public sealed class ScopeView : FrameworkElement
         double X(double t) => (t - t0) / (t1 - t0) * w;
 
         // bandas fixas — instrumento, não auto-escala que dança
-        DrawSeries(dc, h, X, s => s.Milliamps, AmpPen, 0, 3000);
-        DrawSeries(dc, h, X, s => s.Volts * 1000, VoltPen, 3200, 4600);
-        DrawSeries(dc, h, X, s => s.TempC, TempPen, 20, 50);
+        DrawSeries(dc, h, X, s => s.Milliamps, _ampPen!, 0, 3000);
+        DrawSeries(dc, h, X, s => s.Volts * 1000, _voltPen!, 3200, 4600);
+        DrawSeries(dc, h, X, s => s.TempC, _tempPen!, 20, 50);
     }
 
     private void DrawSeries(DrawingContext dc, double h, Func<double, double> x,

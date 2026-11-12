@@ -195,6 +195,20 @@ public static class L10n
             ["send.err.contact"] = "Precisamos do teu nome e telefone — a loja usa-os para te identificar.",
             ["send.err.email"] = "O email não parece válido — corrige-o ou deixa o campo vazio.",
             ["err.notes.long"] = "As notas têm mais de {0} caracteres — encurta-as antes de enviar.",
+            ["err.test.htmlmissing"] = "device-test.html não encontrado — a instalação está incompleta; reinstala a app.",
+
+            // respostas da cloud (nunca hardcoded — o modo EN tem de as traduzir)
+            ["cloud.send.ok"] = "Relatório enviado à loja — eles veem-no na app.",
+            ["cloud.send.nomodule"] = "Esta loja não aceita diagnósticos remotos (módulo inativo).",
+            ["cloud.send.badcode"] = "Código de loja inválido — confirma com a loja.",
+            ["cloud.status"] = "Servidor respondeu {0} — {1}",
+            ["cloud.timeout"] = "O servidor demorou demasiado — verifica a net e tenta outra vez.",
+            ["cloud.offline"] = "Sem ligação ao servidor — verifica a net e tenta outra vez.",
+            ["cloud.log.ok"] = "Log enviado — obrigado, ajuda-nos a corrigir.",
+            ["cloud.pair.badcode"] = "Código inválido ou expirado — gera um novo na app da loja.",
+            ["cloud.pair.rate"] = "Demasiadas tentativas — espera um pouco e tenta outra vez.",
+            ["cloud.pair.scope"] = "A cloud devolveu um token com scope \"{0}\" — recuso guardar algo que não seja \"diag\". Atualiza a cloud ou reporta o problema.",
+            ["cloud.ai.timeout"] = "O servidor de IA demorou demasiado a responder — tenta outra vez.",
 
             // seguradora
             ["ins.title"] = "Relatório para seguradora",
@@ -238,6 +252,8 @@ public static class L10n
             ["cmp.col.check"] = "verificação",
             ["cmp.col.before"] = "antes",
             ["cmp.col.now"] = "agora",
+            ["cmp.grade"] = " · grau {0}",
+            ["cmp.checks"] = "{0} checks",
 
             // QR popup
             ["qr.text"] = "LÊ COM A CÂMARA DO TELEMÓVEL",
@@ -397,6 +413,19 @@ public static class L10n
             ["send.err.contact"] = "We need your name and phone — the shop uses them to identify you.",
             ["send.err.email"] = "That email doesn't look valid — fix it or leave the field empty.",
             ["err.notes.long"] = "Notes are longer than {0} characters — shorten them before sending.",
+            ["err.test.htmlmissing"] = "device-test.html not found — the install is incomplete; reinstall the app.",
+
+            ["cloud.send.ok"] = "Report sent to the shop — they can see it in their app.",
+            ["cloud.send.nomodule"] = "This shop doesn't accept remote diagnostics (module inactive).",
+            ["cloud.send.badcode"] = "Invalid shop code — check it with the shop.",
+            ["cloud.status"] = "Server replied {0} — {1}",
+            ["cloud.timeout"] = "The server took too long — check your connection and try again.",
+            ["cloud.offline"] = "No connection to the server — check your connection and try again.",
+            ["cloud.log.ok"] = "Log sent — thanks, it helps us fix things.",
+            ["cloud.pair.badcode"] = "Invalid or expired code — generate a new one in the shop app.",
+            ["cloud.pair.rate"] = "Too many attempts — wait a moment and try again.",
+            ["cloud.pair.scope"] = "The cloud returned a token with scope \"{0}\" — I refuse to store anything but \"diag\". Update the cloud or report the issue.",
+            ["cloud.ai.timeout"] = "The AI server took too long to answer — try again.",
 
             ["ins.title"] = "Insurer report",
             ["ins.header"] = "INSURER REPORT",
@@ -437,6 +466,8 @@ public static class L10n
             ["cmp.col.check"] = "check",
             ["cmp.col.before"] = "before",
             ["cmp.col.now"] = "now",
+            ["cmp.grade"] = " · grade {0}",
+            ["cmp.checks"] = "{0} checks",
 
             ["qr.text"] = "SCAN WITH THE PHONE CAMERA",
 

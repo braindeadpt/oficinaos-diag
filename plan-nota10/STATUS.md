@@ -2,7 +2,7 @@
 
 > **Instrução para qualquer agente LLM:** Atualiza este ficheiro no fim de cada ticket concluído (`[ ]` → `[x]`), preenchendo a data/commit ou nota curta em "Registo de Handoff".
 
-**Próximo ticket a executar:** `T-06` (`tickets/T-06-wpf-themes-l10n.md`). `T-01`–`T-05` concluídos; `B-01`–`B-06`, `B-08`–`B-11`, `B-13`, `B-16`–`B-20` fechados (de `B-12` falta só a parte de `T-06`).
+**Próximo ticket a executar:** `T-07` (`tickets/T-07-extract-oficinadiag-core.md`). `T-01`–`T-06` concluídos; `B-01`–`B-20` fechados (os 18 da auditoria + `B-19`/`B-20` do rig).
 
 ---
 
@@ -16,7 +16,7 @@
 ### Fase 2 — Hardening de Relatórios, LAN/Safari, WPF UI, Temas & L10n (`8.7 → 9.3`)
 - [x] **T-04** — Sanitização XSS/HTML em `ReportBuilder`, timeouts curtos em `CloudClient` e robustez em `ScanHistory`/`AppLog` (`tickets/T-04-reports-cloud-hardening.md`)
 - [x] **T-05** — Seleção inteligente de IP LAN no `TestServer` (anti-VirtualBox/WSL + HTTP bounds) e compatibilidade iOS Safari em `device-test.html` (`tickets/T-05-testserver-lan-safari.md`)
-- [ ] **T-06** — Estabilidade `SettingsDialog`, `Detached` multi-dispositivo, temas dinâmicos WPF, cache `ScopeView` e Inglês 100% em `L10n` (`tickets/T-06-wpf-themes-l10n.md`)
+- [x] **T-06** — Estabilidade `SettingsDialog`, `Detached` multi-dispositivo, temas dinâmicos WPF, cache `ScopeView` e Inglês 100% em `L10n` (`tickets/T-06-wpf-themes-l10n.md`)
 
 ### Fase 3 — Arquitetura `OficinaDiag.Core` & Testes de Regressão + CI (`9.3 → 9.7`)
 - [ ] **T-07** — Extrair biblioteca `src/OficinaDiag.Core` (`net8.0`), criar `OficinaDiag.sln` e remover ficheiros `<Compile Link=...>` (`tickets/T-07-extract-oficinadiag-core.md`)
@@ -36,15 +36,15 @@
 - [x] `B-04` (Crítico) — Corrida USB `lockdownd`/`diagnostics_relay` e processos órfãos em timeout → **T-02**
 - [x] `B-05` (Alto) — `double.TryParse` sem `InvariantCulture` gerava 314 °C / 385 °C em Windows `pt-PT` → **T-03**
 - [x] `B-06` (Alto) — Sinal `current_now` invertido em Samsung/MediaTek gerava falso defeito de porta de carga → **T-03**
-- [ ] `B-07` (Alto) — Crash `DialogResult` em `SettingsDialog.Save_Click` + mutação suja de `_config` → **T-06**
+- [x] `B-07` (Alto) — Crash `DialogResult` em `SettingsDialog.Save_Click` + mutação suja de `_config` → **T-06**
 - [x] `B-08` (Alto) — Links `javascript:` em Markdig IA + `docRef` sem `HtmlEncode` em `ToInsuranceHtml` → **T-04**
 - [x] `B-09` (Médio) — `DeviceName` pessoal exposto como `identity.model` (PII) + `UDID` em `Serial` → **T-02**
 - [x] `B-10` (Médio) — `TestServer` escolhia IP virtual (VirtualBox/WSL) + bug `headerEnd == -1` aos 64 KB → **T-05**
 - [x] `B-11` (Médio) — `dumpsys account` multiplicava contas + capacidade em `µAh` crua → **T-03**
-- [ ] `B-12` (Médio) — `Detached` limpa dispositivo errado + `lang="pt"` fixo no IA + `:` em nomes de ficheiro → **T-06** *(parte `B-12c` fechada em `T-04` com `SafeFileToken`)*
+- [x] `B-12` (Médio) — `Detached` limpa dispositivo errado + `lang="pt"` fixo no IA + `:` em nomes de ficheiro → **T-06** *(parte `B-12c` fechada em `T-04` com `SafeFileToken`)*
 - [x] `B-13` (Médio) — Quirks iOS Safari (`AudioContext` suspenso/Silêncio, timer 6s sensores, `colorsViewed`) → **T-05**
-- [ ] `B-14` (Médio) — Troca de tema não refresca `ResultsList`, diálogos `StaticResource` e 18 `Pen`s/frame → **T-06**
-- [ ] `B-15` (Médio) — Mensagens hardcoded em PT em `CloudClient`, `CompareWindow` e `TokenDialog` → **T-06**
+- [x] `B-14` (Médio) — Troca de tema não refresca `ResultsList`, diálogos `StaticResource` e 18 `Pen`s/frame → **T-06**
+- [x] `B-15` (Médio) — Mensagens hardcoded em PT em `CloudClient`, `CompareWindow` e `TokenDialog` → **T-06**
 - [x] `B-16` (Médio) — Redirecionamento `>` em `sign-release.ps1` + `build-store.ps1` sem validar `adb.exe` → **T-01**
 - [x] `B-17` (Baixo) — Timeout global de 150s c/ retry (até 5 min) e falta de `using` em `CloudClient` → **T-04**
 - [x] `B-18` (Baixo) — `Mutex.WaitOne()` infinito em `ScanHistory` e corte UTF-8 a meio em `AppLog` → **T-04**
@@ -75,6 +75,8 @@ Correr o `AndroidCollector` contra este rig revelou dois falsos positivos reais 
 ---
 
 ## Registo de Handoff entre Sessões / Agentes
+
+- **2026-11-12 (T-06 concluído — Buffy):** `SettingsDialog.Save_Click` valida a URL e o código **antes** de tocar em `_config`, constrói o `CloudClient` sobre a URL por gravar e só grava URL/idioma/tema/token de uma vez, imediatamente antes de `DialogResult = true`; `_closing` + `_cts` + `if (_closing || !IsLoaded) return;` depois do `await` (fechar a meio do pairing já não lança) e `OnClosing` deixa de repor o preview do que foi guardado. `MainWindow`: `Detached` de um 2.º telemóvel só regista o log (`_current?.Id != d.Id → return`), `Ai_Click` usa `L10n.Current` e desativa `AiButton` a cobrir o `RedeemPairingAsync`, `ApplyStrings` chama `RefreshResults()` e `OnClosing` desubscreve `L10n.Changed`/`ThemeManager.Changed`. Os 5 diálogos passam a `Style="{DynamicResource TermButton}"`, o `Win95.xaml` lê `Background`/`BorderBrush` por `TemplateBinding` (com belezas padrão nos setters) e o `ScopeView` reutiliza 4 `Pen` congeladas em cache por tema (zero alocações entre frames). `CloudClient`, `CompareWindow` e o aviso de `device-test.html` saem em `L10n` (novas chaves `cloud.*`, `cmp.grade`, `cmp.checks`, `err.test.htmlmissing` em PT e EN); `TokenDialog` arranca no idioma da app e o `BenchWindow` distingue `OperationCanceledException` (fecho da janela) de falha real. **Verificação:** build WPF (`-p:EnableWindowsTargeting=true`) 0 erros, `dotnet test` **150/150**. **Rig Android:** `device-test.html` nova servida por `adb reverse` e aberta no WebView — cada toque no palco muda o frame (hashes distintos), logo HTML/JS novos correm; **não** percorri as 4 fases até ao `POST` nesta sessão (os botões das fases seguintes precisam das coordenadas que só se tiram de imagem e o CLI do InstaBox não transfere ficheiros). **Não exercitado:** WPF a correr com temas/diálogos (sem máquina Windows aqui) — troca Terminal→Fluent e o fecho do `SettingsDialog` a meio do pairing ficam por confirmar visualmente. Próximo: `T-07`.
 
 - **2026-11-12 (T-05 concluído — Buffy):** `TestServer` escolhe a interface LAN por ranking testável (`PickBestLanIp`): exclui adaptadores virtuais (VirtualBox/VMware/WSL/Docker/VPN), prioriza gateway IPv4 e depois Wi-Fi → Ethernet; `headerEnd < 0` responde **431** em vez de tratar headers como JSON, `Content-Length` é lido só dos headers e `GET /{token}` (com ou sem barra e `?from=qr`) serve a página. Na `device-test.html`: `seenColors` real no `colorsViewed`, `audioCtx.resume()` no altifalante com lembrete do botão de Silêncio, e o timer de 6 s dos sensores só arma depois da permissão iOS. **Verificação:** build WPF 0 erros/0 avisos; `dotnet test` **150/150** (+6: ranking, GET sem barra/query, 431 com 70 KB) e `node --check` da página. **Não exercitado:** iPhone/iOS Safari real — o rig é Android WebView, sem botão de Silêncio nem `requestPermission`.
 - **2026-11-12 (T-04 concluído — Buffy):** `AiReportToHtml` passa a reescrever links (só `http(s)`/`mailto`, o resto cai em `#`) e `docRef`/classes CSS ficam por allowlist (`SafeCssToken`); novo `SafeFileToken` aplicado nos 3 `SaveFileDialog` do export; `CloudClient` ganhou timeout por tentativa (20 s nos endpoints rápidos, 150 s na IA sem retry em timeout) e `using` nos 4 métodos; `ScanHistory` usa mutex com timeout de 5 s e trata `AbandonedMutexException`; `AppLog` alinha a rotação ao primeiro `\n` para não partir UTF-8. **Verificação:** build WPF 0 erros/0 avisos; `dotnet test` **144/144** (+12: `SafeUrl`/links/escape em 3 formatos/`SafeFileToken`/`SafeCssToken`). **Não exercitado:** servidor a pendurar-se de facto (timeouts revistos por código) e rotação real do `diag.log` (caminho fixo em `%APPDATA%`, sem injeção para teste).

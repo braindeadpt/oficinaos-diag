@@ -15,6 +15,7 @@ public partial class TokenDialog : Window
         TokenLabel.Text = L10n.T("dlg.ai.token");
         RememberBox.Content = L10n.T("dlg.token.remember");
         LangLabel.Text = L10n.T("dlg.ai.lang");
+        LangBox.Text = L10n.Current; // arranca no idioma da app, não sempre "pt"
         OkBtn.Content = "OK";
         CancelBtn.Content = L10n.Btn("btn.cancel");
     }

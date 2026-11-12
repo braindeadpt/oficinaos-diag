@@ -108,7 +108,10 @@ public partial class MainWindow : Window
         _detector.Detached += d => Dispatcher.Invoke(() =>
         {
             Log(L10n.F("log.detached", d.Label));
-            if (_current?.Id == d.Id) _current = null;
+            // Só o aparelho ativo manda no estado: desligar um 2.º telemóvel
+            // não pode limpar o header nem desativar os botões de quem ficou.
+            if (_current?.Id != d.Id) return;
+            _current = null;
             StatusText.Text = L10n.T("status.watching");
             TelemetryText.Text = "";
             _telemetryCts?.Cancel();
@@ -214,6 +217,9 @@ public partial class MainWindow : Window
         InsuranceButton.Content = L10n.Btn("btn.insurance");
         LogButton.Content = L10n.Btn("btn.log");
         ConfigButton.Content = L10n.Btn("btn.settings");
+        // Tema novo = brushes novas: as linhas da lista foram pintadas com as
+        // antigas (verde néon sobre fundo branco no tema Fluent).
+        RefreshResults();
         if (_update is not null)
             UpdateButton.Content = ThemeManager.IsTerminal
                 ? $"[ {L10n.F("btn.update", _update.Tag)} ]"
@@ -365,7 +371,7 @@ public partial class MainWindow : Window
             {
                 _testServer = null;
                 server.Dispose();
-                Log(L10n.F("log.test.fail", "device-test.html não encontrado"));
+                Log(L10n.F("log.test.fail", L10n.T("err.test.htmlmissing")));
                 return;
             }
             server.ResultReceived += data => Dispatcher.Invoke(() =>
@@ -678,41 +684,43 @@ public partial class MainWindow : Window
                 MessageBoxButton.YesNo, MessageBoxImage.Information) != MessageBoxResult.Yes)
             return;
         var token = _config.GetShopToken();
-        string lang;
-        if (token is not null)
-        {
-            lang = "pt";
-        }
-        else
-        {
-            var tdlg = new TokenDialog { Owner = this };
-            if (tdlg.ShowDialog() != true) return;
-            token = tdlg.Token;
-            lang = tdlg.Lang;
-            // Só o código de emparelhamento (XXXX-YYYY da app da loja) — a
-            // cloud troca-o por um token scoped "diag". Um token completo
-            // colado é recusado: este PC nunca deve guardar poder total.
-            if (!Cloud.IntakeRules.IsPairingCode(token))
-            {
-                Log(L10n.T("log.pairing.codeonly"));
-                return;
-            }
-            Log(L10n.T("log.pairing"));
-            var (pOk, pToken, pShop, pErr) = await _cloud.RedeemPairingAsync(token);
-            if (!pOk) { Log(L10n.F("log.pairing.fail", pErr)); return; }
-            Log(L10n.F("log.pairing.ok", pShop));
-            token = pToken;
-            if (tdlg.Remember)
-            {
-                _config.SetShopToken(token, "diag");
-                _config.Save();
-            }
-        }
         AiButton.IsEnabled = false; // relatório IA é pago — sem double-submit
         try
         {
+            string lang;
+            if (token is not null)
+            {
+                // O relatório sai no idioma da UI — forçar "pt" ignorava as
+                // Opções e devolvia texto PT a quem trabalha em EN.
+                lang = L10n.Current;
+            }
+            else
+            {
+                var tdlg = new TokenDialog { Owner = this };
+                if (tdlg.ShowDialog() != true) return;
+                token = tdlg.Token;
+                lang = tdlg.Lang;
+                // Só o código de emparelhamento (XXXX-YYYY da app da loja) — a
+                // cloud troca-o por um token scoped "diag". Um token completo
+                // colado é recusado: este PC nunca deve guardar poder total.
+                if (!Cloud.IntakeRules.IsPairingCode(token))
+                {
+                    Log(L10n.T("log.pairing.codeonly"));
+                    return;
+                }
+                Log(L10n.T("log.pairing"));
+                var (pOk, pToken, pShop, pErr) = await _cloud.RedeemPairingAsync(token);
+                if (!pOk) { Log(L10n.F("log.pairing.fail", pErr)); return; }
+                Log(L10n.F("log.pairing.ok", pShop));
+                token = pToken;
+                if (tdlg.Remember)
+                {
+                    _config.SetShopToken(token, "diag");
+                    _config.Save();
+                }
+            }
             Log(L10n.T("log.ai.gen"));
-            var (ok, text) = await _cloud.GenerateAiReportAsync(token, _report, lang);
+            var (ok, text) = await _cloud.GenerateAiReportAsync(token!, _report, lang);
             if (!ok) { Log(L10n.F("log.ai.fail", text)); return; }
             _lastAiReport = text;
             // Guarda em HTML renderizado (entregável ao cliente) e abre no browser.
@@ -733,6 +741,10 @@ public partial class MainWindow : Window
 
     protected override void OnClosing(CancelEventArgs e)
     {
+        // Sem estas saídas o MainWindow ficava refletido em L10n/ThemeManager
+        // e continuava a ser notificado depois de fechado.
+        L10n.Changed -= ApplyStrings;
+        ThemeManager.Changed -= ApplyStrings;
         _testServer?.Dispose();
         _detector?.Dispose();
         _telemetryCts?.Cancel();

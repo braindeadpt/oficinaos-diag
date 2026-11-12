@@ -1,3 +1,4 @@
+using System.ComponentModel;
 using System.Windows;
 using System.Windows.Controls;
 using OficinaDiag.Cloud;
@@ -13,6 +14,9 @@ public partial class SettingsDialog : Window
     private readonly DiagConfig _config;
     private readonly string _origLang;
     private readonly string _origTheme;
+    private readonly CancellationTokenSource _cts = new();
+    private bool _closing;
+    private bool _saving;
 
     public SettingsDialog(DiagConfig config)
     {
@@ -64,6 +68,11 @@ public partial class SettingsDialog : Window
 
     private async void Save_Click(object sender, RoutedEventArgs e)
     {
+        if (_saving || _closing) return;
+
+        // Validação primeiro, mutação depois: cancelar ou falhar a meio deixa
+        // _config exatamente como estava (URL inválida não fica meio gravada).
+        string? validatedUrl = null;
         if (!string.IsNullOrWhiteSpace(CloudBox.Text))
         {
             var url = CloudBox.Text.Trim();
@@ -79,45 +88,75 @@ public partial class SettingsDialog : Window
                     L10n.T("set.warn.http"), Title,
                     MessageBoxButton.YesNo, MessageBoxImage.Warning) != MessageBoxResult.Yes)
                 return;
-            _config.CloudUrl = url;
+            validatedUrl = url;
         }
-        _config.Language = L10n.Current;
-        _config.Theme = ThemeManager.Current;
+
         var pasted = TokenBox.Password;
+        // Só o código de emparelhamento (XXXX-YYYY da app da loja) entra
+        // aqui — é trocado na cloud por um token scoped "diag". Um token
+        // completo colado é recusado: este PC nunca deve guardar poder
+        // total sobre a loja.
+        if (!string.IsNullOrEmpty(pasted) && !IntakeRules.IsPairingCode(pasted))
+        {
+            MessageBox.Show(this, L10n.T("set.token.codeonly"), Title,
+                MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+
+        string? token = null;
+        string? shop = null;
         if (!string.IsNullOrEmpty(pasted))
         {
-            // Só o código de emparelhamento (XXXX-YYYY da app da loja) entra
-            // aqui — é trocado na cloud por um token scoped "diag". Um token
-            // completo colado é recusado: este PC nunca deve guardar poder
-            // total sobre a loja.
-            if (!IntakeRules.IsPairingCode(pasted))
-            {
-                MessageBox.Show(this, L10n.T("set.token.codeonly"), Title,
-                    MessageBoxButton.OK, MessageBoxImage.Warning);
-                return;
-            }
+            _saving = true;
             SaveBtn.IsEnabled = false;
-            var cloud = new CloudClient(_config);
-            var (ok, token, shop, err) = await cloud.RedeemPairingAsync(pasted);
-            SaveBtn.IsEnabled = true;
-            if (!ok)
+            try
             {
-                MessageBox.Show(this, err, Title,
-                    MessageBoxButton.OK, MessageBoxImage.Warning);
-                return;
+                var cloud = new CloudClient(_config);
+                // O pairing tem de bater na URL que o utilizador acabou de
+                // escrever, mesmo que ainda não esteja gravada em _config.
+                if (validatedUrl is not null && DiagConfig.TryValidateCloudUrl(validatedUrl, out var vuri))
+                    cloud.BaseUri = new Uri(vuri.ToString().TrimEnd('/') + "/");
+                var (ok, t, s, err) = await cloud.RedeemPairingAsync(pasted);
+                // Fechado (X/Esc) enquanto o pedido corria: não tocar na
+                // janela nem em _config — DialogResult aqui crashava a UI.
+                if (_closing || !IsLoaded) return;
+                if (!ok)
+                {
+                    MessageBox.Show(this, err, Title,
+                        MessageBoxButton.OK, MessageBoxImage.Warning);
+                    return;
+                }
+                token = t;
+                shop = s;
             }
-            _config.SetShopToken(token, "diag");
-            if (!string.IsNullOrEmpty(shop))
-                MessageBox.Show(this, L10n.F("set.paired", shop), Title,
-                    MessageBoxButton.OK, MessageBoxImage.Information);
+            catch (OperationCanceledException) { return; }
+            finally
+            {
+                _saving = false;
+                if (!_closing && IsLoaded) SaveBtn.IsEnabled = true;
+            }
         }
+
+        // Tudo validado e resolvido: gravar de uma vez, sem await pelo meio.
+        if (validatedUrl is not null) _config.CloudUrl = validatedUrl;
+        _config.Language = L10n.Current;
+        _config.Theme = ThemeManager.Current;
+        if (token is not null) _config.SetShopToken(token, "diag");
+
+        _closing = true; // o preview já é o estado final — OnClosing não repõe nada
         DialogResult = true;
+
+        if (shop is not null)
+            MessageBox.Show(this, L10n.F("set.paired", shop), Title,
+                MessageBoxButton.OK, MessageBoxImage.Information);
     }
 
-    protected override void OnClosing(System.ComponentModel.CancelEventArgs e)
+    protected override void OnClosing(CancelEventArgs e)
     {
-        // fechar sem guardar (cancelar, Esc, X) repõe o preview
+        _closing = true;
+        _cts.Cancel();
         ThemeManager.Changed -= ApplyStrings;
+        // fechar sem guardar (cancelar, Esc, X) repõe o preview
         if (DialogResult != true)
         {
             L10n.Set(_origLang);

@@ -51,9 +51,10 @@ public sealed partial class CompareWindow : Window
         foreach (var p in _previous)
         {
             var checks = p.Results.Count;
-            var grade = p.Results.TryGetValue("grade.overall", out var g) ? $" · grau {g.Value}" : "";
+            var grade = p.Results.TryGetValue("grade.overall", out var g)
+                ? L10n.F("cmp.grade", g.Value) : "";
             ScanList.Items.Add(new ScanEntry(p,
-                $"{p.CollectedAt:dd-MM-yyyy HH:mm} · {checks} checks{grade}"));
+                $"{p.CollectedAt:dd-MM-yyyy HH:mm} · {L10n.F("cmp.checks", checks)}{grade}"));
         }
         if (ScanList.Items.Count > 0) ScanList.SelectedIndex = ScanList.Items.Count - 1;
     }

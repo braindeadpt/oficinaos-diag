@@ -28,7 +28,7 @@
             <Setter Property="Foreground" Value="{DynamicResource DimBrush}"/>
             <Setter Property="Margin" Value="0,10,0,0"/>
         </Style>
-        <Style TargetType="Button" BasedOn="{StaticResource TermButton}"/>
+        <Style TargetType="Button" BasedOn="{DynamicResource TermButton}"/>
     </Window.Resources>
     <StackPanel Margin="20">
         <TextBlock x:Name="TokenLabel" Margin="0,0,0,3"/>

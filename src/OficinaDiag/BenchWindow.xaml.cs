@@ -81,6 +81,13 @@ public sealed partial class BenchWindow : Window
                                    ? L10n.F("bench.verdict.sag", sag) : "");
             DoneBtn.IsEnabled = true;
         }
+        catch (OperationCanceledException)
+        {
+            // Utilizador fechou a janela a meio da sessão: não é falha do
+            // telefone, só repõe a carga que ficou aplicada e sai calado.
+            if (loadApplied && _loadOff is not null)
+                try { await _loadOff(); } catch { /* telefone pode ter saído */ }
+        }
         catch (Exception ex)
         {
             // Abort a meio da fase 2 (janela fechada, probe morto) — repõe

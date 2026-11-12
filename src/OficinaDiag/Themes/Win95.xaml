@@ -25,6 +25,10 @@
     <!-- bevel 95: branco em cima/esquerda, sombra em baixo/direita; ao carregar inverte -->
     <Style x:Key="TermButton" TargetType="Button">
         <Setter Property="Foreground" Value="{DynamicResource FgBrush}"/>
+        <!-- padrão do bevel: quem personalize Background/BorderBrush no botão
+             continua a mandar (o template lê por TemplateBinding) -->
+        <Setter Property="Background" Value="#C0C0C0"/>
+        <Setter Property="BorderBrush" Value="#808080"/>
         <Setter Property="BorderThickness" Value="1"/>
         <Setter Property="FontFamily" Value="{DynamicResource UiFont}"/>
         <Setter Property="FontSize" Value="12"/>
@@ -34,8 +38,8 @@
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="Button">
-                    <Border x:Name="shadow" BorderBrush="#808080" BorderThickness="0,0,1,1"
-                            Background="#C0C0C0">
+                    <Border x:Name="shadow" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="0,0,1,1"
+                            Background="{TemplateBinding Background}">
                         <Border x:Name="face" BorderBrush="#FFFFFF" BorderThickness="1,1,0,0"
                                 Padding="{TemplateBinding Padding}">
                             <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
