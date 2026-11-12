@@ -53,8 +53,11 @@ public sealed class AdbTunnel
                 .WaitAsync(_timeout)
                 .ConfigureAwait(false);
         }
-        catch (TimeoutException)
+        catch (Exception)
         {
+            // Timeout, adb que morreu a meio ou delegate que lançou: para
+            // efeitos de limpeza é tudo falha — o túnel pode ter ficado
+            // montado, por isso não se sai daqui em silêncio.
             ok = false;
         }
         if (!ok) _warn(L10n.F("log.test.reverse.fail", tunnel.Port));

@@ -87,6 +87,24 @@ public class AdbTunnelTests
     }
 
     [Fact]
+    public async Task AdbQueLancaContaComoFalhaEAvisa()
+    {
+        // adb que rebenta (binário em falta, acesso negado) em vez de
+        // devolver false: tem de acabar em aviso, não em exceção.
+        var warnings = new List<string>();
+        var tunnel = new AdbTunnel(
+            (_, _) => throw new InvalidOperationException("adb desapareceu"),
+            warnings.Add);
+
+        tunnel.Mount("R58M12345", 8804);
+        Assert.False(await tunnel.ClearAsync());
+
+        var aviso = Assert.Single(warnings);
+        Assert.Contains("tcp:8804", aviso);
+        Assert.False(tunnel.IsMounted);
+    }
+
+    [Fact]
     public async Task SemTunelNaoChamaAdbNemAvisa()
     {
         var chamou = false;
