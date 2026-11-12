@@ -33,23 +33,41 @@ public sealed class CloudClient
     /// duplicado sem criar outro pedido. Os diag-logs não levam chave — um log
     /// duplicado é inofensivo.
     /// </summary>
+    /// <summary>
+    /// <c>Idempotent</c>: repetir é seguro (intake tem Idempotency-Key, logs
+    /// duplicados são inofensivos). <c>PaidOnce</c>: cada tentativa pode custar
+    /// uma geração de IA — só repete quando o pedido não chegou a sair.
+    /// </summary>
+    private enum RetryMode { Idempotent, PaidOnce }
+
     private static async Task<HttpResponseMessage> SendWithRetryAsync(
-        Func<HttpRequestMessage> build)
+        Func<HttpRequestMessage> build, TimeSpan attemptTimeout,
+        RetryMode mode = RetryMode.Idempotent)
     {
         for (var attempt = 0; ; attempt++)
         {
             HttpResponseMessage res;
             using (var req = build())
+            using (var cts = new CancellationTokenSource(attemptTimeout))
             {
-                try { res = await Http.SendAsync(req); }
-                catch (Exception) when (attempt == 0)
+                try { res = await Http.SendAsync(req, cts.Token); }
+                catch (OperationCanceledException) when (attempt == 0
+                    && mode == RetryMode.Idempotent)
+                {
+                    // Timeout num endpoint rápido vale uma segunda tentativa;
+                    // nos 150 s da IA não — a geração já pode ter sido cobrada.
+                    await Task.Delay(1500);
+                    continue;
+                }
+                catch (HttpRequestException ex) when (attempt == 0 && IsPreSendFailure(ex, mode))
                 {
                     await Task.Delay(1500);
                     continue;
                 }
             }
-            // 5xx → tenta outra vez; o resto (4xx) é definitivo.
-            if ((int)res.StatusCode >= 500 && attempt == 0)
+            // 5xx → tenta outra vez só em endpoints idempotentes; o resto (4xx)
+            // é definitivo. Na IA um 5xx pode vir depois da geração.
+            if ((int)res.StatusCode >= 500 && attempt == 0 && mode == RetryMode.Idempotent)
             {
                 res.Dispose();
                 await Task.Delay(1500);
@@ -58,6 +76,18 @@ public sealed class CloudClient
             return res;
         }
     }
+
+    /// <summary>
+    /// A falha aconteceu antes de algum byte do pedido ser enviado? Resolver o
+    /// nome, abrir a ligação ou o handshake TLS acontecem antes do POST — esses
+    /// casos podem repetir com segurança. Resposta cortada a meio, protocolo
+    /// inválido ou 5xx já podem ter gerado (e cobrado) do lado da Cloud.
+    /// </summary>
+    private static bool IsPreSendFailure(HttpRequestException ex, RetryMode mode) =>
+        mode == RetryMode.Idempotent
+        || ex.HttpRequestError is HttpRequestError.NameResolutionError
+            or HttpRequestError.ConnectionError
+            or HttpRequestError.SecureConnectionError;
 
     /// <summary>
     /// Customer-facing: POST a report to a shop by its public shop code.
@@ -78,12 +108,12 @@ public sealed class CloudClient
         var json = Reports.ReportBuilder.ToIntakeJson(report, name, phone, email?.Trim(), aiReport, purpose);
         try
         {
-            var res = await SendWithRetryAsync(() => new HttpRequestMessage(
+            using var res = await SendWithRetryAsync(() => new HttpRequestMessage(
                 HttpMethod.Post,
                 new Uri(BaseUri, $"intake/{Uri.EscapeDataString(shopCode.Trim().ToUpperInvariant())}"))
             {
                 Content = new StringContent(json, Encoding.UTF8, "application/json"),
-            }.WithIdempotencyKey(idempotencyKey));
+            }.WithIdempotencyKey(idempotencyKey), TimeSpan.FromSeconds(20));
             if (res.IsSuccessStatusCode)
                 return (true, "Relatório enviado à loja — eles veem-no na app.");
             var body = await res.Content.ReadAsStringAsync();
@@ -120,11 +150,11 @@ public sealed class CloudClient
                 deviceHint,
                 log = logTail,
             });
-            var res = await SendWithRetryAsync(() => new HttpRequestMessage(
+            using var res = await SendWithRetryAsync(() => new HttpRequestMessage(
                 HttpMethod.Post, new Uri(BaseUri, "diag-logs"))
             {
                 Content = new StringContent(payload, Encoding.UTF8, "application/json"),
-            });
+            }, TimeSpan.FromSeconds(20));
             if (res.IsSuccessStatusCode)
                 return (true, "Log enviado — obrigado, ajuda-nos a corrigir.");
             var body = await res.Content.ReadAsStringAsync();
@@ -148,11 +178,11 @@ public sealed class CloudClient
                 scope = "diag",
                 label = "oficinaos-diag",
             });
-            var res = await SendWithRetryAsync(() => new HttpRequestMessage(
+            using var res = await SendWithRetryAsync(() => new HttpRequestMessage(
                 HttpMethod.Post, new Uri(BaseUri, "pairing/redeem"))
             {
                 Content = new StringContent(payload, Encoding.UTF8, "application/json"),
-            });
+            }, TimeSpan.FromSeconds(20));
             var body = await res.Content.ReadAsStringAsync();
             if (!res.IsSuccessStatusCode)
             {
@@ -191,12 +221,17 @@ public sealed class CloudClient
             return (false, L10n.F("err.notes.long", IntakeRules.NotesMaxLength));
         try
         {
-            using var req = new HttpRequestMessage(HttpMethod.Post, new Uri(BaseUri, "reports/diagnostic"))
+            // Cada chamada gasta uma geração paga: PaidOnce só repete quando o
+            // pedido não chegou a sair (DNS/ligação/TLS).
+            using var res = await SendWithRetryAsync(() =>
             {
-                Content = new StringContent(Reports.ReportBuilder.ToCloudJson(report, lang), Encoding.UTF8, "application/json"),
-            };
-            req.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", shopToken);
-            var res = await Http.SendAsync(req); // sem retry — cada chamada gasta uma geração paga
+                var req = new HttpRequestMessage(HttpMethod.Post, new Uri(BaseUri, "reports/diagnostic"))
+                {
+                    Content = new StringContent(Reports.ReportBuilder.ToCloudJson(report, lang), Encoding.UTF8, "application/json"),
+                };
+                req.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", shopToken);
+                return req;
+            }, TimeSpan.FromSeconds(150), RetryMode.PaidOnce);
             var body = await res.Content.ReadAsStringAsync();
             if (!res.IsSuccessStatusCode) return (false, $"{(int)res.StatusCode} — {body}");
             using var doc = JsonDocument.Parse(body);

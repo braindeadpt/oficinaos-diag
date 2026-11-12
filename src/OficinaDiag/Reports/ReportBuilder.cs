@@ -3,6 +3,8 @@ using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Markdig;
+using Markdig.Syntax;
+using Markdig.Syntax.Inlines;
 using OficinaDiag.Devices;
 
 namespace OficinaDiag.Reports;
@@ -24,6 +26,67 @@ public static class ReportBuilder
         new Markdig.MarkdownPipelineBuilder().DisableHtml().Build();
 
     public static string ToJson(DeviceReport r) => JsonSerializer.Serialize(r, JsonOpts);
+
+    /// <summary>
+    /// Só http(s)/mailto passam; `javascript:`, `vbscript:`, `data:`, `file:`
+    /// e relativas caem para "#". O esquema é comparado sem espaços nem
+    /// caracteres de controlo ("java\tscript:" contornava um StartsWith).
+    /// </summary>
+    public static string SafeUrl(string? url)
+    {
+        if (string.IsNullOrWhiteSpace(url)) return "#";
+        var compact = string.Concat(url.Where(c => !char.IsWhiteSpace(c) && !char.IsControl(c)))
+            .ToLowerInvariant();
+        return compact.StartsWith("https://", StringComparison.Ordinal)
+            || compact.StartsWith("http://", StringComparison.Ordinal)
+            || compact.StartsWith("mailto:", StringComparison.Ordinal)
+            ? url
+            : "#";
+    }
+
+    /// <summary>Reescreve todos os links do documento antes de renderizar.</summary>
+    private static void SanitizeLinks(MarkdownDocument doc)
+    {
+        foreach (var link in doc.Descendants<LinkInline>())
+            link.Url = SafeUrl(link.Url);
+    }
+
+    /// <summary>Estados e graus que o CSS conhece — tudo o resto cai no fallback.</summary>
+    private static readonly HashSet<string> CssTokens = new(StringComparer.Ordinal)
+    {
+        "pass", "warn", "fail", "info", "skipped",
+        "a", "b", "c", "d",
+        "grade-a", "grade-b", "grade-c", "grade-d",
+    };
+
+    /// <summary>
+    /// Token de CSS por allowlist: filtrar caracteres não bastava —
+    /// `"><script>` virava `script` e entrava como classe.
+    /// </summary>
+    public static string SafeCssToken(string? status, string fallback = "info")
+    {
+        var token = status?.Trim().ToLowerInvariant();
+        return token is not null && CssTokens.Contains(token) ? token : fallback;
+    }
+
+    /// <summary>
+    /// Nome de ficheiro seguro: serials `192.168.1.50:5555` ou `ABC!` rebentavam
+    /// o SaveFileDialog do Windows. Substitui o que o SO proíbe e os caracteres
+    /// que quebram paths, em qualquer plataforma.
+    /// </summary>
+    public static string SafeFileToken(string? raw, string fallback = "device")
+    {
+        if (string.IsNullOrWhiteSpace(raw)) return fallback;
+        var invalid = Path.GetInvalidFileNameChars();
+        var sb = new StringBuilder(raw.Trim().Length);
+        foreach (var ch in raw.Trim())
+            sb.Append(invalid.Contains(ch) || ch is ':' or '/' or '\\' or '*' or '?' or '"' or '<' or '>' or '|'
+                ? '_'
+                : ch);
+        var token = sb.ToString().TrimEnd('.', ' ');
+        if (token.Length == 0) return fallback;
+        return token.Length > 80 ? token[..80] : token;
+    }
 
     /// <summary>Payload for cloud /reports/diagnostic (AI report, shop-side).</summary>
     public static string ToCloudJson(DeviceReport r, string lang = "pt")
@@ -102,7 +165,7 @@ public static class ReportBuilder
         foreach (var (key, c) in r.Results.OrderBy(kv => kv.Key))
         {
             sb.AppendLine($"<tr><td>{System.Net.WebUtility.HtmlEncode(key)}</td>" +
-                $"<td class=\"{c.Status}\">{c.Status.ToUpperInvariant()}</td>" +
+                $"<td class=\"{SafeCssToken(c.Status)}\">{c.Status.ToUpperInvariant()}</td>" +
                 $"<td>{System.Net.WebUtility.HtmlEncode(c.Value ?? "—")}</td>" +
                 $"<td>{System.Net.WebUtility.HtmlEncode(c.Detail ?? "")}</td></tr>");
         }
@@ -149,7 +212,12 @@ public static class ReportBuilder
         // O texto vem de um LLM alimentado por dados do dispositivo (nome,
         // crash logs) → possível prompt injection. Sem HTML em bruto: tags
         // e blocos HTML saem escapados, nunca como <script>/<img onerror>.
-        var body = Markdig.Markdown.ToHtml(markdown, AiMarkdownPipeline);
+        // O texto vem de um LLM alimentado com dados do aparelho (nome Wi-Fi,
+        // crash logs) → um link [x](javascript:...) no markdown virava script
+        // no HTML que a app abre no browser. Só http(s)/mailto passam.
+        var doc = Markdig.Markdown.Parse(markdown, AiMarkdownPipeline);
+        SanitizeLinks(doc);
+        var body = Markdig.Markdown.ToHtml(doc, AiMarkdownPipeline);
         return $$"""
         <!DOCTYPE html><html lang="pt"><head><meta charset="utf-8">
         <title>OficinaDiag — relatório IA</title><style>
@@ -313,7 +381,7 @@ public static class ReportBuilder
 
         if (grade is not null)
         {
-            var cls = $"grade-{(grade.Value ?? "d").ToLowerInvariant()}";
+            var cls = $"grade-{SafeCssToken(grade.Value, "d")}";
             sb.AppendLine($"<div class=\"grade {cls}\"><span class=\"letter\">GRAU {e(grade.Value)}</span>" +
                 $"<div class=\"verdict\">{e(grade.Detail)}</div></div>");
         }
@@ -439,7 +507,7 @@ public static class ReportBuilder
             (string.IsNullOrWhiteSpace(shopLine) ? "" : $"<div class=\"contact\">{e(shopLine)}</div>") +
             "</div>");
         sb.AppendLine($"<div class=\"doctitle\"><h2>RELATÓRIO TÉCNICO DE AVARIA</h2>" +
-            $"<span class=\"ref\">{docRef}</span></div>");
+            $"<span class=\"ref\">{e(docRef)}</span></div>");
         sb.AppendLine("<div class=\"subtitle\">Documento emitido a pedido do segurado para efeitos de participação de sinistro.</div>");
 
         sb.AppendLine("<h3>Segurado</h3><table class=\"kv\">" +

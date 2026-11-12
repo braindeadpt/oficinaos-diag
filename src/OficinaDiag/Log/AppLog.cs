@@ -44,8 +44,13 @@ public static class AppLog
             fs.Seek(-keep, SeekOrigin.End);
             var buf = new byte[keep];
             var read = fs.Read(buf, 0, keep);
+            // Começar na linha seguinte: cortar a meio deixa um caractere
+            // multi-byte partido ("ã", "ç", "—") e a primeira linha sai com �.
+            var start = 0;
+            var nl = Array.IndexOf(buf, (byte)'\n', 0, read);
+            if (nl >= 0 && nl + 1 < read) start = nl + 1;
             fs.SetLength(0);
-            fs.Write(buf, 0, read);
+            fs.Write(buf, start, read - start);
         }
     }
 

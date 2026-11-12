@@ -25,15 +25,20 @@ public sealed class ScanHistory
     /// </summary>
     private static readonly Mutex WriteLock = new(initiallyOwned: false, "OficinaDiag.ScanHistory");
 
-    private static void Lock()
+    /// <summary>
+    /// Mutex com timeout: uma instância presa não pode congelar a UI. Dono
+    /// anterior morto com o mutex lança AbandonedMutexException — a posse
+    /// passa para nós e o trabalho continua.
+    /// </summary>
+    private static bool TryLock(TimeSpan timeout)
     {
-        try { WriteLock.WaitOne(); }
-        catch (AbandonedMutexException) { /* dono anterior morreu — a posse passa para nós */ }
+        try { return WriteLock.WaitOne(timeout); }
+        catch (AbandonedMutexException) { return true; }
     }
 
     public void Add(DeviceReport report)
     {
-        Lock();
+        if (!TryLock(TimeSpan.FromSeconds(5))) return; // outra instância presa — não bloqueia
         try
         {
             Directory.CreateDirectory(Path.GetDirectoryName(_file)!);
@@ -75,7 +80,10 @@ public sealed class ScanHistory
 
     public IReadOnlyList<DeviceReport> All()
     {
-        Lock(); // ler a meio de uma poda noutro processo apanhava linhas truncadas
+        // Ler a meio de uma poda noutro processo apanhava linhas truncadas.
+        // Se o lock não vier em 5 s lê na mesma: as linhas são append-only e
+        // as truncadas caem no try/catch do parser — melhor que UI congelada.
+        var locked = TryLock(TimeSpan.FromSeconds(5));
         try
         {
             var list = new List<DeviceReport>();
@@ -92,7 +100,7 @@ public sealed class ScanHistory
             }
             return list;
         }
-        finally { WriteLock.ReleaseMutex(); }
+        finally { if (locked) WriteLock.ReleaseMutex(); }
     }
 
     /// <summary>Scans anteriores de um serial, mais antigo primeiro — base do antes/depois.</summary>

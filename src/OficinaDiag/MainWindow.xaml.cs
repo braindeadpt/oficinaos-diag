@@ -343,7 +343,7 @@ public partial class MainWindow : Window
         var dlg = new SaveFileDialog
         {
             Filter = L10n.T("dlg.client.filter"),
-            FileName = $"cliente-{_report.Device.Serial ?? "device"}-{_report.CollectedAt:yyyyMMdd-HHmm}.html",
+            FileName = $"cliente-{Reports.ReportBuilder.SafeFileToken(_report.Device.Serial)}-{_report.CollectedAt:yyyyMMdd-HHmm}.html",
         };
         if (dlg.ShowDialog() != true) return;
         try
@@ -571,7 +571,7 @@ public partial class MainWindow : Window
         var dlg = new SaveFileDialog
         {
             Filter = L10n.T("dlg.export.filter"),
-            FileName = $"diag-{_report.Device.Serial ?? "device"}-{_report.CollectedAt:yyyyMMdd-HHmm}",
+            FileName = $"diag-{Reports.ReportBuilder.SafeFileToken(_report.Device.Serial)}-{_report.CollectedAt:yyyyMMdd-HHmm}",
         };
         if (dlg.ShowDialog() != true) return;
         var isHtml = !dlg.FileName.EndsWith(".json", StringComparison.OrdinalIgnoreCase);
@@ -596,7 +596,7 @@ public partial class MainWindow : Window
         var save = new SaveFileDialog
         {
             Filter = L10n.T("dlg.ins.filter"),
-            FileName = $"seguradora-{_report.Device.Serial ?? "device"}-{_report.CollectedAt:yyyyMMdd-HHmm}.html",
+            FileName = $"seguradora-{Reports.ReportBuilder.SafeFileToken(_report.Device.Serial)}-{_report.CollectedAt:yyyyMMdd-HHmm}.html",
         };
         if (save.ShowDialog() != true) return;
         try
