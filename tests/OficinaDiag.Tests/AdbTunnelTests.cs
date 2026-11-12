@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using OficinaDiag.Devices;
 using Xunit;
 
@@ -60,6 +61,29 @@ public class AdbTunnelTests
         Assert.True(await tunnel.ClearAsync()); // segunda chamada é no-op
 
         Assert.Single(warnings);
+    }
+
+    [Fact]
+    public async Task AdbQueNuncaRespondeEstouraNoTimeoutEAvisa()
+    {
+        // adb pendurado: a task nunca completa (telefone a dormir a meio do
+        // reverse). Sem timeout o ClearAsync ficava à espera para sempre.
+        var pendurado = new TaskCompletionSource<bool>();
+        var warnings = new List<string>();
+        var tunnel = new AdbTunnel(
+            (_, _) => pendurado.Task,
+            warnings.Add,
+            timeout: TimeSpan.FromMilliseconds(100));
+
+        tunnel.Mount("R58M12345", 8803);
+        var inicio = Stopwatch.StartNew();
+        Assert.False(await tunnel.ClearAsync());
+        inicio.Stop();
+
+        Assert.True(inicio.Elapsed < TimeSpan.FromSeconds(3), $"demorou {inicio.Elapsed}");
+        var aviso = Assert.Single(warnings);
+        Assert.Contains("tcp:8803", aviso);
+        Assert.False(tunnel.IsMounted);
     }
 
     [Fact]

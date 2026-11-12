@@ -10,14 +10,22 @@ public sealed class AdbTunnel
 {
     private readonly Func<string, string, Task<bool>> _adb;
     private readonly Action<string> _warn;
+    private readonly TimeSpan _timeout;
     private (string Serial, int Port)? _active;
 
     /// <param name="adb">(serial, argumentos) → sucesso do `adb`.</param>
     /// <param name="warn">Destino do aviso quando o remove falha.</param>
-    public AdbTunnel(Func<string, string, Task<bool>> adb, Action<string> warn)
+    /// <param name="timeout">
+    /// Limite para o remove. Por omissão 2 s — abaixo dos 3 s que o
+    /// OnClosing espera, para o aviso sair antes de a app fechar.
+    /// </param>
+    public AdbTunnel(Func<string, string, Task<bool>> adb, Action<string> warn, TimeSpan? timeout = null)
     {
         _adb = adb ?? throw new ArgumentNullException(nameof(adb));
         _warn = warn ?? throw new ArgumentNullException(nameof(warn));
+        _timeout = timeout ?? TimeSpan.FromSeconds(2);
+        if (_timeout <= TimeSpan.Zero)
+            throw new ArgumentOutOfRangeException(nameof(timeout));
     }
 
     /// <summary>Há um túnel registado para remover.</summary>
@@ -36,8 +44,19 @@ public sealed class AdbTunnel
         // Limpa antes do await: duas chamadas concorrentes não removem
         // (nem avisam) duas vezes o mesmo túnel.
         _active = null;
-        var ok = await _adb(tunnel.Serial, $"reverse --remove tcp:{tunnel.Port}")
-            .ConfigureAwait(false);
+        bool ok;
+        try
+        {
+            // Um adb pendurado (a esperar resposta do telefone) não pode
+            // deixar a limpeza sem fim nem o aviso por registar.
+            ok = await _adb(tunnel.Serial, $"reverse --remove tcp:{tunnel.Port}")
+                .WaitAsync(_timeout)
+                .ConfigureAwait(false);
+        }
+        catch (TimeoutException)
+        {
+            ok = false;
+        }
         if (!ok) _warn(L10n.F("log.test.reverse.fail", tunnel.Port));
         return ok;
     }
