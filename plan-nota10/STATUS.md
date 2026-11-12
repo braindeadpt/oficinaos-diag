@@ -2,7 +2,7 @@
 
 > **Instrução para qualquer agente LLM:** Atualiza este ficheiro no fim de cada ticket concluído (`[ ]` → `[x]`), preenchendo a data/commit ou nota curta em "Registo de Handoff".
 
-**Próximo ticket a executar:** `T-03` (`tickets/T-03-android-locale-polarity.md`). `T-01` e `T-02` concluídos; `B-01`, `B-02`, `B-03`, `B-04`, `B-09` e `B-16` fechados.
+**Próximo ticket a executar:** `T-04` (`tickets/T-04-reports-cloud-hardening.md`). `T-01`–`T-03` concluídos; `B-01`–`B-06`, `B-09`, `B-11`, `B-16`, `B-19` e `B-20` fechados.
 
 ---
 
@@ -11,7 +11,7 @@
 ### Fase 1 — Bloqueadores Críticos: Store/Updater, iOS & Android Hardware (`7.4 → 8.7`)
 - [x] **T-01** — Isolar MSIX Store vs Portable, Auto-Update atómico consciente de `adb.exe` e hardening de scripts (`tickets/T-01-updater-msix-guard.md`)
 - [x] **T-02** — Correção estrutural do `IosCollector` (`ParsePlistDict`, `battery.capacity`, mutex USB por UDID, `SerialNumber` e `ProductType` sem PII) + paridade no `Grader` (`tickets/T-02-ios-collector-grading-parity.md`)
-- [ ] **T-03** — Cultura `InvariantCulture` (`pt-PT`), polaridade de corrente OEM Android (`battery/status`), deduplicação de contas e mAh, e falsos positivos de MDM/bateria ausente (`B-19`, `B-20`) (`tickets/T-03-android-locale-polarity.md`)
+- [x] **T-03** — Cultura `InvariantCulture` (`pt-PT`), polaridade de corrente OEM Android (`battery/status`), deduplicação de contas e mAh, e falsos positivos de MDM/bateria ausente (`B-19`, `B-20`) (`tickets/T-03-android-locale-polarity.md`)
 
 ### Fase 2 — Hardening de Relatórios, LAN/Safari, WPF UI, Temas & L10n (`8.7 → 9.3`)
 - [ ] **T-04** — Sanitização XSS/HTML em `ReportBuilder`, timeouts curtos em `CloudClient` e robustez em `ScanHistory`/`AppLog` (`tickets/T-04-reports-cloud-hardening.md`)
@@ -34,13 +34,13 @@
 - [x] `B-02` (Crítico) — `ParsePlistDict` achatava a telemetria de carga por cima da célula (no iPhone real: `Watts`/`Current` → 0, `AverageBattSkinTemp` → 0 °C) → **T-02**
 - [x] `B-03` (Crítico) — `battery.health` vs `battery.capacity` quebrava Grau D, peças e `BatteryTrend` em iOS → **T-02**
 - [x] `B-04` (Crítico) — Corrida USB `lockdownd`/`diagnostics_relay` e processos órfãos em timeout → **T-02**
-- [ ] `B-05` (Alto) — `double.TryParse` sem `InvariantCulture` gera 314 °C / 385 °C em Windows `pt-PT` → **T-03**
-- [ ] `B-06` (Alto) — Sinal `current_now` invertido em Samsung/MediaTek gera falso defeito de porta de carga → **T-03**
+- [x] `B-05` (Alto) — `double.TryParse` sem `InvariantCulture` gerava 314 °C / 385 °C em Windows `pt-PT` → **T-03**
+- [x] `B-06` (Alto) — Sinal `current_now` invertido em Samsung/MediaTek gerava falso defeito de porta de carga → **T-03**
 - [ ] `B-07` (Alto) — Crash `DialogResult` em `SettingsDialog.Save_Click` + mutação suja de `_config` → **T-06**
 - [ ] `B-08` (Alto) — Links `javascript:` em Markdig IA + `docRef` sem `HtmlEncode` em `ToInsuranceHtml` → **T-04**
 - [x] `B-09` (Médio) — `DeviceName` pessoal exposto como `identity.model` (PII) + `UDID` em `Serial` → **T-02**
 - [ ] `B-10` (Médio) — `TestServer` escolhe IP virtual (VirtualBox/WSL) + bug `headerEnd == -1` aos 64 KB → **T-05**
-- [ ] `B-11` (Médio) — `dumpsys account` multiplica contas + capacidade em `µAh` crua → **T-03**
+- [x] `B-11` (Médio) — `dumpsys account` multiplicava contas + capacidade em `µAh` crua → **T-03**
 - [ ] `B-12` (Médio) — `Detached` limpa dispositivo errado + `lang="pt"` fixo no IA + `:` em nomes de ficheiro → **T-04**, **T-06**
 - [ ] `B-13` (Médio) — Quirks iOS Safari (`AudioContext` suspenso/Silêncio, timer 6s sensores, `colorsViewed`) → **T-05**
 - [ ] `B-14` (Médio) — Troca de tema não refresca `ResultsList`, diálogos `StaticResource` e 18 `Pen`s/frame → **T-06**
@@ -48,8 +48,8 @@
 - [x] `B-16` (Médio) — Redirecionamento `>` em `sign-release.ps1` + `build-store.ps1` sem validar `adb.exe` → **T-01**
 - [ ] `B-17` (Baixo) — Timeout global de 150s c/ retry (até 5 min) e falta de `using` em `CloudClient` → **T-04**
 - [ ] `B-18` (Baixo) — `Mutex.WaitOne()` infinito em `ScanHistory` e corte UTF-8 a meio em `AppLog` → **T-04**
-- [ ] `B-19` (Alto) — `security.mdm` dispara com `Device Owner Type: -1` e força Grau D em Android sem gestão → **T-03**
-- [ ] `B-20` (Médio) — Ausência de leitura vira valor: `PropAsync` devolve `""` (bootloader `warn`, baseband/SIM em branco) e bateria sem `present` (`health: 1`, `voltage: 0`, `temp: 0`) → **T-03**
+- [x] `B-19` (Alto) — `security.mdm` disparava com `Device Owner Type: -1` e forçava Grau D em Android sem gestão → **T-03**
+- [x] `B-20` (Médio) — Ausência de leitura vira valor: `PropAsync` devolve `""` (bootloader `warn`, baseband/SIM em branco) e bateria sem `present` (`health: 1`, `voltage: 0`, `temp: 0`) → **T-03**
 
 ---
 
@@ -76,6 +76,7 @@ Correr o `AndroidCollector` contra este rig revelou dois falsos positivos reais 
 
 ## Registo de Handoff entre Sessões / Agentes
 
+- **2026-11-12 (T-03 concluído — Buffy):** novo `AdbParsing.cs` com os parses puros (cultura invariante, corrente por `status`, contas únicas, `µAh → mAh`, zonas térmicas com rejeição de leituras dummy, owner real de MDM); `AndroidCollector` passou a usá-lo, `AdbAsync` usa `ArgumentList` com `shell` como um só argumento e `Kill(entireProcessTree: true)` também em `DeviceDetector`; `PropAsync` devolve `null` em vez de `""` e baseband/SIM/fingerprint/display só entram quando existem; bateria com `present: false` fica `skipped` e `health: 1` (UNKNOWN) também. **Verificação:** build WPF 0 erros/0 avisos, `dotnet test` 132/132 (+15, todos os novos sob `pt-PT`), harness no rig: 17 checks, `security.mdm` **pass**, `battery.present` skipped, `security.bootloader` skipped, nenhuma linha em branco e **Grau C** (era D por MDM/bateria inexistentes). **Não exercitado:** telemóvel OEM real (Samsung/MediaTek/Huawei) para a polaridade e os limiares de `health`.
 - **2026-11-12 (T-02 concluído — Buffy):** `ParsePlistDict` reescrito (dois níveis, prefixo `AdapterDetails.*`/`BatteryData.*`, guarda `<plist` contra o *usage* com exit 0); a saúde iOS passou a `battery.capacity` com limiares 60/80; `ProbeAsync`/`CollectBatteryHealth` leem `AdapterDetails.Watts` e `BatteryData.*`; identidade usa `ModelNameTable` + `SerialNumber` e deixa de ler `DeviceName`; USB serializado por UDID (`ConcurrentDictionary` + `SemaphoreSlim`), `Kill(entireProcessTree)` no timeout/cancelamento e `Dispose` do CTS só quando a task termina. `Grader`: `battery.health` entra nos `CriticalChecks` e o ramo legado mantém severidade (`fail` → D + peça, `warn` → C). **Verificação:** build WPF (`-p:EnableWindowsTargeting=true`) 0 erros/0 avisos; `dotnet test` 117/117 (3 novos); parser validado na fixture real (63 chaves, `Voltage` 3914, `IsCharging` `true`, `Watts` 13, `0 °C` eliminado, `capacity` 100%). **Não exercitado:** app WPF com iPhone ligado — o coletor usa `idevicediagnostics.exe` + libimobiledevice nativa e não corre em macOS. Próximo: `T-03`.
 - **2026-11-12 (T-02 validado em hardware — iPhone 12 Pro / iOS 27.2.1):** primeiro ensaio do parser iOS contra um iPhone real (`iPhone13,3`): `ParsePlistDict` devolve 113 chaves mas achata `AppleRawAdapterDetails` e `DeadBatteryBootData` por cima da célula — `Watts`/`Current` → 0 e `battery.temp` = `0 °C`. A colisão de `Voltage` descrita em `B-02` **não** se confirmou (o adaptador real expõe `AdapterVoltage`). As capacidades (2790/2798 mAh) só existem em `BatteryData`, por isso o `T-02` foi corrigido: o parser tem de ler `BatteryData` explicitamente e o `ProbeAsync` passa a ler `AdapterDetails.Watts`. Fixture real em `tests/OficinaDiag.Tests/Fixtures/apple-smart-battery-iphone13_3.plist` (serial da bateria substituído). `B-04` não reproduziu — dois `ioregentry` em paralelo devolveram ambos o payload completo. Novo achado: `idevicediagnostics` com argumentos inválidos dá **exit 0** e imprime o *usage* no stdout, que o `RunTool` aceita como plist (guarda `<plist` acrescentada ao ticket).
 - **2026-11-12 (Sessão Inicial — Mentor Gemini 4 Carbon + Argon + Flash):** Auditoria completa concluída (65 ficheiros, 18 bugs validados, 3 falsos positivos descartados). Kit de execução `plan-nota10/` criado sem alterar código de produção, pronto para revisão e arranque em `T-01`.

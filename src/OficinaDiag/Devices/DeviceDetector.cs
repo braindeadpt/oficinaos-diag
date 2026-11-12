@@ -52,7 +52,7 @@ public sealed class DeviceDetector : IDisposable
                     var readTask = p.StandardOutput.ReadToEndAsync();
                     if (!p.WaitForExit(5000))
                     {
-                        try { p.Kill(); } catch { }
+                        try { p.Kill(entireProcessTree: true); } catch { }
                         return found;
                     }
                     var output = readTask.GetAwaiter().GetResult();

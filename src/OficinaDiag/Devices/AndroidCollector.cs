@@ -16,27 +16,57 @@ public sealed class AndroidCollector
 
     private async Task<string?> AdbAsync(string serial, string args, int timeoutMs = 8000)
     {
+        // O serial vem do adb, mas não é interpolado numa linha de comando:
+        // ArgumentList evita injecção e aspas perdidas em serials estranhos.
+        if (string.IsNullOrWhiteSpace(serial)
+            || serial.Any(c => !char.IsLetterOrDigit(c) && c is not ('-' or '_' or '.' or ':')))
+            return null;
         try
         {
-            var psi = new ProcessStartInfo(_adbPath, $"-s {serial} {args}")
+            var psi = new ProcessStartInfo(_adbPath)
             {
                 RedirectStandardOutput = true,
                 RedirectStandardError = true,
                 UseShellExecute = false,
                 CreateNoWindow = true,
             };
+            psi.ArgumentList.Add("-s");
+            psi.ArgumentList.Add(serial);
+            if (args.StartsWith("shell ", StringComparison.Ordinal))
+            {
+                // O comando shell vai como UM argumento: pipes e aspas voltam a
+                // ser interpretados pelo sh do telefone, como antes.
+                psi.ArgumentList.Add("shell");
+                psi.ArgumentList.Add(args[6..]);
+            }
+            else
+            {
+                foreach (var a in args.Split(' ', StringSplitOptions.RemoveEmptyEntries))
+                    psi.ArgumentList.Add(a);
+            }
             using var p = Process.Start(psi);
             if (p is null) return null;
             var read = p.StandardOutput.ReadToEndAsync();
             var drain = p.StandardError.ReadToEndAsync(); // stderr cheio bloqueava o adb
-            if (!p.WaitForExit(timeoutMs)) { p.Kill(); return null; }
+            if (!p.WaitForExit(timeoutMs))
+            {
+                try { p.Kill(entireProcessTree: true); } catch { }
+                return null;
+            }
             return await read;
         }
         catch { return null; }
     }
 
-    private async Task<string?> PropAsync(string serial, string name) =>
-        (await AdbAsync(serial, $"shell getprop {name}"))?.Trim();
+    /// <summary>
+    /// Prop do Android. Vazio → null: o `getprop` de prop inexistente imprime
+    /// só uma linha vazia, e um "" a jusante virava check `warn` sem valor.
+    /// </summary>
+    private async Task<string?> PropAsync(string serial, string name)
+    {
+        var v = (await AdbAsync(serial, $"shell getprop {name}"))?.Trim();
+        return string.IsNullOrEmpty(v) ? null : v;
+    }
 
     /// <summary>Grupo 1 do regex, ou null quando não casa — "" nunca é dado.</summary>
     private static string? Match(string? text, string pattern)
@@ -86,10 +116,12 @@ public sealed class AndroidCollector
         r.Set("identity.serial", "info", serial);
         r.Set("os.version", "info", $"{r.Device.Os} {r.Device.OsVersion}",
             $"SDK {await PropAsync(serial, "ro.build.version.sdk")}, patch {await PropAsync(serial, "ro.build.version.security_patch")}");
-        r.Set("identity.fingerprint", "info", await PropAsync(serial, "ro.build.fingerprint"),
-            "build exata do firmware — útil para confirmar stock vs ROM modificado");
-        r.Set("device.baseband", "info", await PropAsync(serial, "gsm.version.baseband"),
-            "firmware do modem — afeta rede/SIM");
+        // Props ausentes não viram linha em branco no relatório.
+        if (await PropAsync(serial, "ro.build.fingerprint") is { } fingerprint)
+            r.Set("identity.fingerprint", "info", fingerprint,
+                "build exata do firmware — útil para confirmar stock vs ROM modificado");
+        if (await PropAsync(serial, "gsm.version.baseband") is { } baseband)
+            r.Set("device.baseband", "info", baseband, "firmware do modem — afeta rede/SIM");
 
         // SIM/carrier — PIN/PUK do cartão e lock de operadora saltam aqui
         // (NETWORK_LOCKED/PERM_DISABLED = telemóvel preso a uma operadora —
@@ -101,14 +133,15 @@ public sealed class AndroidCollector
                 or "NETWORK_LOCKED" or "PERM_DISABLED") == true;
         var isCarrierLock = simState?.Split(',')
             .Any(s => s.Trim() is "NETWORK_LOCKED" or "PERM_DISABLED") == true;
-        r.Set("device.sim", isCarrierLock ? "fail" : simLocked ? "warn" : "info",
-            simState,
+        if (simState is not null)
+            r.Set("device.sim", isCarrierLock ? "fail" : simLocked ? "warn" : "info",
+                simState,
             string.Join(" — ", new[]
             {
                 isCarrierLock ? "lock de operadora — não aceita SIM de outras redes"
                     : simLocked ? "cartão pede PIN/PUK — não é defeito do telefone" : null,
                 string.IsNullOrWhiteSpace(carrier) ? null : $"operadora: {carrier}",
-            }.Where(s => s is not null)));
+                }.Where(s => s is not null)));
 
         // IMEI — service call funciona no shell de muitos dispositivos;
         // quando o fabricante bloqueia, sai como "info" sem quebrar o scan.
@@ -150,8 +183,7 @@ public sealed class AndroidCollector
         var accounts = await AdbAsync(serial, "shell dumpsys account");
         if (accounts is not null)
         {
-            var accCount = Regex.Matches(accounts,
-                @"type=(com\.google|com\.samsung|com\.huawei|com\.xiaomi|com\.oppo)").Count;
+            var accCount = AdbParsing.ParseAccountCount(accounts) ?? 0;
             r.Set("security.accounts", accCount > 0 ? "warn" : "pass",
                 accCount == 0 ? "sem contas" : $"{accCount} conta(s)",
                 accCount > 0
@@ -164,8 +196,10 @@ public sealed class AndroidCollector
         var policy = await AdbAsync(serial, "shell dumpsys device_policy");
         if (policy is not null)
         {
-            var hasOwner = policy.Contains("Device Owner")
-                && !policy.Contains("No device owner");
+            // "Device Owner Type: -1" é o dump de um Android SEM gestão: a
+            // substring "Device Owner" dava falso positivo e, como security.mdm
+            // está nos HardLocks do Grader, capava o grau em D.
+            var hasOwner = AdbParsing.HasDeviceOwner(policy);
             r.Set("security.mdm", hasOwner ? "warn" : "pass",
                 hasOwner ? "gestão remota ativa" : "sem gestão remota",
                 hasOwner
@@ -207,86 +241,7 @@ public sealed class AndroidCollector
                 "desgaste estimado da NAND reportado pelo controlador eMMC");
         }
 
-        // Battery — dumpsys gives level/temp/health/charge-state; sysfs may
-        // give cycles & capacity; batterystats gives the learned estimate.
-        var batt = await AdbAsync(serial, "shell dumpsys battery");
-        var level = Match(batt, @"level: (\d+)");
-        var temp = Match(batt, @"temperature: (\d+)");
-        var health = Match(batt, @"health: (\d+)");
-        var healthText = health switch { "2" => "good", "3" => "overheat", "4" => "dead", "5" => "over-voltage", "6" => "failure", _ => health };
-        r.Set("battery.level", "info", level is null ? null : $"{level}%");
-        // Sem leitura válida o valor fica null — nunca um "0°C" inventado.
-        var tempOk = double.TryParse(temp, out var t);
-        r.Set("battery.temperature",
-            tempOk && t / 10 > 40 ? "warn" : "info",
-            tempOk ? $"{t / 10:0.#}°C" : null);
-        // Sem leitura de health não há check — ausência de dado não é defeito.
-        if (healthText is not null)
-            r.Set("battery.health", healthText == "good" ? "pass" : "warn", healthText);
-
-        // Estado de carga + fonte — "a carregar por USB a X%" distingue
-        // porta lenta de carregador de parede quando o cliente diz "não carrega".
-        var battStatus = Match(batt, @"status: (\d+)");
-        var battStatusText = battStatus switch
-        {
-            "2" => "a carregar", "3" => "a descarregar",
-            "4" => "sem carga", "5" => "cheia", _ => null,
-        };
-        var plugged = Match(batt, @"plugged: (\d+)");
-        var pluggedText = plugged switch
-        {
-            "1" => "AC", "2" => "USB", "4" => "wireless", _ => null,
-        };
-        if (battStatusText is not null)
-            r.Set("battery.status", "info", battStatusText,
-                pluggedText is null ? null : $"fonte: {pluggedText}");
-
-        var voltage = Match(batt, @"voltage: (\d+)");
-        if (double.TryParse(voltage, out var mv))
-            r.Set("battery.voltage",
-                mv is < 3400 or > 4400 ? "warn" : "info", $"{mv / 1000:0.00} V",
-                mv is < 3400 or > 4400
-                    ? "fora da faixa normal 3.4–4.4V"
-                    : null);
-
-        var tech = Match(batt, @"technology: (.+)");
-        if (!string.IsNullOrWhiteSpace(tech))
-            r.Set("battery.technology", "info", tech);
-
-        // Carga restante medida pelo fuel gauge (µAh) — dado bruto, serve de
-        // referência para degradacao entre scans (histórico local).
-        var chargeCounter = Match(batt, @"Charge counter: (\d+)");
-        if (long.TryParse(chargeCounter, out var cc) && cc > 0)
-            r.Set("battery.charge_now", "info", $"{cc / 1000} mAh",
-                "carga atual medida pelo fuel gauge");
-
-        // Cycle count + real capacity where the vendor exposes it (Samsung, Pixel…)
-        var cycles = (await AdbAsync(serial, "shell cat /sys/class/power_supply/battery/cycle_count"))?.Trim();
-        var chargeFull = (await AdbAsync(serial, "shell cat /sys/class/power_supply/battery/charge_full"))?.Trim();
-        var chargeDesign = (await AdbAsync(serial, "shell cat /sys/class/power_supply/battery/charge_full_design"))?.Trim();
-        if (int.TryParse(cycles, out var c))
-            r.Set("battery.cycles", c > 800 ? "warn" : "info", c.ToString(),
-                c > 800 ? "acima de ~800 ciclos a degradação é esperada" : null);
-        if (double.TryParse(chargeFull, NumberStyles.Float, CultureInfo.InvariantCulture, out var cf)
-            && double.TryParse(chargeDesign, NumberStyles.Float, CultureInfo.InvariantCulture, out var cd) && cd > 0)
-        {
-            var pct = cf / cd * 100;
-            r.Set("battery.capacity", pct >= 80 ? "pass" : pct >= 60 ? "warn" : "fail",
-                $"{pct:0}%",
-                $"Capacidade real {cf:0} / design {cd:0} — {(pct < 80 ? "bateria degradada" : "saúde boa")}");
-        }
-
-        // Capacidade aprendida pelo Android (batterystats) — fallback quando o
-        // fabricante não expõe charge_full no sysfs.
-        var stats = await AdbAsync(serial, "shell dumpsys batterystats | grep -m1 -i \"capacity\"", 10000);
-        var learned = Match(stats, @"capacity:\s*([\d.,]+)");
-        if (learned is not null && double.TryParse(
-                learned.Replace(',', '.'), NumberStyles.Float,
-                CultureInfo.InvariantCulture, out var learnedMah) && learnedMah > 0)
-        {
-            r.Set("battery.capacity_learned", "info", $"{learnedMah:0} mAh",
-                "estimativa aprendida pelo Android — compara com a capacidade de design");
-        }
+        await CollectBatteryAsync(r, serial);
 
         // Storage
         var df = await AdbAsync(serial, "shell df /data");
@@ -311,7 +266,8 @@ public sealed class AndroidCollector
 
         // Screen
         var wmSize = Match(await AdbAsync(serial, "shell wm size"), @"(\d+x\d+)");
-        r.Set("display", "info", wmSize, "Resolução física — teste visual no menu de testes");
+        if (wmSize is not null)
+            r.Set("display", "info", wmSize, "Resolução física — teste visual no menu de testes");
 
         // Sensors inventory
         var sensors = await AdbAsync(serial, "shell dumpsys sensorservice");
@@ -340,6 +296,121 @@ public sealed class AndroidCollector
         return r;
     }
 
+    /// <summary>
+    /// Bateria: dumpsys dá nível/temperatura/saúde/estado de carga, sysfs dá
+    /// ciclos e capacidade e o batterystats a estimativa aprendida. Sem
+    /// bateria (`present: false`, bancada/emulador) nada disto é medível —
+    /// fica `skipped` em vez de inventar 0 °C, 0,00 V ou "estado 1".
+    /// </summary>
+    private async Task CollectBatteryAsync(DeviceReport r, string serial)
+    {
+        var batt = await AdbAsync(serial, "shell dumpsys battery");
+        if (AdbParsing.ParsePresent(batt) == false)
+        {
+            r.Set("battery.present", "skipped", "sem bateria exposta",
+                "dumpsys battery reporta present=false — nível, temperatura e tensão não são medíveis aqui");
+            return;
+        }
+
+        var level = Match(batt, @"level: (\d+)");
+        if (level is not null)
+            r.Set("battery.level", "info", $"{level}%");
+
+        // 0 é ausência de leitura, não 0 °C.
+        var temp = Match(batt, @"temperature: (\d+)");
+        var tempOk = AdbParsing.TryDouble(temp, out var t) && t > 0;
+        if (tempOk)
+            r.Set("battery.temperature",
+                t / 10 > 40 ? "warn" : "info", $"{t / 10:0.#}°C");
+
+        // `health: 1` é BATTERY_HEALTH_UNKNOWN — ausência de dado, não defeito.
+        var health = Match(batt, @"health: (\d+)");
+        var healthText = health switch
+        {
+            "2" => "good", "3" => "overheat", "4" => "dead",
+            "5" => "over-voltage", "6" => "failure", _ => null,
+        };
+        if (health is "1")
+            r.Set("battery.health", "skipped", "desconhecido (UNKNOWN)",
+                "o kernel não reporta saúde da bateria — não é defeito");
+        else if (healthText is not null)
+            r.Set("battery.health", healthText == "good" ? "pass" : "warn", healthText);
+
+        // Estado de carga + fonte — "a carregar por USB a X%" distingue
+        // porta lenta de carregador de parede quando o cliente diz "não carrega".
+        var battStatus = Match(batt, @"status: (\d+)");
+        var battStatusText = battStatus switch
+        {
+            "2" => "a carregar", "3" => "a descarregar",
+            "4" => "sem carga", "5" => "cheia", _ => null,
+        };
+        var plugged = Match(batt, @"plugged: (\d+)");
+        var pluggedText = plugged switch
+        {
+            "1" => "AC", "2" => "USB", "4" => "wireless", _ => null,
+        };
+        if (battStatusText is not null)
+            r.Set("battery.status", "info", battStatusText,
+                pluggedText is null ? null : $"fonte: {pluggedText}");
+
+        var voltage = Match(batt, @"voltage: (\d+)");
+        if (AdbParsing.TryDouble(voltage, out var mv) && mv > 0)
+            r.Set("battery.voltage",
+                mv is < 3400 or > 4400 ? "warn" : "info",
+                $"{mv / 1000:0.00} V",
+                mv is < 3400 or > 4400
+                    ? "fora da faixa normal 3.4–4.4V"
+                    : null);
+
+        var tech = Match(batt, @"technology: (.+)");
+        if (!string.IsNullOrWhiteSpace(tech))
+            r.Set("battery.technology", "info", tech);
+
+        // Carga restante medida pelo fuel gauge (µAh) — dado bruto, serve de
+        // referência para degradacao entre scans (histórico local).
+        var chargeCounter = Match(batt, @"Charge counter: (\d+)");
+        if (AdbParsing.TryLong(chargeCounter, out var cc) && cc > 0)
+            r.Set("battery.charge_now", "info", $"{cc / 1000} mAh",
+                "carga atual medida pelo fuel gauge");
+
+        // Ciclos + capacidade real onde o fabricante expõe (Samsung, Pixel…).
+        var cycles = await AdbAsync(serial, "shell cat /sys/class/power_supply/battery/cycle_count");
+        var chargeFull = await AdbAsync(serial, "shell cat /sys/class/power_supply/battery/charge_full");
+        var chargeDesign = await AdbAsync(serial, "shell cat /sys/class/power_supply/battery/charge_full_design");
+        if (AdbParsing.TryInt(cycles?.Trim(), out var c))
+            r.Set("battery.cycles", c > 800 ? "warn" : "info",
+                c.ToString(CultureInfo.InvariantCulture),
+                c > 800 ? "acima de ~800 ciclos a degradação é esperada" : null);
+
+        double? designMah = null;
+        if (AdbParsing.TryDouble(chargeDesign?.Trim(), out var cd) && cd > 0)
+            designMah = AdbParsing.NormalizeMah(cd);
+        if (AdbParsing.TryDouble(chargeFull?.Trim(), out var cf) && cf > 0 && designMah is > 0)
+        {
+            var cfMah = AdbParsing.NormalizeMah(cf);
+            var pct = cfMah / designMah.Value * 100;
+            r.Set("battery.capacity", pct >= 80 ? "pass" : pct >= 60 ? "warn" : "fail",
+                $"{pct:0}%",
+                $"Capacidade real {cfMah:0} / design {designMah.Value:0} mAh — " +
+                (pct < 80 ? "bateria degradada" : "saúde boa"));
+        }
+
+        // Capacidade aprendida pelo Android (batterystats) — fallback quando o
+        // fabricante não expõe charge_full. O 1000 mAh que o Android estima
+        // sem célula é o default, não uma medição.
+        var stats = await AdbAsync(serial, "shell dumpsys batterystats | grep -m1 -i \"capacity\"", 10000);
+        var learned = Match(stats, @"capacity:\s*([\d.,]+)");
+        if (learned is not null
+            && double.TryParse(learned.Replace(',', '.'), NumberStyles.Float,
+                CultureInfo.InvariantCulture, out var learnedMah)
+            && learnedMah > 0
+            && !(learnedMah == 1000 && designMah is null))
+        {
+            r.Set("battery.capacity_learned", "info", $"{learnedMah:0} mAh",
+                "estimativa aprendida pelo Android — compara com a capacidade de design");
+        }
+    }
+
     /// <summary>Shell livre — usado pela bancada para aplicar/retirar carga (ecrã, brilho).</summary>
     public Task<string?> ShellAsync(string serial, string cmd, int timeoutMs = 8000)
         => AdbAsync(serial, $"shell {cmd}", timeoutMs);
@@ -347,32 +418,15 @@ public sealed class AndroidCollector
     /// <summary>Leitura instantânea para o ticker — um só adb por tick.</summary>
     public async Task<LiveTelemetry?> ProbeAsync(string serial)
     {
+        // `status` vem junto com as leituras e decide a direção: Samsung/Exynos,
+        // MediaTek e Huawei reportam corrente negativa a carregar.
         var o = await AdbAsync(serial,
-            "shell cat /sys/class/power_supply/battery/current_now " +
-            "/sys/class/power_supply/battery/voltage_now " +
-            "/sys/class/power_supply/battery/temp " +
-            "/sys/class/power_supply/battery/capacity 2>/dev/null", 5000);
+            "shell for f in current_now voltage_now temp status capacity; " +
+            "do cat /sys/class/power_supply/battery/$f 2>/dev/null || echo _; done", 5000);
         if (o is null) return null;
-        var l = o.Split('\n', StringSplitOptions.RemoveEmptyEntries)
-                 .Select(s => s.Trim()).ToArray();
-        if (l.Length == 0) return null;
 
-        int? mA = null; double? volts = null; double? tempC = null; int? pct = null;
-        bool? charging = null;
-        if (l.Length > 0 && long.TryParse(l[0], out var cur))
-        {
-            // drivers variam: µA ou mA — acima de ~20A assume µA
-            var norm = Math.Abs(cur) > 20000 ? cur / 1000 : cur;
-            mA = (int)Math.Abs(norm);
-            // drivers com sinal: negativo a descarregar; sem sinal fica incerto
-            charging = cur < 0 ? false : cur > 0 ? true : null;
-        }
-        if (l.Length > 1 && double.TryParse(l[1], out var uv))
-            volts = uv > 100000 ? uv / 1_000_000 : uv / 1000; // µV ou mV
-        if (l.Length > 2 && double.TryParse(l[2], out var tp))
-            tempC = tp > 150 ? tp / 10 : tp; // décimos de °C
-        if (l.Length > 3 && int.TryParse(l[3], out var cp))
-            pct = cp;
+        var (mA, charging, volts, tempC, pct) = AdbParsing.ParseBatteryProbe(o);
+        if (mA is null && volts is null && pct is null) return null;
         return new LiveTelemetry(mA, volts, tempC, pct, charging);
     }
 
@@ -386,23 +440,7 @@ public sealed class AndroidCollector
         var o = await AdbAsync(serial,
             "shell for z in /sys/class/thermal/thermal_zone*; " +
             "do echo $(cat $z/type 2>/dev/null):$(cat $z/temp 2>/dev/null); done", 5000);
-        if (o is null) return null;
-
-        double? soc = null;
-        foreach (var line in o.Split('\n', StringSplitOptions.RemoveEmptyEntries))
-        {
-            var parts = line.Split(':');
-            if (parts.Length != 2) continue;
-            var type = parts[0].Trim().ToLowerInvariant();
-            if (!double.TryParse(parts[1].Trim(), out var raw)) continue;
-            var c = raw > 500 ? raw / 1000 : raw; // miligraus → °C
-            // zonas de SoC/CPU — nomes variam por OEM; bateria fica de fora
-            var isSoc = type.Contains("cpu") || type.Contains("soc") || type.Contains("ap")
-                || type.Contains("kryo") || type.Contains("big") || type.Contains("little")
-                || type.Contains("silver") || type.Contains("gold");
-            if (isSoc && (soc is null || c > soc)) soc = c;
-        }
-        return soc;
+        return AdbParsing.ParseSocTemp(o);
     }
 
     private async Task CollectLogsAsync(DeviceReport r, string serial)
