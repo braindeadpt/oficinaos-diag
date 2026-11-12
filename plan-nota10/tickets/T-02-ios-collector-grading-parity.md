@@ -23,14 +23,20 @@
 3. **Corrida USB nativa e processos órfãos (`B-04`):** Quando o timeout de 30s em `CollectAsync` (`IosCollector.cs:213-241`) dispara, a task `collect` continua viva e os processos `idevicediagnostics.exe` / `idevicecrashreport.exe` não são terminados (`cts` também não recebe `Dispose()`). Se `ProbeAsync` (ticker 4s) ou um novo scan correrem para o mesmo UDID, colidem no serviço single-client `com.apple.mobile.diagnostics_relay`.
 4. **PII em `identity.model` e UDID em `Device.Serial` (`B-09`):** `IosCollector.cs:81,96-109` deixa o UDID em `r.Device.Serial` (em vez do `SerialNumber` real) e grava `DeviceName` (ex.: *"iPhone de Maria"*) em `identity.model`, expondo o nome pessoal do cliente nos relatórios e histórico em vez do modelo comercial.
 
+**Evidência em hardware (iPhone 12 Pro, `iPhone13,3`, iOS 27.2.1 — 2026-11-12):** o `ParsePlistDict` atual devolve 113 chaves sobre o plist real e corrompe `Watts` (13 → **0**) e `Current` (2550 → **0**, via `AppleRawAdapterDetails`), `AverageBattSkinTemp` (→ **0**, vindo de `DeadBatteryBootData.GeneralPayload`, o que produz `battery.temp = "0 °C"`) e `IsCharging` (`<true/>` → `"1"`). **Não** se confirmou a colisão de `Voltage`: o adaptador real expõe `AdapterVoltage` (5000) e a célula mantém 3914 mV. As capacidades vivem só em `BatteryData` (2790/2798 mAh → 100%), pelo que o achatamento é hoje a única razão pela qual `battery.health` existe em iOS. Fixture: `tests/OficinaDiag.Tests/Fixtures/apple-smart-battery-iphone13_3.plist`.
+
 ---
 
 ## Especificação de Implementação
 
 ### 1. Reescrever `ParsePlistDict` sem achatamento destrutivo (`IosCollector.cs:311-330`)
 - Tornar o método `internal static` para poder ser testado diretamente em `T-08`.
-- Localizar o `<dict>` de topo dentro de `<plist>` (ou da entrada `AppleSmartBattery` caso `ioregentry` envolva num dict contentor; se o dict raiz tiver apenas 1 filho `<dict>`, descer a esse dict da entrada IORegistry, mas **parar antes** de sub-dicionários como `AdapterDetails`, `ChargerData`, `BatteryData`, `FedDetails`).
-- Ler todos os escalares do `<dict>` principal primeiro. Para sub-dicionários imediatos (ex.: `AdapterDetails`), usar `dict.TryAdd(key, val)` **e** guardar também com prefixo `AdapterDetails.Watts`, `AdapterDetails.Description`, `AdapterDetails.Voltage` — assim `Watts` e `Description` continuam acessíveis, mas `Voltage`, `IsCharging`, `Serial` e `Manufacturer` da célula **nunca** são sobrescritos!
+- Percorrer **apenas dois níveis**: o `<dict>` de topo (dentro de `<plist>`, descendo ao dict da entrada `IORegistry` quando o raiz tiver um único filho `<dict>`) e os sub-dicionários imediatos `AdapterDetails` e `BatteryData`.
+- Regra de precedência: escalares da célula escrevem **sem prefixo** e **nunca** são sobrescritos por um sub-dicionário (topo primeiro, depois `TryAdd`); os sub-dicionários escrevem **sempre** com prefixo — `AdapterDetails.Watts`, `AdapterDetails.AdapterVoltage`, `BatteryData.NominalChargeCapacity`, `BatteryData.DesignCapacity`, …
+- **Não** parar antes de `BatteryData` (ao contrário da primeira versão deste ticket): `NominalChargeCapacity`, `DesignCapacity`, `FullChargeCapacity` e `AppleRawMaxCapacity` existem **só** lá. Lidos apenas do topo, `battery.health` desaparecia por completo. `CycleCount`, `Voltage`, `IsCharging`, `InstantAmperage` e `CurrentCapacity` estão no topo.
+- Ignorar os restantes sub-dicionários (`ChargerData`, `PowerTelemetryData`, `DeadBatteryBootData`, `AppleRawAdapterDetails`, `AdapterInfo`, `PowerDistribution`, …): são eles que injetam `Watts = 0`, `Current = 0` e `AverageBattSkinTemp = 0`.
+- Atualizar os leitores: `ProbeAsync` lê `AdapterDetails.Watts` (não `Watts`) e `CollectBatteryHealth` usa `BatteryData.*` para capacidade e `AppleRawMaxCapacity` como fallback.
+- Rejeitar payload que não seja plist (`xml.Contains("<plist")`): `idevicediagnostics` com argumentos inválidos devolve **exit 0** e imprime o *usage* no stdout — hoje isso entra como «plist vazio» e o coletor salta a bateria em silêncio.
 - Usar `CultureInfo.InvariantCulture` em todos os `TryParse` numéricos dentro de `IosCollector.cs` (`NumberStyles.Float` / `NumberStyles.Integer`).
 
 ### 2. Unificar Contrato de Bateria e Identidade iOS + `Grader.cs`
@@ -58,7 +64,9 @@
 ---
 
 ## Critérios de Aceitação
-- [ ] `ParsePlistDict` nunca deixa `AdapterDetails.Voltage` (9000 mV) sobrescrever `Voltage` da célula (~4150 mV).
+- [ ] `ParsePlistDict` nunca deixa `AdapterDetails.*`/`BatteryData.*` sobrescrever `Voltage`, `IsCharging` ou `Current` da célula (fixture iPhone 12 Pro: `Voltage` = 3914 mV, `IsCharging` = `true`).
+- [ ] Sobre a fixture, `Watts` resolve 13 W (não 0) e `battery.temp` **não** é emitido com `0 °C`.
+- [ ] `battery.health` continua a sair de `BatteryData` (2790/2798 → 100%) depois da reescrita do parser.
 - [ ] `ScanHistory.BatteryTrend` devolve tendência para iPhones após 2 scans.
 - [ ] `DeviceName` pessoal do cliente deixa de aparecer em `identity.model`.
 - [ ] Nenhum processo `idevicediagnostics.exe` / `idevicecrashreport.exe` fica órfão após timeout.
