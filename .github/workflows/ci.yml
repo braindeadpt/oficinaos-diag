@@ -19,3 +19,17 @@ jobs:
 
       - name: Test
         run: dotnet test tests/OficinaDiag.Tests -c Release
+
+  # A app é WPF (net8.0-windows), mas compila em Linux com o targeting pack:
+  # apanha XAML/using partidos sem gastar minutos de runner Windows.
+  build-wpf:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: "8.0.x"
+
+      - name: Build WPF app
+        run: dotnet build src/OficinaDiag/OficinaDiag.csproj -c Release -p:EnableWindowsTargeting=true

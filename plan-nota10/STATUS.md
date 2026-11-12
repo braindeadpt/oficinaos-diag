@@ -2,7 +2,7 @@
 
 > **Instrução para qualquer agente LLM:** Atualiza este ficheiro no fim de cada ticket concluído (`[ ]` → `[x]`), preenchendo a data/commit ou nota curta em "Registo de Handoff".
 
-**Próximo ticket a executar:** `T-08` (`tickets/T-08-regression-tests-ci.md`). `T-01`–`T-07` concluídos; `B-01`–`B-20` fechados (os 18 da auditoria + `B-19`/`B-20` do rig).
+**Próximo ticket a executar:** `T-09` (`tickets/T-09-multi-device-oem-health.md`). `T-01`–`T-08` concluídos; `B-01`–`B-20` fechados (os 18 da auditoria + `B-19`/`B-20` do rig).
 
 ---
 
@@ -20,7 +20,7 @@
 
 ### Fase 3 — Arquitetura `OficinaDiag.Core` & Testes de Regressão + CI (`9.3 → 9.7`)
 - [x] **T-07** — Extrair biblioteca `src/OficinaDiag.Core` (`net8.0`), criar `OficinaDiag.sln` e remover ficheiros `<Compile Link=...>` (`tickets/T-07-extract-oficinadiag-core.md`)
-- [ ] **T-08** — Suite completa de testes de regressão (iOS PD 9V, Android OEM, `pt-PT`, XSS, paridade `L10n` e XAML) + build WPF no CI (`tickets/T-08-regression-tests-ci.md`)
+- [x] **T-08** — Suite completa de testes de regressão (iOS PD 9V, Android OEM, `pt-PT`, XSS, paridade `L10n` e XAML) + build WPF no CI (`tickets/T-08-regression-tests-ci.md`)
 
 ### Fase 4 — Diferenciadores "Nota 10" de Bancada Profissional (`9.7 → 10.0`)
 - [ ] **T-09** — Seletor multi-dispositivo na bancada, saúde avançada OEM (`mSavedBatteryAsoc`, `bms`, troca de bateria iOS, `fastboot`/`recovery`) e `models.json` Apple/Pixel (`tickets/T-09-multi-device-oem-health.md`)
@@ -75,6 +75,8 @@ Correr o `AndroidCollector` contra este rig revelou dois falsos positivos reais 
 ---
 
 ## Registo de Handoff entre Sessões / Agentes
+
+- **2026-11-12 (T-08 concluído — Buffy):** `IosCollectorParsingTests` (plist inline com sub-dicts a colidir + fixture real do iPhone 13,3 + `Grader` a 57% → **D** com peça «bateria»), `L10nAndThemesTests` (paridade PT/EN por reflexão ao `L10n.D`, mesmos placeholders com `string.Format` a não rebentar, e os 3 temas XAML com o mesmo conjunto de `x:Key`), `TestServerTests.PostResultEntregaOJsonEFechaOServidor` (POST `/result` → ACK 200, evento com `touchHit`/`colorsViewed`, one-shot) e `CloudClientCancellationTests` (pairing cancelado: 1 pedido, sem retry, erro vazio e `DiagConfig` intacto). CI ganhou o job `build-wpf` (`dotnet build … -p:EnableWindowsTargeting=true` em `ubuntu-latest`). O que já existia cobre a lista Android do ticket (`AdbParsingTests`: zonas térmicas `pt-PT`/`en-US`, polaridade por `status`, contas repetidas, `µAh → mAh`, probe) e XSS (`ReportBuilderTests`). **Verificação:** `dotnet test -c Release` **159/159**; build WPF Release 0 erros. **Não exercitado:** CI real no GitHub (workflow só validado localmente) e `ChargeStatus == "pass"` no caminho exato do ticket (coberto pelo `PowerAnalyzerTests` equivalente).
 
 - **2026-11-12 (T-07 concluído — Buffy):** novo `src/OficinaDiag.Core/OficinaDiag.Core.csproj` (`net8.0`, `RootNamespace=OficinaDiag`, `InternalsVisibleTo` app/testes) com os 22 ficheiros movidos por `git mv` (`Devices/*` incl. `AdbParsing`, `Cloud/*`, `Grading`, `History`, `Log`, `Reports` exceto `LabelPrinter`, `Tests/TestServer.cs` + `wwwroot`, `Data/models.json`, `L10n.cs`) e as packages `iMobileDevice-net`/`Markdig`/`ProtectedData`; a app fica `net8.0-windows` + `UseWPF` com `ProjectReference`, só `QRCoder` e o bundling de `tools/platform-tools`. `L10n` deixa de tocar em `ThemeManager` (`UseTerminalChrome`, sincronizado em `ThemeManager.Apply` mesmo quando o tema não muda), `DeviceReport.ToolVersion` passa a ler o **entry** assembly (o `/p:Version=` injeta na app, não no Core), `tests/*.csproj` troca os 11 `<Compile Link>` por `ProjectReference` (e larga `Markdig`/`ProtectedData`), `OficinaDiag.sln` criado e `tools/fetch-tools.ps1` procura a versão em `OficinaDiag.Core.csproj` com fallback para o da app. **Verificação:** `dotnet build src/OficinaDiag.Core` corre em macOS sem SDK Windows; `dotnet test -c Release` **150/150**; build WPF 0 erros; `dotnet publish -r win-x64 --self-contained /p:PublishSingleFile=true` produz `OficinaDiag.exe` (68 MB) + `Data/models.json` + `Tests/wwwroot/device-test.html`; a regex do `fetch-tools.ps1` casa `1.3.17` no csproj novo. **Não executado:** `fetch-tools.ps1` a correr (sem `pwsh` nesta máquina) e CI Linux real.
 

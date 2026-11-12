@@ -3,6 +3,7 @@ using System.Net.Http;
 using System.Net.NetworkInformation;
 using System.Net.Sockets;
 using System.Text;
+using System.Text.Json;
 using Xunit;
 
 namespace OficinaDiag.Tests;
@@ -98,5 +99,33 @@ public sealed class TestServerTests
         var n = await stream.ReadAsync(buf);
         var text = Encoding.ASCII.GetString(buf, 0, n);
         Assert.StartsWith("HTTP/1.1 431", text);
+    }
+
+    [Fact]
+    public async Task PostResultEntregaOJsonEFechaOServidor()
+    {
+        using var server = new TestServer();
+        Assert.True(server.Start());
+        var uri = new Uri(server.LanUrl);
+        var token = uri.AbsolutePath.Trim('/');
+        var root = $"{uri.Scheme}://{uri.Authority}";
+
+        var received = new TaskCompletionSource<Dictionary<string, JsonElement>>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        server.ResultReceived += d => received.TrySetResult(d);
+
+        using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(10) };
+        const string json =
+            "{\"touchHit\":54,\"touchTotal\":60,\"colorsViewed\":13,\"edgeHit\":22,\"edgeTotal\":28,\"batteryApi\":100}";
+        var res = await http.PostAsync($"{root}/{token}/result",
+            new StringContent(json, Encoding.UTF8, "application/json"));
+        Assert.Equal(HttpStatusCode.OK, res.StatusCode);
+
+        var data = await received.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.Equal(54, data["touchHit"].GetInt32());
+        Assert.Equal(13, data["colorsViewed"].GetInt32());
+
+        // One-shot: o ACK sai antes do fecho, e um segundo pedido já não é servido.
+        await Assert.ThrowsAnyAsync<Exception>(() => http.GetAsync($"{root}/{token}/"));
     }
 }
