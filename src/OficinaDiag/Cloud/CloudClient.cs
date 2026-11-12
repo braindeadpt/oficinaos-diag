@@ -42,15 +42,22 @@ public sealed class CloudClient
 
     private static async Task<HttpResponseMessage> SendWithRetryAsync(
         Func<HttpRequestMessage> build, TimeSpan attemptTimeout,
-        RetryMode mode = RetryMode.Idempotent)
+        RetryMode mode = RetryMode.Idempotent, CancellationToken ct = default)
     {
         for (var attempt = 0; ; attempt++)
         {
             HttpResponseMessage res;
             using (var req = build())
-            using (var cts = new CancellationTokenSource(attemptTimeout))
+            using (var timeout = new CancellationTokenSource(attemptTimeout))
+            using (var cts = CancellationTokenSource.CreateLinkedTokenSource(timeout.Token, ct))
             {
                 try { res = await Http.SendAsync(req, cts.Token); }
+                // Cancelamento do chamador (utilizador fechou a janela) não é
+                // timeout: propaga-se e não vale uma segunda tentativa.
+                catch (OperationCanceledException) when (ct.IsCancellationRequested)
+                {
+                    throw;
+                }
                 catch (OperationCanceledException) when (attempt == 0
                     && mode == RetryMode.Idempotent)
                 {
@@ -168,7 +175,8 @@ public sealed class CloudClient
     /// PC de bancada fica com um token que só serve relatórios IA; se for
     /// comprometido não pode publicar a montra nem mexer no WhatsApp da loja.
     /// </summary>
-    public async Task<(bool ok, string token, string shopName, string error)> RedeemPairingAsync(string code)
+    public async Task<(bool ok, string token, string shopName, string error)> RedeemPairingAsync(
+        string code, CancellationToken ct = default)
     {
         try
         {
@@ -182,8 +190,8 @@ public sealed class CloudClient
                 HttpMethod.Post, new Uri(BaseUri, "pairing/redeem"))
             {
                 Content = new StringContent(payload, Encoding.UTF8, "application/json"),
-            }, TimeSpan.FromSeconds(20));
-            var body = await res.Content.ReadAsStringAsync();
+            }, TimeSpan.FromSeconds(20), ct: ct);
+            var body = await res.Content.ReadAsStringAsync(ct);
             if (!res.IsSuccessStatusCode)
             {
                 if (body.Contains("INVALID_OR_EXPIRED_CODE"))
@@ -204,6 +212,12 @@ public sealed class CloudClient
             var token = doc.RootElement.GetProperty("shopToken").GetString() ?? "";
             var shopName = doc.RootElement.TryGetProperty("shopName", out var s) ? s.GetString() ?? "" : "";
             return (true, token, shopName, "");
+        }
+        // Cancelado pelo chamador: sem mensagem de erro — quem fechou a janela
+        // não precisa de ler que "a operação foi cancelada".
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            return (false, "", "", "");
         }
         catch (Exception ex) { return (false, "", "", ex.Message); }
     }

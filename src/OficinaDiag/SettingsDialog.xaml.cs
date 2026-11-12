@@ -116,7 +116,7 @@ public partial class SettingsDialog : Window
                 // escrever, mesmo que ainda não esteja gravada em _config.
                 if (validatedUrl is not null && DiagConfig.TryValidateCloudUrl(validatedUrl, out var vuri))
                     cloud.BaseUri = new Uri(vuri.ToString().TrimEnd('/') + "/");
-                var (ok, t, s, err) = await cloud.RedeemPairingAsync(pasted);
+                var (ok, t, s, err) = await cloud.RedeemPairingAsync(pasted, _cts.Token);
                 // Fechado (X/Esc) enquanto o pedido corria: não tocar na
                 // janela nem em _config — DialogResult aqui crashava a UI.
                 if (_closing || !IsLoaded) return;
@@ -143,12 +143,15 @@ public partial class SettingsDialog : Window
         _config.Theme = ThemeManager.Current;
         if (token is not null) _config.SetShopToken(token, "diag");
 
-        _closing = true; // o preview já é o estado final — OnClosing não repõe nada
-        DialogResult = true;
-
+        // O aviso de emparelhamento abre ANTES de fechar: depois de
+        // DialogResult = true a janela já não é dona de um MessageBox (o
+        // utilizador via-o sem contexto, ou nem o via).
         if (shop is not null)
             MessageBox.Show(this, L10n.F("set.paired", shop), Title,
                 MessageBoxButton.OK, MessageBoxImage.Information);
+
+        _closing = true; // o preview já é o estado final — OnClosing não repõe nada
+        DialogResult = true;
     }
 
     protected override void OnClosing(CancelEventArgs e)
@@ -163,5 +166,11 @@ public partial class SettingsDialog : Window
             ThemeManager.Apply(_origTheme);
         }
         base.OnClosing(e);
+    }
+
+    protected override void OnClosed(EventArgs e)
+    {
+        _cts.Dispose();
+        base.OnClosed(e);
     }
 }
