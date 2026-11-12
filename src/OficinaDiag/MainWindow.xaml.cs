@@ -53,7 +53,7 @@ public partial class MainWindow : Window
 
     private DeviceDetector? _detector;
     // Túnel `adb reverse` ativo (serial, porta) — removido sempre no fim.
-    private (string Serial, int Port)? _reverse;
+    private readonly Devices.AdbTunnel _tunnel;
     private Tests.TestServer? _testServer;
     private readonly ScanHistory _history = new();
     /// <summary>Dispositivos ligados agora — alimenta o seletor do header.</summary>
@@ -72,6 +72,7 @@ public partial class MainWindow : Window
     public MainWindow()
     {
         _cloud = new Cloud.CloudClient(_config);
+        _tunnel = new Devices.AdbTunnel(RunAdbAsync, WarnTunnelLeft);
         InitializeComponent();
         DeviceSelector.ItemsSource = _devices;
         // RGPD: a retenção vive no DiagConfig e aplica-se logo no arranque.
@@ -156,23 +157,18 @@ public partial class MainWindow : Window
     }
 
     /// <summary>Remove o túnel USB — tem de correr mesmo que o teste seja cancelado.</summary>
-    private async Task ClearReverseAsync()
-    {
-        if (_reverse is not { } r) return;
-        _reverse = null;
-        if (!await RunAdbAsync(r.Serial, $"reverse --remove tcp:{r.Port}").ConfigureAwait(false))
-            WarnTunnelLeft(r.Port);
-    }
+    private async Task ClearReverseAsync() =>
+        await _tunnel.ClearAsync().ConfigureAwait(false);
 
     /// <summary>
-    /// O remove falhou: o túnel pode continuar montado e o telefone fica a
-    /// chegar a 127.0.0.1 sem ninguém à escuta. No OnClosing a UI está
-    /// bloqueada à espera deste task — despachar para o dispatcher daria
-    /// deadlock, por isso fora da UI o aviso vai só para o diag.log.
+    /// Aviso do AdbTunnel quando o remove falha: o túnel pode continuar
+    /// montado e o telefone fica a chegar a 127.0.0.1 sem ninguém à escuta.
+    /// No OnClosing a UI está bloqueada à espera deste task — despachar
+    /// para o dispatcher daria deadlock, por isso fora da UI o aviso vai
+    /// só para o diag.log.
     /// </summary>
-    private void WarnTunnelLeft(int port)
+    private void WarnTunnelLeft(string msg)
     {
-        var msg = L10n.F("log.test.reverse.fail", port);
         if (Dispatcher.CheckAccess()) Log(msg);
         else OficinaDiag.Log.AppLog.Write(msg);
     }
@@ -184,7 +180,7 @@ public partial class MainWindow : Window
     /// </summary>
     private void ClearReverseBlocking()
     {
-        try { ClearReverseAsync().Wait(TimeSpan.FromSeconds(3)); }
+        try { _tunnel.ClearAsync().Wait(TimeSpan.FromSeconds(3)); }
         catch (AggregateException) { /* adb morto/timeout — nada a fazer */ }
     }
 
@@ -642,7 +638,7 @@ public partial class MainWindow : Window
                 var loop = server.LoopbackUrl;
                 if (await RunAdbAsync(serial, $"reverse tcp:{server.Port} tcp:{server.Port}"))
                 {
-                    _reverse = (serial, server.Port);
+                    _tunnel.Mount(serial, server.Port);
                     await RunAdbAsync(serial, $"shell am start -a android.intent.action.VIEW -d {loop}");
                     Log(L10n.T("log.test.reverse"));
                 }
