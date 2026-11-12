@@ -18,9 +18,15 @@ public sealed class CloudClient
 
     public Uri BaseUri { get; set; }
 
-    public CloudClient(DiagConfig config)
+    // Espera entre tentativas. Injetável para os testes poderem provar que
+    // um caminho NÃO repete sem depender de relógio (ver
+    // CloudClientCancellationTests): um retry chamaria este hook.
+    private readonly Func<CancellationToken, Task> _retryDelay;
+
+    public CloudClient(DiagConfig config, Func<CancellationToken, Task>? retryDelay = null)
     {
         BaseUri = new Uri(config.CloudUrl.TrimEnd('/') + "/");
+        _retryDelay = retryDelay ?? (ct => Task.Delay(1500, ct));
     }
 
     /// <summary>
@@ -40,7 +46,7 @@ public sealed class CloudClient
     /// </summary>
     private enum RetryMode { Idempotent, PaidOnce }
 
-    private static async Task<HttpResponseMessage> SendWithRetryAsync(
+    private async Task<HttpResponseMessage> SendWithRetryAsync(
         Func<HttpRequestMessage> build, TimeSpan attemptTimeout,
         RetryMode mode = RetryMode.Idempotent, CancellationToken ct = default)
     {
@@ -63,12 +69,12 @@ public sealed class CloudClient
                 {
                     // Timeout num endpoint rápido vale uma segunda tentativa;
                     // nos 150 s da IA não — a geração já pode ter sido cobrada.
-                    await Task.Delay(1500);
+                    await _retryDelay(ct);
                     continue;
                 }
                 catch (HttpRequestException ex) when (attempt == 0 && IsPreSendFailure(ex, mode))
                 {
-                    await Task.Delay(1500);
+                    await _retryDelay(ct);
                     continue;
                 }
             }
@@ -77,7 +83,7 @@ public sealed class CloudClient
             if ((int)res.StatusCode >= 500 && attempt == 0 && mode == RetryMode.Idempotent)
             {
                 res.Dispose();
-                await Task.Delay(1500);
+                await _retryDelay(ct);
                 continue;
             }
             return res;
