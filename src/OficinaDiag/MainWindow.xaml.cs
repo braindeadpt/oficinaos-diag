@@ -140,14 +140,16 @@ public partial class MainWindow : Window
             var outTask = p.StandardOutput.ReadToEndAsync();
             var errTask = p.StandardError.ReadToEndAsync();
             using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
-            try { await p.WaitForExitAsync(cts.Token); }
+            // ConfigureAwait(false): o cleanup no fecho espera de forma síncrona
+            // por este task — retomar no dispatcher bloqueado daria deadlock.
+            try { await p.WaitForExitAsync(cts.Token).ConfigureAwait(false); }
             catch (OperationCanceledException)
             {
                 try { p.Kill(entireProcessTree: true); } catch { }
                 return false;
             }
-            await outTask;
-            await errTask;
+            await outTask.ConfigureAwait(false);
+            await errTask.ConfigureAwait(false);
             return p.ExitCode == 0;
         }
         catch { return false; }
@@ -158,7 +160,18 @@ public partial class MainWindow : Window
     {
         if (_reverse is not { } r) return;
         _reverse = null;
-        await RunAdbAsync(r.Serial, $"reverse --remove tcp:{r.Port}");
+        await RunAdbAsync(r.Serial, $"reverse --remove tcp:{r.Port}").ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Limpeza síncrona e limitada para os sítios onde não se pode esperar
+    /// (handler do resultado, fecho da app). Fire-and-forget deixava o
+    /// `adb reverse` montado no telefone quando o processo saía primeiro.
+    /// </summary>
+    private void ClearReverseBlocking()
+    {
+        try { ClearReverseAsync().Wait(TimeSpan.FromSeconds(3)); }
+        catch (AggregateException) { /* adb morto/timeout — nada a fazer */ }
     }
 
     /// <summary>Texto do header por estado — recovery/fastboot não são "detetado".</summary>
@@ -592,7 +605,7 @@ public partial class MainWindow : Window
                 }
                 Log(L10n.T("log.test.received"));
                 ApplyGrade();
-                _ = ClearReverseAsync(); // o telefone não precisa mais do túnel
+                ClearReverseBlocking(); // o telefone não precisa mais do túnel
                 server.Dispose();
                 if (ReferenceEquals(_testServer, server)) _testServer = null;
             });
@@ -897,7 +910,7 @@ public partial class MainWindow : Window
     {
         // Sem estas saídas o MainWindow ficava refletido em L10n/ThemeManager
         // e continuava a ser notificado depois de fechado.
-        _ = ClearReverseAsync(); // fechar a app não deixa o túnel adb montado
+        ClearReverseBlocking(); // fechar a app não deixa o túnel adb montado
         L10n.Changed -= ApplyStrings;
         ThemeManager.Changed -= ApplyStrings;
         _testServer?.Dispose();
