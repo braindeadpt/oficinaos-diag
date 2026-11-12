@@ -50,6 +50,7 @@
   <div class="srow"><span>Multi-toque</span><span class="st" id="s-touch">…</span></div>
   <div class="srow"><span>Bateria (API)</span><span class="st" id="s-batt">…</span></div>
   <button id="spkBtn">TOCAR TOM — ouviste?</button>
+  <div id="spkHint" style="font-size:.85em;opacity:.8">No iPhone: desativa o botão lateral de Silêncio e sobe o volume antes de tocar.</div>
   <div id="spkAsk" style="display:none">
     <button id="spkYes">SIM, ouvi</button>
     <button id="spkNo">NÃO ouvi</button>
@@ -70,6 +71,9 @@ const grid = document.getElementById('grid');
 const colors = ['#f00','#0f0','#00f','#fff','#000','#f0f','#ff0','#0ff',
                 '#222','#555','#888','#bbb','#eee'];
 let step = -1;
+/* Cores realmente vistas — o técnico pode terminar a meio e não é correcto
+   reportar as 13 como vistas. */
+const seenColors = new Set();
 const result = {
   colorsViewed: 0, touchTotal: 60, touchHit: 0, edgeTotal: 0, edgeHit: 0,
   multiTouch: 0,
@@ -82,6 +86,7 @@ const result = {
 stage.onclick = () => {
   step++;
   if (step < colors.length) {
+    seenColors.add(colors[step]);
     stage.style.background = colors[step];
     const isGrey = /^#(?:22|55|88|bb|ee)$/.test(colors[step]);
     stage.style.color = (colors[step]==='#000'||colors[step]==='#222'||colors[step]==='#555')?'#0f0':'#000';
@@ -191,8 +196,14 @@ function startSensors(){
   panel.style.display='flex';
 
   // iOS 13+ — os eventos de movimento precisam de permissão por gesto
-  if(typeof DeviceMotionEvent!=='undefined' && typeof DeviceMotionEvent.requestPermission==='function'){
+  // iOS só entrega sensores depois do gesto + diálogo; contar os 6 s antes
+  // disso marcava "sem leitura" num iPhone que ainda não tinha permissão.
+  const needsPermission = typeof DeviceMotionEvent!=='undefined'
+    && typeof DeviceMotionEvent.requestPermission==='function';
+  if(needsPermission){
     document.getElementById('permBtn').style.display='block';
+  } else {
+    armSensorTimeouts();
   }
 
   /* devicemotion cobre accel+gyro na maioria dos Androids; Generic Sensor API
@@ -223,12 +234,7 @@ function startSensors(){
   if(typeof AmbientLightSensor!=='undefined') probe('light',AmbientLightSensor);
   else { result.sensors.light='unavailable'; setSt('s-light','não exposto','no'); }
 
-  setTimeout(()=>{
-    if(!result.sensors.accel){ result.sensors.accel='no-data'; setSt('s-accel','sem leitura','warn'); }
-    if(!result.sensors.gyro){ result.sensors.gyro='no-data'; setSt('s-gyro','sem leitura','warn'); }
-    if(!result.sensors.orient){ result.sensors.orient='no-data'; setSt('s-orient','sem leitura','warn'); }
-    if(!result.sensors.light){ result.sensors.light='no-data'; setSt('s-light','sem leitura','warn'); }
-  }, 6000);
+  armSensorTimeouts(); // iOS: só corre depois da permissão (ver permBtn)
 
   const mt = result.multiTouch;
   setSt('s-touch', mt>0 ? mt+' dedos' : 'não testado', mt>=5?'ok':mt>0?'warn':'warn');
@@ -245,9 +251,12 @@ function startSensors(){
 /* altifalante — tom WebAudio + confirmação humana; auricular não tem
    routing API na web (fica no checklist físico) */
 let audioCtx=null;
-document.getElementById('spkBtn').onclick=()=>{
+document.getElementById('spkBtn').onclick=async()=>{
   try{
     audioCtx = audioCtx || new (window.AudioContext||window.webkitAudioContext)();
+    // iOS Safari nasce "suspended" (e o browser suspende no background):
+    // sem resume() o tone oscilador não sai e o técnico marca "não ouvi".
+    if(audioCtx.state==='suspended') await audioCtx.resume();
     const o=audioCtx.createOscillator(), g=audioCtx.createGain();
     o.type='sine'; o.frequency.value=880;
     g.gain.setValueAtTime(0.3,audioCtx.currentTime);
@@ -262,12 +271,26 @@ document.getElementById('spkBtn').onclick=()=>{
 document.getElementById('spkYes').onclick=()=>{ result.speaker='ok'; document.getElementById('spkAsk').style.display='none'; document.getElementById('spkBtn').textContent='TOM OUVIDO ✓'; };
 document.getElementById('spkNo').onclick=()=>{ result.speaker='fail'; document.getElementById('spkAsk').style.display='none'; document.getElementById('spkBtn').textContent='NÃO ouvi o tom'; };
 
-document.getElementById('permBtn').onclick=()=>{
-  Promise.all([
-    typeof DeviceMotionEvent!=='undefined'&&DeviceMotionEvent.requestPermission?DeviceMotionEvent.requestPermission():Promise.resolve('granted'),
-    typeof DeviceOrientationEvent!=='undefined'&&DeviceOrientationEvent.requestPermission?DeviceOrientationEvent.requestPermission():Promise.resolve('granted')
-  ]).catch(()=>{});
+function armSensorTimeouts(){
+  if(window.__sensorTimersArmed) return;
+  window.__sensorTimersArmed=true;
+  setTimeout(()=>{
+    if(!result.sensors.accel){ result.sensors.accel='no-data'; setSt('s-accel','sem leitura','warn'); }
+    if(!result.sensors.gyro){ result.sensors.gyro='no-data'; setSt('s-gyro','sem leitura','warn'); }
+    if(!result.sensors.orient){ result.sensors.orient='no-data'; setSt('s-orient','sem leitura','warn'); }
+    if(!result.sensors.light){ result.sensors.light='no-data'; setSt('s-light','sem leitura','warn'); }
+  }, 6000);
+}
+
+document.getElementById('permBtn').onclick=async()=>{
+  try{
+    await Promise.all([
+      typeof DeviceMotionEvent!=='undefined'&&DeviceMotionEvent.requestPermission?DeviceMotionEvent.requestPermission():Promise.resolve('granted'),
+      typeof DeviceOrientationEvent!=='undefined'&&DeviceOrientationEvent.requestPermission?DeviceOrientationEvent.requestPermission():Promise.resolve('granted')
+    ]);
+  }catch(e){ /* recusado — os sensores ficam "no-data" no fim */ }
   document.getElementById('permBtn').style.display='none';
+  armSensorTimeouts(); // agora sim: a partir daqui há dados a esperar
 };
 document.getElementById('vibBtn').onclick=()=>{
   if(navigator.vibrate){ navigator.vibrate(300); document.getElementById('vibAsk').style.display='block'; }
@@ -279,7 +302,7 @@ document.getElementById('vibNo').onclick=()=>{ result.vibrate='no-data'; documen
 document.getElementById('endBtn').onclick=()=>{ finish(); };
 
 function finish(){
-  result.colorsViewed = colors.length;
+  result.colorsViewed = seenColors.size;
   const note = document.getElementById('doneNote');
   document.getElementById('sensors').style.display='none';
   document.getElementById('done').style.display='flex';

@@ -2,7 +2,7 @@
 
 > **Instrução para qualquer agente LLM:** Atualiza este ficheiro no fim de cada ticket concluído (`[ ]` → `[x]`), preenchendo a data/commit ou nota curta em "Registo de Handoff".
 
-**Próximo ticket a executar:** `T-05` (`tickets/T-05-testserver-lan-safari.md`). `T-01`–`T-04` concluídos; `B-01`–`B-06`, `B-08`, `B-09`, `B-11`, `B-16`–`B-20` fechados.
+**Próximo ticket a executar:** `T-06` (`tickets/T-06-wpf-themes-l10n.md`). `T-01`–`T-05` concluídos; `B-01`–`B-06`, `B-08`–`B-11`, `B-13`, `B-16`–`B-20` fechados (de `B-12` falta só a parte de `T-06`).
 
 ---
 
@@ -15,7 +15,7 @@
 
 ### Fase 2 — Hardening de Relatórios, LAN/Safari, WPF UI, Temas & L10n (`8.7 → 9.3`)
 - [x] **T-04** — Sanitização XSS/HTML em `ReportBuilder`, timeouts curtos em `CloudClient` e robustez em `ScanHistory`/`AppLog` (`tickets/T-04-reports-cloud-hardening.md`)
-- [ ] **T-05** — Seleção inteligente de IP LAN no `TestServer` (anti-VirtualBox/WSL + HTTP bounds) e compatibilidade iOS Safari em `device-test.html` (`tickets/T-05-testserver-lan-safari.md`)
+- [x] **T-05** — Seleção inteligente de IP LAN no `TestServer` (anti-VirtualBox/WSL + HTTP bounds) e compatibilidade iOS Safari em `device-test.html` (`tickets/T-05-testserver-lan-safari.md`)
 - [ ] **T-06** — Estabilidade `SettingsDialog`, `Detached` multi-dispositivo, temas dinâmicos WPF, cache `ScopeView` e Inglês 100% em `L10n` (`tickets/T-06-wpf-themes-l10n.md`)
 
 ### Fase 3 — Arquitetura `OficinaDiag.Core` & Testes de Regressão + CI (`9.3 → 9.7`)
@@ -39,10 +39,10 @@
 - [ ] `B-07` (Alto) — Crash `DialogResult` em `SettingsDialog.Save_Click` + mutação suja de `_config` → **T-06**
 - [x] `B-08` (Alto) — Links `javascript:` em Markdig IA + `docRef` sem `HtmlEncode` em `ToInsuranceHtml` → **T-04**
 - [x] `B-09` (Médio) — `DeviceName` pessoal exposto como `identity.model` (PII) + `UDID` em `Serial` → **T-02**
-- [ ] `B-10` (Médio) — `TestServer` escolhe IP virtual (VirtualBox/WSL) + bug `headerEnd == -1` aos 64 KB → **T-05**
+- [x] `B-10` (Médio) — `TestServer` escolhia IP virtual (VirtualBox/WSL) + bug `headerEnd == -1` aos 64 KB → **T-05**
 - [x] `B-11` (Médio) — `dumpsys account` multiplicava contas + capacidade em `µAh` crua → **T-03**
 - [ ] `B-12` (Médio) — `Detached` limpa dispositivo errado + `lang="pt"` fixo no IA + `:` em nomes de ficheiro → **T-06** *(parte `B-12c` fechada em `T-04` com `SafeFileToken`)*
-- [ ] `B-13` (Médio) — Quirks iOS Safari (`AudioContext` suspenso/Silêncio, timer 6s sensores, `colorsViewed`) → **T-05**
+- [x] `B-13` (Médio) — Quirks iOS Safari (`AudioContext` suspenso/Silêncio, timer 6s sensores, `colorsViewed`) → **T-05**
 - [ ] `B-14` (Médio) — Troca de tema não refresca `ResultsList`, diálogos `StaticResource` e 18 `Pen`s/frame → **T-06**
 - [ ] `B-15` (Médio) — Mensagens hardcoded em PT em `CloudClient`, `CompareWindow` e `TokenDialog` → **T-06**
 - [x] `B-16` (Médio) — Redirecionamento `>` em `sign-release.ps1` + `build-store.ps1` sem validar `adb.exe` → **T-01**
@@ -76,6 +76,7 @@ Correr o `AndroidCollector` contra este rig revelou dois falsos positivos reais 
 
 ## Registo de Handoff entre Sessões / Agentes
 
+- **2026-11-12 (T-05 concluído — Buffy):** `TestServer` escolhe a interface LAN por ranking testável (`PickBestLanIp`): exclui adaptadores virtuais (VirtualBox/VMware/WSL/Docker/VPN), prioriza gateway IPv4 e depois Wi-Fi → Ethernet; `headerEnd < 0` responde **431** em vez de tratar headers como JSON, `Content-Length` é lido só dos headers e `GET /{token}` (com ou sem barra e `?from=qr`) serve a página. Na `device-test.html`: `seenColors` real no `colorsViewed`, `audioCtx.resume()` no altifalante com lembrete do botão de Silêncio, e o timer de 6 s dos sensores só arma depois da permissão iOS. **Verificação:** build WPF 0 erros/0 avisos; `dotnet test` **150/150** (+6: ranking, GET sem barra/query, 431 com 70 KB) e `node --check` da página. **Não exercitado:** iPhone/iOS Safari real — o rig é Android WebView, sem botão de Silêncio nem `requestPermission`.
 - **2026-11-12 (T-04 concluído — Buffy):** `AiReportToHtml` passa a reescrever links (só `http(s)`/`mailto`, o resto cai em `#`) e `docRef`/classes CSS ficam por allowlist (`SafeCssToken`); novo `SafeFileToken` aplicado nos 3 `SaveFileDialog` do export; `CloudClient` ganhou timeout por tentativa (20 s nos endpoints rápidos, 150 s na IA sem retry em timeout) e `using` nos 4 métodos; `ScanHistory` usa mutex com timeout de 5 s e trata `AbandonedMutexException`; `AppLog` alinha a rotação ao primeiro `\n` para não partir UTF-8. **Verificação:** build WPF 0 erros/0 avisos; `dotnet test` **144/144** (+12: `SafeUrl`/links/escape em 3 formatos/`SafeFileToken`/`SafeCssToken`). **Não exercitado:** servidor a pendurar-se de facto (timeouts revistos por código) e rotação real do `diag.log` (caminho fixo em `%APPDATA%`, sem injeção para teste).
 - **2026-11-12 (T-03 concluído — Buffy):** novo `AdbParsing.cs` com os parses puros (cultura invariante, corrente por `status`, contas únicas, `µAh → mAh`, zonas térmicas com rejeição de leituras dummy, owner real de MDM); `AndroidCollector` passou a usá-lo, `AdbAsync` usa `ArgumentList` com `shell` como um só argumento e `Kill(entireProcessTree: true)` também em `DeviceDetector`; `PropAsync` devolve `null` em vez de `""` e baseband/SIM/fingerprint/display só entram quando existem; bateria com `present: false` fica `skipped` e `health: 1` (UNKNOWN) também. **Verificação:** build WPF 0 erros/0 avisos, `dotnet test` 132/132 (+15, todos os novos sob `pt-PT`), harness no rig: 17 checks, `security.mdm` **pass**, `battery.present` skipped, `security.bootloader` skipped, nenhuma linha em branco e **Grau C** (era D por MDM/bateria inexistentes). **Não exercitado:** telemóvel OEM real (Samsung/MediaTek/Huawei) para a polaridade e os limiares de `health`.
 - **2026-11-12 (T-02 concluído — Buffy):** `ParsePlistDict` reescrito (dois níveis, prefixo `AdapterDetails.*`/`BatteryData.*`, guarda `<plist` contra o *usage* com exit 0); a saúde iOS passou a `battery.capacity` com limiares 60/80; `ProbeAsync`/`CollectBatteryHealth` leem `AdapterDetails.Watts` e `BatteryData.*`; identidade usa `ModelNameTable` + `SerialNumber` e deixa de ler `DeviceName`; USB serializado por UDID (`ConcurrentDictionary` + `SemaphoreSlim`), `Kill(entireProcessTree)` no timeout/cancelamento e `Dispose` do CTS só quando a task termina. `Grader`: `battery.health` entra nos `CriticalChecks` e o ramo legado mantém severidade (`fail` → D + peça, `warn` → C). **Verificação:** build WPF (`-p:EnableWindowsTargeting=true`) 0 erros/0 avisos; `dotnet test` 117/117 (3 novos); parser validado na fixture real (63 chaves, `Voltage` 3914, `IsCharging` `true`, `Watts` 13, `0 °C` eliminado, `capacity` 100%). **Não exercitado:** app WPF com iPhone ligado — o coletor usa `idevicediagnostics.exe` + libimobiledevice nativa e não corre em macOS. Próximo: `T-03`.

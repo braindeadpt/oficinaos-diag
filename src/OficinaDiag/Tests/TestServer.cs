@@ -60,18 +60,68 @@ public sealed class TestServer : IDisposable
         _listener = new TcpListener(_bindAddress, 0);
     }
 
+    /// <summary>Uma interface candidata a servir a página — dados puros para o ranking.</summary>
+    public readonly record struct LanCandidate(
+        string Name, string Description, NetworkInterfaceType Type, IPAddress Address, bool HasGateway);
+
+    /// <summary>
+    /// Nomes de adaptadores que parecem LAN mas não chegam à rede da loja:
+    /// VirtualBox (192.168.56.1), VMware, Hyper-V, WSL2, Docker, VPNs. Sem esta
+    /// lista, a interface virtual ganhava a eleição e o QR do telemóvel abria
+    /// no vazio.
+    /// </summary>
+    private static readonly string[] VirtualHints =
+    [
+        "virtual", "vethernet", "wsl", "vmware", "vbox", "virtualbox", "hyper-v",
+        "docker", "loopback", "tap", "tun", "tailscale", "zerotier", "wireguard",
+    ];
+
+    private static bool IsVirtual(LanCandidate c)
+    {
+        var text = $"{c.Name} {c.Description}".ToLowerInvariant();
+        return VirtualHints.Any(text.Contains);
+    }
+
     private static IPAddress? ResolveLanAddress() =>
-        NetworkInterface.GetAllNetworkInterfaces()
+        PickBestLanIp(NetworkInterface.GetAllNetworkInterfaces()
             .Where(n => n.OperationalStatus == OperationalStatus.Up
-                && n.NetworkInterfaceType is not NetworkInterfaceType.Loopback)
-            .SelectMany(n => n.GetIPProperties().UnicastAddresses)
-            .Select(a => a.Address)
-            .Where(a => a.AddressFamily == AddressFamily.InterNetwork
-                && !a.ToString().StartsWith("169.254.")) // APIPA — sem rede
-            // preferir a LAN típica da loja; VPNs/VMs ficam para o fim
-            .OrderBy(a => a.ToString().StartsWith("192.168.") ? 0
-                : a.ToString().StartsWith("10.") ? 1 : 2)
-            .FirstOrDefault();
+                && n.NetworkInterfaceType != NetworkInterfaceType.Loopback)
+            .SelectMany(n =>
+            {
+                var props = n.GetIPProperties();
+                var hasGateway = props.GatewayAddresses.Any(g =>
+                    g.Address.AddressFamily == AddressFamily.InterNetwork
+                    && !g.Address.Equals(IPAddress.Any));
+                return props.UnicastAddresses.Select(a => new LanCandidate(
+                    n.Name, n.Description, n.NetworkInterfaceType, a.Address, hasGateway));
+            }));
+
+    /// <summary>
+    /// Interfaces com gateway têm rota real para a rede; Wi-Fi antes de
+    /// Ethernet; sem gateway só como último recurso. Se todas forem virtuais,
+    /// ainda escolhe uma (loopback é o último recurso do construtor).
+    /// </summary>
+    internal static IPAddress? PickBestLanIp(IEnumerable<LanCandidate> candidates)
+    {
+        var list = candidates.ToList();
+        return Rank(list.Where(c => !IsVirtual(c))) ?? Rank(list);
+
+        static IPAddress? Rank(IEnumerable<LanCandidate> source) =>
+            source
+                .Where(c => c.Address.AddressFamily == AddressFamily.InterNetwork)
+                .Where(c => !c.Address.ToString().StartsWith("169.254.")) // APIPA — sem rede
+                .OrderByDescending(c => c.HasGateway)
+                .ThenBy(c => c.Type switch
+                {
+                    NetworkInterfaceType.Wireless80211 => 0,
+                    NetworkInterfaceType.Ethernet => 1,
+                    _ => 2,
+                })
+                .ThenBy(c => c.Address.ToString().StartsWith("192.168.") ? 0
+                    : c.Address.ToString().StartsWith("10.") ? 1 : 2)
+                .Select(c => c.Address)
+                .FirstOrDefault();
+    }
 
     /// <summary>URL com o IP do bind real — se a NIC mudar depois do Start o QR não aponta para um IP que já não escuta.</summary>
     public string LanUrl =>
@@ -178,14 +228,28 @@ public sealed class TestServer : IDisposable
                 }
                 if (buf.Count == 0) return;
 
-                var request = Encoding.Latin1.GetString(buf.ToArray());
+                // 64 KB sem \r\n\r\n: rejeita de imediato. Antes seguia com
+                // headerEnd = -1 e bodyStart = 3, a processar headers como JSON.
+                if (headerEnd < 0)
+                {
+                    Respond(stream, "431 Request Header Fields Too Large",
+                        "headers too large", "text/plain");
+                    return;
+                }
+
+                var raw = buf.ToArray();
+                // Só headers: o regex do Content-Length não pode ver o body.
+                var request = Encoding.Latin1.GetString(raw, 0, headerEnd);
                 var firstLineEnd = request.IndexOf("\r\n", StringComparison.Ordinal);
                 var firstLine = firstLineEnd > 0 ? request[..firstLineEnd] : request;
                 var parts = firstLine.Split(' ');
                 var method = parts.Length > 0 ? parts[0] : "";
-                var path = parts.Length > 1 ? parts[1] : "/";
+                var rawPath = parts.Length > 1 ? parts[1] : "/";
+                // Leitores de QR acrescentam ?from=qr e alguns browsers cortam
+                // a barra final — os dois servem a mesma página.
+                var cleanPath = rawPath.Split('?')[0].TrimEnd('/');
 
-                if (method == "POST" && path == $"/{_token}/result")
+                if (method == "POST" && cleanPath == $"/{_token}/result")
                 {
                     // lê o corpo conforme Content-Length (com teto — ver const acima)
                     var lenMatch = System.Text.RegularExpressions.Regex.Match(
@@ -207,7 +271,7 @@ public sealed class TestServer : IDisposable
                         for (var i = 0; i < n; i++) buf.Add(b[i]);
                         have += n;
                     }
-                    var body = Encoding.UTF8.GetString(buf.ToArray(), bodyStart, Math.Min(contentLen, have));
+                    var body = Encoding.UTF8.GetString(raw, bodyStart, Math.Min(contentLen, have));
                     var data = JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(body);
                     // Shape check antes de fechar: a página envia sempre
                     // touchHit/touchTotal/colorsViewed. Um JSON qualquer de
@@ -224,7 +288,7 @@ public sealed class TestServer : IDisposable
                     ResultReceived?.Invoke(data!);
                     Complete();
                 }
-                else if (method == "GET" && path == $"/{_token}/")
+                else if (method == "GET" && cleanPath == $"/{_token}")
                 {
                     Respond(stream, "200 OK", page, "text/html; charset=utf-8");
                 }

@@ -26,11 +26,15 @@
     <Compile Include="..\..\src\OficinaDiag\History\ScanHistory.cs" Link="Linked\ScanHistory.cs" />
     <Compile Include="..\..\src\OficinaDiag\Reports\ReportBuilder.cs" Link="Linked\ReportBuilder.cs" />
     <Compile Include="..\..\src\OficinaDiag\Reports\InsuranceForm.cs" Link="Linked\InsuranceForm.cs" />
+    <Compile Include="..\..\src\OficinaDiag\Tests\TestServer.cs" Link="Linked\TestServer.cs" />
   </ItemGroup>
 
   <ItemGroup>
     <!-- Plists reais de dispositivos servem de fixture para o parser iOS (T-02/T-08). -->
     <None Update="Fixtures\**\*.plist" CopyToOutputDirectory="PreserveNewest" />
+    <!-- A página real do teste on-device, para os testes do TestServer a servirem. -->
+    <None Include="..\..\src\OficinaDiag\Tests\wwwroot\device-test.html"
+          Link="Tests\wwwroot\device-test.html" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
   <ItemGroup>
