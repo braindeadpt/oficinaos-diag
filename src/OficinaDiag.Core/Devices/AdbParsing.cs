@@ -35,6 +35,20 @@ public static class AdbParsing
     /// um Android SEM gestão — procurar a substring "Device Owner" dava falso
     /// positivo (e, por estar nos HardLocks, capava o grau em D).
     /// </summary>
+    /// <summary>
+    /// Samsung OneUI: `mSavedBatteryAsoc` é a Absolute State of Charge que o
+    /// fuel gauge calcula — a saúde real da célula quando o kernel não expõe
+    /// `charge_full` no sysfs. 0–100; fora disso é lixo de dumpsys.
+    /// </summary>
+    public static int? ParseSavedAsoc(string? dumpsysBattery)
+    {
+        if (string.IsNullOrWhiteSpace(dumpsysBattery)) return null;
+        var m = Regex.Match(dumpsysBattery, @"mSavedBatteryAsoc:\s*(\d+)");
+        if (!m.Success) return null;
+        return int.TryParse(m.Groups[1].Value, NumberStyles.Integer,
+            CultureInfo.InvariantCulture, out var v) && v is > 0 and <= 100 ? v : null;
+    }
+
     public static bool HasDeviceOwner(string? dump)
     {
         if (dump is null) return false;

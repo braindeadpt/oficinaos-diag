@@ -7,7 +7,8 @@ namespace OficinaDiag.Devices;
 
 public enum DeviceKind { Android, Ios }
 
-public sealed record DetectedDevice(DeviceKind Kind, string Id, string Label);
+/// <param name="State">ready | unauthorized | recovery | sideload | fastboot | offline</param>
+public sealed record DetectedDevice(DeviceKind Kind, string Id, string Label, string State = "ready");
 
 /// <summary>
 /// Polls adb and libimobiledevice for connected devices and raises events on
@@ -56,10 +57,26 @@ public sealed class DeviceDetector : IDisposable
                         return found;
                     }
                     var output = readTask.GetAwaiter().GetResult();
-                    foreach (Match m in Regex.Matches(output, @"^([\w.:@-]+)\tdevice$", RegexOptions.Multiline))
-                        found.Add(new DetectedDevice(DeviceKind.Android, m.Groups[1].Value, "Android"));
-                    foreach (Match m in Regex.Matches(output, @"^([\w.:@-]+)\tunauthorized$", RegexOptions.Multiline))
-                        found.Add(new DetectedDevice(DeviceKind.Android, m.Groups[1].Value + "!", "Android (autorizar no telefone)"));
+                    // O estado importa: `recovery`/`sideload`/`unauthorized` não
+                    // têm OS completo, por isso o scan tem de os tratar à parte.
+                    foreach (Match m in Regex.Matches(output, @"^([\w.:@-]+)\t(\w+)$", RegexOptions.Multiline))
+                    {
+                        var id = m.Groups[1].Value;
+                        var state = m.Groups[2].Value;
+                        found.Add(state switch
+                        {
+                            "device" => new DetectedDevice(DeviceKind.Android, id, "Android"),
+                            "unauthorized" => new DetectedDevice(DeviceKind.Android, id + "!",
+                                "Android (autorizar no telefone)", "unauthorized"),
+                            "recovery" => new DetectedDevice(DeviceKind.Android, id + "!",
+                                "Android em recovery", "recovery"),
+                            "sideload" => new DetectedDevice(DeviceKind.Android, id + "!",
+                                "Android em sideload", "sideload"),
+                            _ => new DetectedDevice(DeviceKind.Android, id + "!",
+                                $"Android ({state})", state),
+                        });
+                    }
+                    found.AddRange(FastbootDevices());
                 }
             }
             catch { /* adb falhou — ignora nesta ronda */ }
@@ -75,6 +92,52 @@ public sealed class DeviceDetector : IDisposable
         return found;
     }
 
+    /// <summary>Snapshot do último polling — alimenta o seletor multi-dispositivo.</summary>
+    public IReadOnlyList<DetectedDevice> ConnectedDevices
+    {
+        get { lock (_seen) return _seen.Values.ToArray(); }
+    }
+
+    /// <summary>
+    /// `fastboot devices` apanha Androids presos no bootloader — o adb não os
+    /// vê. Só corre quando o `fastboot.exe` está ao lado do adb (tools/).
+    /// </summary>
+    private IEnumerable<DetectedDevice> FastbootDevices()
+    {
+        var exe = Path.Combine(Path.GetDirectoryName(_adbPath) ?? "", "fastboot.exe");
+        if (!File.Exists(exe)) yield break;
+        var output = RunFastboot(exe);
+        if (output is null) yield break;
+        foreach (Match m in Regex.Matches(output, @"^([\w.:@-]+)\tfastboot$", RegexOptions.Multiline))
+            yield return new DetectedDevice(DeviceKind.Android, m.Groups[1].Value + "!",
+                "Android em fastboot", "fastboot");
+    }
+
+    /// <summary>2 s chegam: um fastboot vivo responde de imediato.</summary>
+    private static string? RunFastboot(string exe)
+    {
+        try
+        {
+            var psi = new ProcessStartInfo(exe, "devices")
+            {
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+                CreateNoWindow = true,
+            };
+            using var p = Process.Start(psi);
+            if (p is null) return null;
+            var read = p.StandardOutput.ReadToEndAsync();
+            if (!p.WaitForExit(2000))
+            {
+                try { p.Kill(entireProcessTree: true); } catch { }
+                return null;
+            }
+            return read.GetAwaiter().GetResult();
+        }
+        catch { return null; }
+    }
+
     private void Poll()
     {
         // Timer callbacks overlap on the thread pool — a slow adb/iOS scan
@@ -85,11 +148,14 @@ public sealed class DeviceDetector : IDisposable
         try
         {
             var now = Current().ToDictionary(d => d.Id);
-            foreach (var (id, d) in now)
-                if (_seen.Remove(id)) _seen[id] = d;   // refresca label (unauthorized→device)
-                else { _seen[id] = d; Attached?.Invoke(d); }
-            foreach (var (id, d) in _seen.ToArray())
-                if (!now.ContainsKey(id)) { _seen.Remove(id); Detached?.Invoke(d); }
+            lock (_seen)
+            {
+                foreach (var (id, d) in now)
+                    if (_seen.Remove(id)) _seen[id] = d;   // refresca label (unauthorized→device)
+                    else { _seen[id] = d; Attached?.Invoke(d); }
+                foreach (var (id, d) in _seen.ToArray())
+                    if (!now.ContainsKey(id)) { _seen.Remove(id); Detached?.Invoke(d); }
+            }
         }
         catch (Exception ex)
         {

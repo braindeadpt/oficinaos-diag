@@ -377,6 +377,13 @@ public sealed class AndroidCollector
         var cycles = await AdbAsync(serial, "shell cat /sys/class/power_supply/battery/cycle_count");
         var chargeFull = await AdbAsync(serial, "shell cat /sys/class/power_supply/battery/charge_full");
         var chargeDesign = await AdbAsync(serial, "shell cat /sys/class/power_supply/battery/charge_full_design");
+        // Xiaomi/Qualcomm expõem a capacidade no nó `bms` (alguns no max170xx)
+        // em vez de `battery` — sem isto ficavam sem saúde nenhuma.
+        if (!AdbParsing.TryDouble(chargeFull?.Trim(), out _))
+            chargeFull = await FirstSysfsAsync(serial, "bms/charge_full", "max170xx_battery/charge_full");
+        if (!AdbParsing.TryDouble(chargeDesign?.Trim(), out _))
+            chargeDesign = await FirstSysfsAsync(serial,
+                "bms/charge_full_design", "max170xx_battery/charge_full_design");
         if (AdbParsing.TryInt(cycles?.Trim(), out var c))
             r.Set("battery.cycles", c > 800 ? "warn" : "info",
                 c.ToString(CultureInfo.InvariantCulture),
@@ -395,6 +402,14 @@ public sealed class AndroidCollector
                 (pct < 80 ? "bateria degradada" : "saúde boa"));
         }
 
+        // Samsung OneUI sem charge_full no sysfs: mSavedBatteryAsoc é a saúde
+        // calculada pelo fuel gauge (86 = 86%) — melhor que nada.
+        if (!r.Results.ContainsKey("battery.capacity")
+            && AdbParsing.ParseSavedAsoc(batt) is { } asoc)
+            r.Set("battery.capacity", asoc >= 80 ? "pass" : asoc >= 60 ? "warn" : "fail",
+                $"{asoc}%",
+                "saúde calculada pelo fuel gauge OneUI (mSavedBatteryAsoc) — kernel sem charge_full");
+
         // Capacidade aprendida pelo Android (batterystats) — fallback quando o
         // fabricante não expõe charge_full. O 1000 mAh que o Android estima
         // sem célula é o default, não uma medição.
@@ -409,6 +424,17 @@ public sealed class AndroidCollector
             r.Set("battery.capacity_learned", "info", $"{learnedMah:0} mAh",
                 "estimativa aprendida pelo Android — compara com a capacidade de design");
         }
+    }
+
+    /// <summary>Primeiro nó sysfs com um valor numérico positivo entre os candidatos.</summary>
+    private async Task<string?> FirstSysfsAsync(string serial, params string[] nodes)
+    {
+        foreach (var node in nodes)
+        {
+            var v = await AdbAsync(serial, $"shell cat /sys/class/power_supply/{node}");
+            if (AdbParsing.TryDouble(v?.Trim(), out var d) && d > 0) return v;
+        }
+        return null;
     }
 
     /// <summary>Shell livre — usado pela bancada para aplicar/retirar carga (ecrã, brilho).</summary>

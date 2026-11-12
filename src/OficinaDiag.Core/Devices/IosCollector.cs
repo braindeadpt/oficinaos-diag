@@ -430,6 +430,16 @@ public sealed class IosCollector
         v.Name.LocalName is "true" or "false" ? v.Name.LocalName : v.Value;
 
     /// <summary>Primeiro valor não vazio entre vários nomes (topo e prefixado).</summary>
+    /// <summary>
+    /// panic-full com "no successful checkins from thermalmonitord" é o
+    /// padrão clássico de flex de carga / sensor térmico mal assente.
+    /// </summary>
+    internal const string ThermalPanicHint =
+        "panic de thermalmonitord — verificar flex de carga e sensor térmico (padrão de bancada Apple)";
+
+    internal static bool IsThermalPanic(string panicText) =>
+        panicText.Contains("no successful checkins from thermalmonitord", StringComparison.OrdinalIgnoreCase);
+
     private static string? Field(IReadOnlyDictionary<string, string> io, params string[] keys)
     {
         foreach (var k in keys)
@@ -614,6 +624,9 @@ public sealed class IosCollector
                         .Match(text, "panicString\"?\\s*[:=]\\s*\"?([^\"\\n]+)")
                         .Groups[1].Value.Trim();
                     panics.Add($"{name}: {(ps.Length > 0 ? ps : "panicString não extraído")}");
+                    // thermalmonitord sem check-ins = flex de carga/sensor
+                    // térmico solto: entra como marcador para o destaque abaixo.
+                    if (IsThermalPanic(text)) panics.Add($"THERMAL: {ThermalPanicHint}");
                 }
                 else if (isJetsam) jetsam++;
                 else crashes++;
@@ -629,6 +642,10 @@ public sealed class IosCollector
                     ? "sem kernel panics"
                     : $"kernel panic recente — possível falha de hardware: {panics[0]}"
                         + (panics.Count > 1 ? $" (+{panics.Count - 1})" : ""));
+            // Padrão de bancada Apple: sai salientado à parte, porque aponta
+            // para peça (flex/sensor) e não para software.
+            if (panics.FirstOrDefault(p => p.StartsWith("THERMAL: ", StringComparison.Ordinal)) is { } thermal)
+                r.Set("logs.thermal", "warn", "thermalmonitord", thermal["THERMAL: ".Length..]);
             if (crashes + jetsam > 0)
                 r.Set("logs.crashes", "info", $"{crashes} apps · {jetsam} jetsam",
                     "crashes de apps = software; jetsam = pressão de memória, não defeito");

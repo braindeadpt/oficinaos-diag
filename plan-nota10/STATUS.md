@@ -2,7 +2,7 @@
 
 > **Instrução para qualquer agente LLM:** Atualiza este ficheiro no fim de cada ticket concluído (`[ ]` → `[x]`), preenchendo a data/commit ou nota curta em "Registo de Handoff".
 
-**Próximo ticket a executar:** `T-09` (`tickets/T-09-multi-device-oem-health.md`). `T-01`–`T-08` concluídos; `B-01`–`B-20` fechados (os 18 da auditoria + `B-19`/`B-20` do rig).
+**Ticket em curso:** `T-09` (`tickets/T-09-multi-device-oem-health.md`) — parte Core feita (catálogo Apple, sufixo Samsung, `mSavedBatteryAsoc`, bms/qcom, panic térmico, estados do detector); **falta** o seletor no `MainWindow` e a nota de troca de bateria iOS. `T-01`–`T-08` concluídos; `B-01`–`B-20` fechados (os 18 da auditoria + `B-19`/`B-20` do rig).
 
 ---
 
@@ -23,7 +23,7 @@
 - [x] **T-08** — Suite completa de testes de regressão (iOS PD 9V, Android OEM, `pt-PT`, XSS, paridade `L10n` e XAML) + build WPF no CI (`tickets/T-08-regression-tests-ci.md`)
 
 ### Fase 4 — Diferenciadores "Nota 10" de Bancada Profissional (`9.7 → 10.0`)
-- [ ] **T-09** — Seletor multi-dispositivo na bancada, saúde avançada OEM (`mSavedBatteryAsoc`, `bms`, troca de bateria iOS, `fastboot`/`recovery`) e `models.json` Apple/Pixel (`tickets/T-09-multi-device-oem-health.md`)
+- [~] **T-09** — Seletor multi-dispositivo na bancada, saúde avançada OEM (`mSavedBatteryAsoc`, `bms`, troca de bateria iOS, `fastboot`/`recovery`) e `models.json` Apple/Pixel (`tickets/T-09-multi-device-oem-health.md`) — *Core feito; falta o `ComboBox` do `MainWindow` e a nota de bateria trocada*
 - [ ] **T-10** — On-Device Test v3 (`adb reverse` zero-Wi-Fi no Android + teste Microfone/Auricular), presets de impressora térmica e retenção RGPD no histórico (`tickets/T-10-test-v3-adb-reverse-labels-gdpr.md`)
 
 ---
@@ -75,6 +75,8 @@ Correr o `AndroidCollector` contra este rig revelou dois falsos positivos reais 
 ---
 
 ## Registo de Handoff entre Sessões / Agentes
+
+- **2026-11-12 (T-09 parcial — Buffy):** `models.json` ganhou a família iPhone (`iPhone10,1`…`iPhone17,5`) e iPads com ProductType conhecido; `ModelNameTable.Lookup` cai na variante europeia quando o código Samsung traz sufixo regional/dual-SIM (`SM-S918U1`, `SM-S918B/DS` → `SM-S918B`); `AdbParsing.ParseSavedAsoc` lê `mSavedBatteryAsoc` (0–100, resto é lixo) e o `AndroidCollector` usa-o como fallback de `battery.capacity` e tenta `bms`/`max170xx_battery` para `charge_full(_design)`; o `IosCollector` marca panics com «no successful checkins from thermalmonitord» em `logs.thermal`; o `DeviceDetector` passa a guardar `State` (`ready`/`unauthorized`/`recovery`/`sideload`/`fastboot`/`offline`), corre `fastboot devices` (2 s) quando o exe existe e expõe `ConnectedDevices`. **Falta:** `ComboBox` no header do `MainWindow` + auto-seleção ao desligar o ativo, instruções para estados sem OS, e a nota «bateria substituída desde dd-MM-yyyy» via `ScanHistory`. **Verificação:** `dotnet test -c Release` **174/174** (15 novos em `OemHealthTests`), build WPF 0 erros. **Não exercitado:** `fastboot devices` e dois telemóveis reais — o rig é um Android só, sem fastboot. Pixel ficou de fora do catálogo: os códigos de modelo (`G0…`, `GB…`) que eu conheço não são verificáveis aqui e inventá-los daria nomes errados ao balcão.
 
 - **2026-11-12 (T-08 concluído — Buffy):** `IosCollectorParsingTests` (plist inline com sub-dicts a colidir + fixture real do iPhone 13,3 + `Grader` a 57% → **D** com peça «bateria»), `L10nAndThemesTests` (paridade PT/EN por reflexão ao `L10n.D`, mesmos placeholders com `string.Format` a não rebentar, e os 3 temas XAML com o mesmo conjunto de `x:Key`), `TestServerTests.PostResultEntregaOJsonEFechaOServidor` (POST `/result` → ACK 200, evento com `touchHit`/`colorsViewed`, one-shot) e `CloudClientCancellationTests` (pairing cancelado: 1 pedido, sem retry, erro vazio e `DiagConfig` intacto). CI ganhou o job `build-wpf` (`dotnet build … -p:EnableWindowsTargeting=true` em `ubuntu-latest`). O que já existia cobre a lista Android do ticket (`AdbParsingTests`: zonas térmicas `pt-PT`/`en-US`, polaridade por `status`, contas repetidas, `µAh → mAh`, probe) e XSS (`ReportBuilderTests`). **Verificação:** `dotnet test -c Release` **159/159**; build WPF Release 0 erros. **Não exercitado:** CI real no GitHub (workflow só validado localmente) e `ChargeStatus == "pass"` no caminho exato do ticket (coberto pelo `PowerAnalyzerTests` equivalente).
 
