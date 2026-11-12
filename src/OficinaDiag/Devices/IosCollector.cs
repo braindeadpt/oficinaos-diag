@@ -1,4 +1,6 @@
+using System.Collections.Concurrent;
 using System.Diagnostics;
+using System.Globalization;
 using System.IO;
 using System.Runtime.InteropServices;
 using System.Xml.Linq;
@@ -75,7 +77,32 @@ public sealed class IosCollector
         catch { return null; }
     }
 
+    /// <summary>
+    /// O iPhone é single-client no diagnostics_relay e no lockdownd: um scan e
+    /// o ticker no mesmo UDID têm de esperar um pelo outro em vez de colidir.
+    /// </summary>
+    private static readonly ConcurrentDictionary<string, SemaphoreSlim> DeviceLocks =
+        new(StringComparer.OrdinalIgnoreCase);
+
+    private static SemaphoreSlim LockFor(string udid) =>
+        DeviceLocks.GetOrAdd(udid, _ => new SemaphoreSlim(1, 1));
+
     public async Task<DeviceReport> CollectAsync(string udid)
+    {
+        var gate = LockFor(udid);
+        if (!await gate.WaitAsync(TimeSpan.FromSeconds(5)))
+        {
+            var busy = new DeviceReport { Platform = "ios" };
+            busy.Device.Serial = udid;
+            busy.Set("scan", "fail", null,
+                "USB ocupado — outro scan deste iPhone está a correr; tenta de novo em instantes");
+            return busy;
+        }
+        try { return await CollectLockedAsync(udid); }
+        finally { gate.Release(); }
+    }
+
+    private async Task<DeviceReport> CollectLockedAsync(string udid)
     {
         var r = new DeviceReport { Platform = "ios" };
         r.Device.Serial = udid;
@@ -103,10 +130,18 @@ public sealed class IosCollector
                     r.Device.Model = GetValue(client, null, "ProductType");   // ex.: iPhone14,2
                     r.Device.Brand = "Apple";
                     r.Device.OsVersion = GetValue(client, null, "ProductVersion");
-                    var marketingName = GetValue(client, null, "DeviceName");
 
-                    r.Set("identity.model", "info", marketingName ?? r.Device.Model, r.Device.Model);
-                    r.Set("identity.serial", "info", GetValue(client, null, "SerialNumber"));
+                    // DeviceName é o nome pessoal do cliente ("iPhone de Maria") e
+                    // nunca vai para o relatório/histórico. O modelo comercial sai
+                    // da tabela local a partir do ProductType.
+                    var serial = GetValue(client, null, "SerialNumber");
+                    var mkt = ModelNameTable.Lookup(r.Device.Model);
+                    r.Device.MarketingName = mkt;
+                    r.Set("identity.model", "info",
+                        mkt is not null ? $"{mkt} ({r.Device.Model})" : r.Device.Model, r.Device.Model);
+                    r.Set("identity.serial", "info", serial);
+                    if (!string.IsNullOrWhiteSpace(serial))
+                        r.Device.Serial = serial!;
                     r.Set("os.version", "info", $"{r.Device.Os} {r.Device.OsVersion}",
                         $"build {GetValue(client, null, "BuildVersion")}");
 
@@ -194,17 +229,17 @@ public sealed class IosCollector
                 // IORegistry (AppleSmartBattery) — só acessível via
                 // diagnostics_relay, não pelo lockdownd.
                 if (!cts.IsCancellationRequested)
-                    CollectBatteryHealth(r, udid);
+                    CollectBatteryHealth(r, udid, cts.Token);
 
                 // MobileGestalt: part number, cor, região, ecrã — os dados que
                 // uma loja precisa para grading de usados.
                 if (!cts.IsCancellationRequested)
-                    CollectGestalt(r, udid);
+                    CollectGestalt(r, udid, cts.Token);
 
                 // Panic/crash logs do dispositivo — kernel panics apontam a
                 // componente de hardware a falhar; crashes de apps são info.
                 if (!cts.IsCancellationRequested)
-                    CollectCrashLogs(r, udid);
+                    CollectCrashLogs(r, udid, cts.Token);
             }
         });
 
@@ -240,6 +275,10 @@ public sealed class IosCollector
             r = detached;
         }
 
+        // A task órfã pode continuar viva (o Kill só mata os filhos que o
+        // token apanhou): o CTS só pode ser libertado quando ela terminar.
+        _ = collect.ContinueWith(_ => cts.Dispose(), TaskScheduler.Default);
+
         return r;
     }
 
@@ -257,7 +296,8 @@ public sealed class IosCollector
     }
 
     /// <summary>idevicediagnostics.exe bundled ao lado do exe — ponte para a IORegistry.</summary>
-    private static string? RunTool(string udid, string args, int timeoutMs = 15000)
+    private static string? RunTool(string udid, string args, int timeoutMs = 15000,
+        CancellationToken ct = default)
     {
         var exe = ToolPath("idevicediagnostics.exe");
         if (exe is null) return null;
@@ -271,11 +311,17 @@ public sealed class IosCollector
                 CreateNoWindow = true,
             });
             if (p is null) return null;
-            var stdout = p.StandardOutput.ReadToEndAsync();
-            var drain = p.StandardError.ReadToEndAsync(); // stderr cheio bloqueava o processo
+            var stdout = p.StandardOutput.ReadToEndAsync(ct);
+            var drain = p.StandardError.ReadToEndAsync(ct); // stderr cheio bloqueava o processo
+            // Cancela o processo-filho assim que o token dispara, em vez de
+            // deixar um idevicediagnostics órfão a segurar o relay.
+            using var kill = ct.Register(() =>
+            {
+                try { if (!p.HasExited) p.Kill(entireProcessTree: true); } catch { }
+            });
             if (!p.WaitForExit(timeoutMs))
             {
-                try { p.Kill(); } catch { }
+                try { p.Kill(entireProcessTree: true); } catch { }
                 return null;
             }
             return stdout.Result;
@@ -286,45 +332,83 @@ public sealed class IosCollector
     /// <summary>Leitura instantânea para o ticker — AppleSmartBattery só.</summary>
     public async Task<LiveTelemetry?> ProbeAsync(string udid)
     {
-        var xml = await Task.Run(() => RunTool(udid, "ioregentry AppleSmartBattery", 8000));
-        if (xml is null) return null;
-        var io = ParsePlistDict(xml);
-        if (io.Count == 0) return null;
-
-        int? mA = io.TryGetValue("InstantAmperage", out var a) && long.TryParse(a, out var m)
-            ? (int)Math.Abs(m) : null;
-        double? volts = io.TryGetValue("Voltage", out var v) && int.TryParse(v, out var mv)
-            ? mv / 1000.0 : null;
-        var rawTemp = io.TryGetValue("Temperature", out var t1) ? t1
-            : io.TryGetValue("AverageBattSkinTemp", out var t2) ? t2 : null;
-        double? tempC = rawTemp is not null && double.TryParse(rawTemp, out var tc)
-            ? (tc > 150 ? tc / 100 : tc) : null;
-        int? pct = io.TryGetValue("BatteryCurrentCapacity", out var p) && int.TryParse(p, out var lv)
-            ? lv : null;
-        bool? charging = io.TryGetValue("IsCharging", out var ch) ? Truthy(ch) : null;
-        double? negW = io.TryGetValue("Watts", out var w) && int.TryParse(w, out var wv) && wv > 0
-            ? wv : null;
-        return new LiveTelemetry(mA, volts, tempC, pct, charging, negW);
-    }
-
-    /// <summary>Achata todos os &lt;dict&gt; aninhados de um plist XML → pares key/valor a string.</summary>
-    private static Dictionary<string, string> ParsePlistDict(string xml)
-    {
-        var dict = new Dictionary<string, string>();
+        var gate = LockFor(udid);
+        // Scan a correr neste iPhone? O ticker salta em silêncio (1,5 s).
+        if (!await gate.WaitAsync(1500)) return null;
         try
         {
-            foreach (var d in XDocument.Parse(xml).Descendants("dict"))
+            var xml = await Task.Run(() => RunTool(udid, "ioregentry AppleSmartBattery", 8000));
+            if (xml is null) return null;
+            var io = ParsePlistDict(xml);
+            if (io.Count == 0) return null;
+
+            double? volts = Field(io, "Voltage") is { } v
+                && int.TryParse(v, NumberStyles.Integer, CultureInfo.InvariantCulture, out var mv)
+                ? mv / 1000.0 : null;
+            double? tempC = Field(io, "Temperature", "AverageBattSkinTemp") is { } rawTemp
+                && double.TryParse(rawTemp, NumberStyles.Float, CultureInfo.InvariantCulture, out var tc)
+                ? (tc > 150 ? tc / 100 : tc) : null;
+            if (tempC == 0) tempC = null; // 0 = ausência de leitura, não 0 °C
+            int? pct = Field(io, "BatteryCurrentCapacity", "CurrentCapacity") is { } p
+                && int.TryParse(p, NumberStyles.Integer, CultureInfo.InvariantCulture, out var lv)
+                ? lv : null;
+            int? mA = Field(io, "InstantAmperage") is { } a
+                && long.TryParse(a, NumberStyles.Integer, CultureInfo.InvariantCulture, out var m)
+                ? (int)Math.Abs(m) : null;
+            bool? charging = Field(io, "IsCharging") is { } ch ? Truthy(ch) : null;
+            double? negW = Field(io, "AdapterDetails.Watts") is { } w
+                && int.TryParse(w, NumberStyles.Integer, CultureInfo.InvariantCulture, out var wv) && wv > 0
+                ? wv : null;
+            return new LiveTelemetry(mA, volts, tempC, pct, charging, negW);
+        }
+        finally { gate.Release(); }
+    }
+
+    /// <summary>Sub-dicts cujos escalares também queremos, com prefixo.</summary>
+    private static readonly string[] NestedDicts = ["AdapterDetails", "BatteryData"];
+
+    /// <summary>
+    /// Lê um plist de ioreg/MobileGestalt sem deixar a telemetria de carga
+    /// (ChargerData, DeadBatteryBootData, AppleRawAdapterDetails, ...) pisar os
+    /// valores da célula: escalares do dict principal ficam sem prefixo, e só
+    /// os sub-dicts de que precisamos ficam também acessíveis com prefixo
+    /// (é de BatteryData que saem as capacidades e de AdapterDetails os watts).
+    /// </summary>
+    internal static Dictionary<string, string> ParsePlistDict(string xml)
+    {
+        var dict = new Dictionary<string, string>(StringComparer.Ordinal);
+        // idevicediagnostics imprime o "usage" em stdout com exit 0 quando os
+        // argumentos falham — sem esta guarda entrava como plist vazio e o
+        // coletor saltava a bateria em silêncio.
+        if (string.IsNullOrWhiteSpace(xml) || !xml.Contains("<plist", StringComparison.Ordinal))
+            return dict;
+        try
+        {
+            var root = XDocument.Parse(xml).Descendants("dict").FirstOrDefault();
+            if (root is null) return dict;
+
+            // ioregentry embrulha a entrada num dict contentor (IORegistry).
+            var main = root;
+            var top = root.Elements().ToList();
+            if (top.Count == 2 && top[0].Name.LocalName == "key" && top[1].Name.LocalName == "dict")
+                main = top[1];
+
+            foreach (var (key, value) in Pairs(main))
             {
-                var nodes = d.Elements().ToList();
-                for (var i = 0; i + 1 < nodes.Count; i += 2)
+                if (value.Name.LocalName is "dict" or "array") continue;
+                dict[key] = Scalar(value);
+            }
+
+            foreach (var sub in NestedDicts)
+            {
+                foreach (var (key, value) in Pairs(main))
                 {
-                    if (nodes[i].Name.LocalName != "key") break;
-                    var v = nodes[i + 1];
-                    // ignora containers — só scalars
-                    if (v.Name.LocalName is "dict" or "array") continue;
-                    dict[nodes[i].Value] = v.Name.LocalName is "true" or "false"
-                        ? v.Name.LocalName
-                        : v.Value;
+                    if (key != sub || value.Name.LocalName != "dict") continue;
+                    foreach (var (k, v) in Pairs(value))
+                    {
+                        if (v.Name.LocalName is "dict" or "array") continue;
+                        dict[$"{sub}.{k}"] = Scalar(v);
+                    }
                 }
             }
         }
@@ -332,74 +416,104 @@ public sealed class IosCollector
         return dict;
     }
 
+    private static IEnumerable<(string Key, XElement Value)> Pairs(XElement dict)
+    {
+        var nodes = dict.Elements().ToList();
+        for (var i = 0; i + 1 < nodes.Count; i += 2)
+        {
+            if (nodes[i].Name.LocalName != "key") break;
+            yield return (nodes[i].Value, nodes[i + 1]);
+        }
+    }
+
+    private static string Scalar(XElement v) =>
+        v.Name.LocalName is "true" or "false" ? v.Name.LocalName : v.Value;
+
+    /// <summary>Primeiro valor não vazio entre vários nomes (topo e prefixado).</summary>
+    private static string? Field(IReadOnlyDictionary<string, string> io, params string[] keys)
+    {
+        foreach (var k in keys)
+            if (io.TryGetValue(k, out var v) && !string.IsNullOrWhiteSpace(v)) return v;
+        return null;
+    }
+
     private static bool Truthy(string? v) => v is "true" or "1";
 
-    private void CollectBatteryHealth(DeviceReport r, string udid)
+    private void CollectBatteryHealth(DeviceReport r, string udid, CancellationToken ct)
     {
-        var xml = RunTool(udid, "ioregentry AppleSmartBattery");
+        var xml = RunTool(udid, "ioregentry AppleSmartBattery", 15000, ct);
         if (xml is null) return;
         var io = ParsePlistDict(xml);
         if (io.Count == 0) return;
 
-        if (io.TryGetValue("CycleCount", out var cycles) && int.TryParse(cycles, out var c))
-            r.Set("battery.cycles", c >= 800 ? "warn" : "info", c.ToString(),
+        if (Field(io, "CycleCount", "BatteryData.CycleCount") is { } cycles
+            && int.TryParse(cycles, NumberStyles.Integer, CultureInfo.InvariantCulture, out var c))
+            r.Set("battery.cycles", c >= 800 ? "warn" : "info",
+                c.ToString(CultureInfo.InvariantCulture),
                 "a Apple garante ≥80% de capacidade até ~500–1000 ciclos conforme o modelo");
 
-        // Capacidade real vs design = saúde da bateria
-        var maxCap = io.TryGetValue("NominalChargeCapacity", out var ncc) ? ncc
-            : io.TryGetValue("AppleRawMaxCapacity", out var arm) ? arm : null;
-        var design = io.TryGetValue("DesignCapacity", out var dc) ? dc : null;
+        // Capacidade real vs design — as duas vivem em BatteryData, não no topo.
+        var maxCap = Field(io, "NominalChargeCapacity", "BatteryData.NominalChargeCapacity",
+            "AppleRawMaxCapacity", "BatteryData.AppleRawMaxCapacity");
+        var design = Field(io, "DesignCapacity", "BatteryData.DesignCapacity");
         if (maxCap is not null && design is not null
-            && int.TryParse(maxCap, out var max) && int.TryParse(design, out var des) && des > 0)
+            && int.TryParse(maxCap, NumberStyles.Integer, CultureInfo.InvariantCulture, out var max)
+            && int.TryParse(design, NumberStyles.Integer, CultureInfo.InvariantCulture, out var des)
+            && des > 0)
         {
-            var health = max * 100.0 / des;
-            r.Set("battery.health", health < 75 ? "fail" : health < 85 ? "warn" : "pass",
-                $"{health:0}%", $"{max}/{des} mAh — carga real vs fábrica");
+            var capacity = max * 100.0 / des;
+            // Mesmos limiares do Grader: <60 = D, <80 = C.
+            r.Set("battery.capacity", capacity < 60 ? "fail" : capacity < 80 ? "warn" : "pass",
+                $"{capacity:0}%", $"{max}/{des} mAh — carga real vs fábrica");
         }
 
         // Temperatura: "Temperature" (gerações antigas, centésimos de °C) ou
-        // "AverageBattSkinTemp" (iOS recente, já em °C)
-        var rawTemp = io.TryGetValue("Temperature", out var t1) ? t1
-            : io.TryGetValue("AverageBattSkinTemp", out var t2) ? t2 : null;
-        if (rawTemp is not null && double.TryParse(rawTemp, out var tC))
+        // "AverageBattSkinTemp" (iOS recente, já em °C). O 0 de
+        // DeadBatteryBootData já não entra — 0 significa ausência de leitura.
+        if (Field(io, "Temperature", "AverageBattSkinTemp") is { } rawTemp
+            && double.TryParse(rawTemp, NumberStyles.Float, CultureInfo.InvariantCulture, out var tC))
         {
             if (tC > 150) tC /= 100; // escala antiga em centésimos
-            r.Set("battery.temp", tC > 40 ? "warn" : "info",
-                $"{tC:0.#} °C", tC > 40 ? "quente — afeta a saúde a longo prazo" : null);
+            if (tC > 0)
+                r.Set("battery.temp", tC > 40 ? "warn" : "info",
+                    $"{tC:0.#} °C", tC > 40 ? "quente — afeta a saúde a longo prazo" : null);
         }
 
-        if (io.TryGetValue("Voltage", out var volt) && int.TryParse(volt, out var mV))
+        if (Field(io, "Voltage") is { } volt
+            && int.TryParse(volt, NumberStyles.Integer, CultureInfo.InvariantCulture, out var mV))
             r.Set("battery.voltage", "info", $"{mV} mV");
 
-        if (io.TryGetValue("InstantAmperage", out var amp) && long.TryParse(amp, out var mA))
+        if (Field(io, "InstantAmperage") is { } amp
+            && long.TryParse(amp, NumberStyles.Integer, CultureInfo.InvariantCulture, out var mA))
         {
-            // IsCharging aparece como <false/> no topo e <integer>0 em ChargerData.
-            var charging = Truthy(io.TryGetValue("IsCharging", out var ch) ? ch : null);
+            // IsCharging do topo já não é pisado pelo ChargerData.
+            var charging = Truthy(Field(io, "IsCharging"));
             r.Set("battery.current", "info",
                 $"{Math.Abs(mA)} mA — {(charging ? "a carregar" : "a descarregar")}",
                 charging ? null : "valor alto a descarregar parado sugere consumo anómalo");
         }
 
-        // Carregador ligado: potência negociada (AdapterDetails.Watts)
-        if (Truthy(io.TryGetValue("ExternalConnected", out var ec) ? ec : null)
-            && io.TryGetValue("Watts", out var watts) && int.TryParse(watts, out var w) && w > 0)
-            r.Set("battery.charger", "info", $"{w} W",
-                io.TryGetValue("Description", out var desc) ? desc : null);
+        // Carregador ligado: potência negociada — só existe em AdapterDetails.
+        if (Truthy(Field(io, "ExternalConnected"))
+            && Field(io, "AdapterDetails.Watts") is { } watts
+            && int.TryParse(watts, NumberStyles.Integer, CultureInfo.InvariantCulture, out var w) && w > 0)
+            r.Set("battery.charger", "info", $"{w} W", Field(io, "AdapterDetails.Description"));
 
-        if (io.TryGetValue("Serial", out var batSerial) && batSerial.Length > 0)
+        if (Field(io, "Serial") is { Length: > 0 } batSerial)
             r.Set("battery.serial", "info", batSerial,
                 "série da célula — compara com o histórico para detetar bateria trocada");
 
-        if (io.TryGetValue("ManufactureDate", out var mfg) && mfg.Length > 0)
+        if (Field(io, "ManufactureDate") is { Length: > 0 } mfg)
             r.Set("battery.mfg", "info", mfg, "data de fabrico da bateria");
     }
 
     /// <summary>MobileGestalt via idevicediagnostics — specs que o lockdownd não expõe.</summary>
-    private void CollectGestalt(DeviceReport r, string udid)
+    private void CollectGestalt(DeviceReport r, string udid, CancellationToken ct)
     {
         var xml = RunTool(udid,
             "mobilegestalt RegulatoryModelNumber ModelNumber DeviceColor DeviceEnclosureColor " +
-            "RegionInfo BluetoothAddress MainScreenHeight MainScreenWidth MainScreenScale TelephonyCapability");
+            "RegionInfo BluetoothAddress MainScreenHeight MainScreenWidth MainScreenScale TelephonyCapability",
+            15000, ct);
         if (xml is null) return;
         var mg = ParsePlistDict(xml);
         if (mg.Count == 0) return;
@@ -437,7 +551,7 @@ public sealed class IosCollector
     /// nada no telefone do cliente. panic-full (bug_type 309) = kernel panic —
     /// o panicString costuma nomear o componente de hardware a falhar.
     /// </summary>
-    private void CollectCrashLogs(DeviceReport r, string udid)
+    private void CollectCrashLogs(DeviceReport r, string udid, CancellationToken ct)
     {
         var exe = ToolPath("idevicecrashreport.exe");
         if (exe is null) return;
@@ -455,7 +569,15 @@ public sealed class IosCollector
             if (p is null) return;
             var stdoutTask = p.StandardOutput.ReadToEndAsync();
             var stderrTask = p.StandardError.ReadToEndAsync(); // drain — buffers cheios bloqueiam
-            if (!p.WaitForExit(25_000)) { try { p.Kill(); } catch { } return; }
+            using var kill = ct.Register(() =>
+            {
+                try { if (!p.HasExited) p.Kill(entireProcessTree: true); } catch { }
+            });
+            if (!p.WaitForExit(25_000))
+            {
+                try { p.Kill(entireProcessTree: true); } catch { }
+                return;
+            }
 
             var files = Directory.EnumerateFiles(dir, "*", SearchOption.AllDirectories)
                 .OrderByDescending(File.GetLastWriteTimeUtc).Take(60).ToList();

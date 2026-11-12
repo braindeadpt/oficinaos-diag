@@ -114,4 +114,22 @@ public sealed class ScanHistoryTests : IDisposable
         var all = _h.All();
         Assert.Equal("S19", all[^1].Device.Serial);
     }
+
+    [Fact]
+    public void BatteryTrend_FuncionaParaIos()
+    {
+        // Antes do T-02 o iOS gravava a saúde em battery.health e a tendência
+        // ficava sempre vazia.
+        var r1 = new DeviceReport { Platform = "ios" };
+        r1.Device.Serial = "UDID-IOS";
+        r1.Set("battery.capacity", "pass", "88%");
+        var r2 = new DeviceReport { Platform = "ios" };
+        r2.Device.Serial = "UDID-IOS";
+        r2.Set("battery.capacity", "warn", "79%");
+        _h.Add(r1);
+        _h.Add(r2);
+        var trend = _h.BatteryTrend("UDID-IOS");
+        Assert.Equal(2, trend.Count);
+        Assert.Equal("79%", trend[1].capacity);
+    }
 }

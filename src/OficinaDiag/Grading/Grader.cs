@@ -51,7 +51,7 @@ public static class Grader
     /// </summary>
     private static readonly string[] CriticalChecks =
     [
-        "battery.capacity", "identity.imei", "security.bootloader",
+        "battery.capacity", "battery.health", "identity.imei", "security.bootloader",
     ];
 
     public static GradeResult Compute(DeviceReport r)
@@ -102,8 +102,18 @@ public static class Grader
             Cap(2, $"bateria a {capText} — substituição recomendada");
             parts.Add("bateria");
         }
-        else if (Stat("battery.health") is "fail" or "warn")
+        // Relatórios antigos de iOS só têm battery.health — mantém a
+        // severidade equivalente à de battery.capacity.
+        else if (Stat("battery.health") is "fail")
+        {
+            Cap(3, $"estado da bateria: {Val("battery.health")} — abaixo do mínimo vendável");
+            parts.Add("bateria");
+        }
+        else if (Stat("battery.health") is "warn")
+        {
             Cap(2, $"estado da bateria: {Val("battery.health")}");
+            parts.Add("bateria");
+        }
         if (Stat("battery.cycles") is "warn")
             Cap(2, $"ciclos altos ({Val("battery.cycles")}) — degradação esperada");
 

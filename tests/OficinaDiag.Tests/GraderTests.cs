@@ -201,4 +201,27 @@ public sealed class GraderTests
         var g = Grader.Compute(r);
         Assert.Equal("D", g.Grade);
     }
+
+    [Fact]
+    public void RelatorioLegadoIosComHealthFail_EDeSugereBateria()
+    {
+        // Relatórios anteriores ao T-02 gravavam a percentagem em battery.health.
+        var r = Report();
+        r.Set("battery.health", "fail", "55%");
+        var g = Grader.Compute(r);
+        Assert.Equal("D", g.Grade);
+        Assert.Contains("bateria", g.Parts);
+    }
+
+    [Fact]
+    public void ScanFalhadoComCapacidadeLida_GrauParcialNaoIndeterminado()
+    {
+        // iPad Wi-Fi não tem IMEI nem bootloader: a capacidade lida é a única
+        // base de decisão e não pode cair em "—".
+        var r = new DeviceReport { Platform = "ios" };
+        r.Set("scan", "fail", "timeout");
+        r.Set("battery.capacity", "pass", "92%");
+        var g = Grader.Compute(r);
+        Assert.Equal("B", g.Grade);
+    }
 }
