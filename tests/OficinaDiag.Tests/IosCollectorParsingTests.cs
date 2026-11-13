@@ -154,6 +154,32 @@ public sealed class IosCollectorParsingTests
     }
 
     [Fact]
+    public void IdentityModelNaoExpoeODeviceNamePessoal()
+    {
+        // O lockdownd devolve o nome pessoal junto com o ProductType; só o
+        // segundo pode chegar ao relatório (é o que o histórico arquiva).
+        const string lockdown = """
+            <?xml version="1.0" encoding="UTF-8"?>
+            <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+            <plist version="1.0"><dict>
+              <key>DeviceName</key><string>iPhone de Maria</string>
+              <key>ProductType</key><string>iPhone13,3</string>
+            </dict></plist>
+            """;
+        var io = IosCollector.ParsePlistDict(lockdown);
+
+        var (value, note) = IosDecisions.IdentityModel(io.GetValueOrDefault("ProductType"));
+
+        Assert.Equal("iPhone 12 Pro (iPhone13,3)", value);
+        Assert.Equal("iPhone13,3", note);
+        Assert.DoesNotContain("Maria", value);
+        Assert.DoesNotContain("Maria", note);
+        // Código fora da tabela cai no ProductType, nunca no DeviceName.
+        Assert.Equal("ZZ-NAO-EXISTE", IosDecisions.IdentityModel("ZZ-NAO-EXISTE").Value);
+        Assert.Null(IosDecisions.IdentityModel(null).Value);
+    }
+
+    [Fact]
     public void TemperaturaDoPlistPassaPeloMesmoFiltro()
     {
         // O valor chega como texto do plist; a conversão vive num sítio só.

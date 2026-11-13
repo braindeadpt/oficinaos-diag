@@ -135,10 +135,9 @@ public sealed class IosCollector
                     // nunca vai para o relatório/histórico. O modelo comercial sai
                     // da tabela local a partir do ProductType.
                     var serial = GetValue(client, null, "SerialNumber");
-                    var mkt = ModelNameTable.Lookup(r.Device.Model);
-                    r.Device.MarketingName = mkt;
-                    r.Set("identity.model", "info",
-                        mkt is not null ? $"{mkt} ({r.Device.Model})" : r.Device.Model, r.Device.Model);
+                    var (identityModel, identityNote) = IosDecisions.IdentityModel(r.Device.Model);
+                    r.Device.MarketingName = ModelNameTable.Lookup(r.Device.Model);
+                    r.Set("identity.model", "info", identityModel, identityNote);
                     r.Set("identity.serial", "info", serial);
                     if (!string.IsNullOrWhiteSpace(serial))
                         r.Device.Serial = serial!;
@@ -300,33 +299,7 @@ public sealed class IosCollector
         CancellationToken ct = default)
     {
         var exe = ToolPath("idevicediagnostics.exe");
-        if (exe is null) return null;
-        try
-        {
-            using var p = Process.Start(new ProcessStartInfo(exe, $"-u {udid} {args}")
-            {
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                UseShellExecute = false,
-                CreateNoWindow = true,
-            });
-            if (p is null) return null;
-            var stdout = p.StandardOutput.ReadToEndAsync(ct);
-            var drain = p.StandardError.ReadToEndAsync(ct); // stderr cheio bloqueava o processo
-            // Cancela o processo-filho assim que o token dispara, em vez de
-            // deixar um idevicediagnostics órfão a segurar o relay.
-            using var kill = ct.Register(() =>
-            {
-                try { if (!p.HasExited) p.Kill(entireProcessTree: true); } catch { }
-            });
-            if (!p.WaitForExit(timeoutMs))
-            {
-                try { p.Kill(entireProcessTree: true); } catch { }
-                return null;
-            }
-            return stdout.Result;
-        }
-        catch { return null; }
+        return exe is null ? null : ToolProcess.Run(exe, $"-u {udid} {args}", timeoutMs, ct);
     }
 
     /// <summary>Leitura instantânea para o ticker — AppleSmartBattery só.</summary>
@@ -557,25 +530,8 @@ public sealed class IosCollector
         try
         {
             Directory.CreateDirectory(dir);
-            using var p = Process.Start(new ProcessStartInfo(exe, $"-e -k -u {udid} \"{dir}\"")
-            {
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                UseShellExecute = false,
-                CreateNoWindow = true,
-            });
-            if (p is null) return;
-            var stdoutTask = p.StandardOutput.ReadToEndAsync();
-            var stderrTask = p.StandardError.ReadToEndAsync(); // drain — buffers cheios bloqueiam
-            using var kill = ct.Register(() =>
-            {
-                try { if (!p.HasExited) p.Kill(entireProcessTree: true); } catch { }
-            });
-            if (!p.WaitForExit(25_000))
-            {
-                try { p.Kill(entireProcessTree: true); } catch { }
+            if (ToolProcess.Run(exe, $"-e -k -u {udid} \"{dir}\"", 25_000, ct) is null)
                 return;
-            }
 
             var files = Directory.EnumerateFiles(dir, "*", SearchOption.AllDirectories)
                 .OrderByDescending(File.GetLastWriteTimeUtc).Take(60).ToList();
