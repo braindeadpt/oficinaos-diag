@@ -86,11 +86,9 @@ acusa um caminho da lista que o publish não produz e um ficheiro publicado
 que a lista não verifica, e garante que o workflow voltou a ler o ficheiro
 em vez de ter uma lista própria.
 
-A cadeia fecha-se dos dois lados e nenhum elo fica solto: o código abre os
-ficheiros por `OficinaDiag.PackagePaths`, a lista diz ao CI o que exigir, e o
-test compara lista e csproj. O `tools/build-store.ps1` também lê o adb da
-lista em vez de o repetir. Mudar um caminho num sítio só faz falhar os
-testes, não o cliente.
+Do lado do código os mesmos ficheiros vêm de `OficinaDiag.PackagePaths`, e o
+`tools/build-store.ps1` lê o adb desta lista em vez de o repetir — mudar um
+caminho num sítio só falha nos testes, não no cliente.
 
 ## Recuperação (PC novo / máquina substituída)
 
