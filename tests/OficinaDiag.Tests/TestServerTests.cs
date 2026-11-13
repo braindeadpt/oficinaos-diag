@@ -9,6 +9,7 @@ using Xunit;
 namespace OficinaDiag.Tests;
 
 /// <summary>TestServer: eleição de interface LAN e parsing de pedidos HTTP.</summary>
+[Collection(SerialCollection.Name)]
 public sealed class TestServerTests
 {
     private static TestServer.LanCandidate C(
@@ -90,8 +91,10 @@ public sealed class TestServerTests
         await stream.WriteAsync(Encoding.ASCII.GetBytes("GET / HTTP/1.1\r\nHost: x\r\n\r\n"));
 
         var buf = new byte[512];
-        // EOF imediato: o servidor fechou sem responder nada.
-        var n = await stream.ReadAsync(buf).AsTask().WaitAsync(TimeSpan.FromSeconds(5));
+        // EOF imediato: o servidor fechou sem responder nada. O limite é 10 s
+        // para o runner do CI não transformar uma pausa de scheduling numa
+        // falha — continua a falhar se o servidor responder, que é o defeito.
+        var n = await stream.ReadAsync(buf).AsTask().WaitAsync(TimeSpan.FromSeconds(10));
         Assert.Equal(0, n);
     }
 

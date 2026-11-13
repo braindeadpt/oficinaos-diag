@@ -11,6 +11,7 @@ namespace OficinaDiag.Tests;
 /// lançador nativo de cada sistema (`sh` no Unix, `powershell.exe` no Windows),
 /// por isso a prova vale nos dois e não passa em vazio em nenhum.
 /// </summary>
+[Collection(SerialCollection.Name)]
 public class ToolProcessTests
 {
     [Fact]
@@ -80,9 +81,11 @@ public class ToolProcessTests
         var clock = Stopwatch.StartNew();
         var run = Task.Run(() => ToolProcess.Run(exe, args, timeoutMs, ct), CancellationToken.None);
 
+        // 10 s, não 5: o runner do CI é mais lento a arrancar um shell do que
+        // esta máquina, e a asserção é «o PID aparece», não «em 5 s».
         int? child = null;
         var espera = Stopwatch.StartNew();
-        while (child is null && espera.ElapsedMilliseconds < 5000)
+        while (child is null && espera.ElapsedMilliseconds < 10_000)
         {
             await Task.Delay(20);
             try
@@ -119,10 +122,10 @@ public class ToolProcessTests
         return ("/bin/sh", $"\"{sh}\" \"{pidFile}\"");
     }
 
-    /// <summary>Espera até 5 s que o PID deixe de existir.</summary>
+    /// <summary>Espera até 10 s que o PID deixe de existir.</summary>
     private static async Task<bool> MortoAsync(int pid)
     {
-        for (var i = 0; i < 100; i++)
+        for (var i = 0; i < 200; i++)
         {
             try
             {
