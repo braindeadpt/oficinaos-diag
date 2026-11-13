@@ -195,6 +195,38 @@ public sealed class ScanHistoryTests : IDisposable
     }
 
     [Fact]
+    public void MutexAbandonado_NaoImpedeAEscritaSeguinte()
+    {
+        // Dono anterior morto com o mutex tomado: o WaitOne seguinte lança
+        // AbandonedMutexException e a posse passa para nós. Sem o catch, a
+        // escrita seguinte perdia-se (ou rebentava) sem ninguém dar por isso.
+        var nome = ScanHistory.LockNameFor(_file);
+        var dono = new Thread(() =>
+        {
+            using var m = new Mutex(false, nome);
+            m.WaitOne(TimeSpan.FromSeconds(5));
+            // sai da thread sem ReleaseMutex — o mutex fica abandonado
+        });
+        dono.Start();
+        dono.Join();
+
+        _h.Add(Rep("S-ABANDONADO"));
+        Assert.Contains(_h.All(), r => r.Device.Serial == "S-ABANDONADO");
+        // E a instância volta a escrever normalmente.
+        _h.Add(Rep("S-SEGUINTE"));
+        Assert.Equal(2, _h.All().Count);
+    }
+
+    [Fact]
+    public void MutexEDoFicheiro_NaoBloqueiaOutroHistorico()
+    {
+        var outro = Path.Combine(_dir, "outro.jsonl");
+        Assert.NotEqual(ScanHistory.LockNameFor(_file), ScanHistory.LockNameFor(outro));
+        new ScanHistory(outro).Add(Rep("S-OUTRO"));
+        Assert.Empty(_h.All());
+    }
+
+    [Fact]
     public void BatterySwappedSince_ComparaComOScanMaisRecente()
     {
         var older = new DeviceReport { Platform = "ios" };

@@ -1,4 +1,5 @@
 using System.IO;
+using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using OficinaDiag.Devices;
@@ -9,11 +10,26 @@ namespace OficinaDiag.History;
 public sealed class ScanHistory
 {
     private readonly string _file;
+    private readonly Mutex _writeLock;
 
-    public ScanHistory(string? file = null) =>
+    public ScanHistory(string? file = null)
+    {
         _file = file ?? Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
             "OficinaDiag", "history.jsonl");
+        _writeLock = new Mutex(initiallyOwned: false, LockNameFor(_file));
+    }
+
+    /// <summary>
+    /// Nome do mutex derivado do caminho: duas instâncias sobre o mesmo
+    /// histórico contendem (é o que serializa append+poda entre processos),
+    /// mas dois históricos diferentes não se bloqueiam um ao outro.
+    /// </summary>
+    internal static string LockNameFor(string file)
+    {
+        var hash = SHA256.HashData(Encoding.UTF8.GetBytes(Path.GetFullPath(file)));
+        return "OficinaDiag.ScanHistory." + Convert.ToHexString(hash, 0, 8);
+    }
 
     private static readonly JsonSerializerOptions Opts = new() { WriteIndented = false };
 
@@ -23,16 +39,14 @@ public sealed class ScanHistory
     /// escrevia, o Move sobrescrevia a linha nova. Um named mutex torna a
     /// sequência atómica entre processos.
     /// </summary>
-    private static readonly Mutex WriteLock = new(initiallyOwned: false, "OficinaDiag.ScanHistory");
-
     /// <summary>
     /// Mutex com timeout: uma instância presa não pode congelar a UI. Dono
     /// anterior morto com o mutex lança AbandonedMutexException — a posse
     /// passa para nós e o trabalho continua.
     /// </summary>
-    private static bool TryLock(TimeSpan timeout)
+    private bool TryLock(TimeSpan timeout)
     {
-        try { return WriteLock.WaitOne(timeout); }
+        try { return _writeLock.WaitOne(timeout); }
         catch (AbandonedMutexException) { return true; }
     }
 
@@ -52,7 +66,7 @@ public sealed class ScanHistory
             PruneExpired();
             Prune();
         }
-        finally { WriteLock.ReleaseMutex(); }
+        finally { _writeLock.ReleaseMutex(); }
     }
 
     /// <summary>Remove entradas mais velhas que a retenção. Chamar com o lock tomado.</summary>
@@ -90,7 +104,7 @@ public sealed class ScanHistory
         if (!TryLock(TimeSpan.FromSeconds(5))) return;
         try { if (File.Exists(_file)) File.Delete(_file); }
         catch { /* sem disco — nada a apagar */ }
-        finally { try { WriteLock.ReleaseMutex(); } catch { } }
+        finally { try { _writeLock.ReleaseMutex(); } catch { } }
     }
 
     /// <summary>
@@ -152,7 +166,7 @@ public sealed class ScanHistory
             }
             return list;
         }
-        finally { if (locked) WriteLock.ReleaseMutex(); }
+        finally { if (locked) _writeLock.ReleaseMutex(); }
     }
 
     /// <summary>Scans anteriores de um serial, mais antigo primeiro — base do antes/depois.</summary>
