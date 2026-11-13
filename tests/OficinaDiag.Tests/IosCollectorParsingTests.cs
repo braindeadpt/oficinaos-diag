@@ -168,12 +168,12 @@ public sealed class IosCollectorParsingTests
             """;
         var io = IosCollector.ParsePlistDict(lockdown);
 
-        var (value, note) = IosDecisions.IdentityModel(io.GetValueOrDefault("ProductType"));
+        var identity = IosDecisions.IdentityModel(io.GetValueOrDefault("ProductType"));
 
-        Assert.Equal("iPhone 12 Pro (iPhone13,3)", value);
-        Assert.Equal("iPhone13,3", note);
-        Assert.DoesNotContain("Maria", value);
-        Assert.DoesNotContain("Maria", note);
+        Assert.Equal("iPhone 12 Pro (iPhone13,3)", identity.Value);
+        Assert.Equal("iPhone13,3", identity.Note);
+        Assert.DoesNotContain("Maria", identity.Value);
+        Assert.DoesNotContain("Maria", identity.Note);
         // Código fora da tabela cai no ProductType, nunca no DeviceName.
         Assert.Equal("ZZ-NAO-EXISTE", IosDecisions.IdentityModel("ZZ-NAO-EXISTE").Value);
         Assert.Null(IosDecisions.IdentityModel(null).Value);

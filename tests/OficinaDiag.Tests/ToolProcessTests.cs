@@ -7,7 +7,9 @@ namespace OficinaDiag.Tests;
 /// <summary>
 /// `ToolProcess` substituiu o bloco repetido do `IosCollector`: o timeout tem
 /// de matar a árvore toda, não só o processo lançado — um `idevicediagnostics`
-/// órfão segura o relay e o scan seguinte falha.
+/// órfão segura o relay e o scan seguinte falha. O cenário é montado com um
+/// lançador nativo de cada sistema (`sh` no Unix, `powershell.exe` no Windows),
+/// por isso a prova vale nos dois e não passa em vazio em nenhum.
 /// </summary>
 public class ToolProcessTests
 {
@@ -18,41 +20,28 @@ public class ToolProcessTests
     [Fact]
     public void DevolveOStdoutDoProcesso()
     {
-        if (OperatingSystem.IsWindows()) return; // shell POSIX nos testes
-        Assert.Equal("ok\n", ToolProcess.Run("/bin/echo", "ok", 5000));
+        var (exe, args) = OperatingSystem.IsWindows()
+            ? ("cmd.exe", "/c echo ok")
+            : ("/bin/echo", "ok");
+
+        Assert.Equal("ok\n".Replace("\n", Environment.NewLine), ToolProcess.Run(exe, args, 5000));
     }
 
     [Fact]
     public async Task TimeoutMataAFilhaToda()
     {
-        if (OperatingSystem.IsWindows()) return; // /bin/sh só no Unix
-
         var dir = Directory.CreateTempSubdirectory("oficinadiag-kill-");
         try
         {
-            var pidFile = Path.Combine(dir.FullName, "child.pid");
-            var script = Path.Combine(dir.FullName, "spawn.sh");
-            // Lança um filho que não termina sozinho e fica à espera dele.
-            await File.WriteAllTextAsync(script, "#!/bin/sh\nsleep 60 &\necho $! > \"$1\"\nwait\n");
-            File.SetUnixFileMode(script,
-                UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+            var launch = await StartChildAsync(dir, timeoutMs: 2000);
 
-            // O timeout corre em paralelo com a espera pelo PID: com a máquina
-            // carregada, 400 ms podiam não chegar para o shell arrancar — o
-            // teste ficava dependente da carga, não do kill da árvore.
-            var cronometro = Stopwatch.StartNew();
-            var run = Task.Run(() => ToolProcess.Run("/bin/sh", $"\"{script}\" \"{pidFile}\"", 2000));
-            var espera = Stopwatch.StartNew();
-            while (!File.Exists(pidFile) && espera.ElapsedMilliseconds < 1500)
-                await Task.Delay(20);
-            Assert.True(File.Exists(pidFile), "o script não chegou a lançar o filho");
-            var filho = int.Parse(File.ReadAllText(pidFile).Trim());
+            var saida = await launch.Run;
+            launch.Clock.Stop();
 
-            var saida = await run;
-            cronometro.Stop();
             Assert.Null(saida);
-            Assert.InRange(cronometro.ElapsedMilliseconds, 1800, 15000);
-            Assert.True(await MortoAsync(filho), $"o filho {filho} sobreviveu ao timeout");
+            Assert.InRange(launch.Clock.ElapsedMilliseconds, 1800, 15000);
+            Assert.True(await MortoAsync(launch.ChildPid),
+                $"o filho {launch.ChildPid} sobreviveu ao timeout");
         }
         finally { dir.Delete(true); }
     }
@@ -60,20 +49,80 @@ public class ToolProcessTests
     [Fact]
     public async Task CancelamentoTambemMataAFilha()
     {
-        if (OperatingSystem.IsWindows()) return;
+        var dir = Directory.CreateTempSubdirectory("oficinadiag-cancel-");
+        try
+        {
+            using var cts = new CancellationTokenSource();
+            var launch = await StartChildAsync(dir, timeoutMs: 20_000, cts.Token);
 
-        using var cts = new CancellationTokenSource(200);
-        var saida = ToolProcess.Run("/bin/sh", "-c \"sleep 30\"", 20_000, cts.Token);
-
-        Assert.Null(saida);
-        Assert.True(cts.IsCancellationRequested);
-        await Task.CompletedTask;
+            cts.Cancel();
+            Assert.Null(await launch.Run);
+            Assert.True(await MortoAsync(launch.ChildPid),
+                $"o filho {launch.ChildPid} sobreviveu ao cancelamento");
+        }
+        finally { dir.Delete(true); }
     }
 
-    /// <summary>Espera até 2 s que o PID deixe de existir.</summary>
+    private sealed record Launch(Task<string?> Run, int ChildPid, Stopwatch Clock);
+
+    /// <summary>
+    /// Arranca um processo que cria um filho de longa duração e escreve o PID
+    /// do filho antes de esperar por ele. O `Run` corre em paralelo com a espera
+    /// pelo PID: com a máquina carregada, o lançador pode demorar e o teste não
+    /// pode depender disso.
+    /// </summary>
+    private static async Task<Launch> StartChildAsync(
+        DirectoryInfo dir, int timeoutMs, CancellationToken ct = default)
+    {
+        var pidFile = Path.Combine(dir.FullName, "child.pid");
+        var (exe, args) = Spawner(dir, pidFile);
+
+        var clock = Stopwatch.StartNew();
+        var run = Task.Run(() => ToolProcess.Run(exe, args, timeoutMs, ct), CancellationToken.None);
+
+        int? child = null;
+        var espera = Stopwatch.StartNew();
+        while (child is null && espera.ElapsedMilliseconds < 5000)
+        {
+            await Task.Delay(20);
+            try
+            {
+                if (File.Exists(pidFile)
+                    && int.TryParse(File.ReadAllText(pidFile).Trim(), out var pid) && pid > 0)
+                    child = pid;
+            }
+            catch (IOException) { /* ficheiro a ser escrito */ }
+        }
+
+        Assert.True(child is not null, "o lançador não chegou a escrever o PID do filho");
+        return new Launch(run, child!.Value, clock);
+    }
+
+    /// <summary>Lançador nativo: `sh` no Unix, `powershell.exe` no Windows.</summary>
+    private static (string Exe, string Args) Spawner(DirectoryInfo dir, string pidFile)
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            var ps1 = Path.Combine(dir.FullName, "spawn.ps1");
+            File.WriteAllText(ps1, $"""
+                $p = Start-Process -FilePath cmd.exe -ArgumentList '/c','ping -n 60 127.0.0.1 >NUL' -PassThru -WindowStyle Hidden
+                Set-Content -Path '{pidFile}' -Value $p.Id
+                Wait-Process -Id $p.Id
+                """);
+            return ("powershell.exe", $"-NoProfile -ExecutionPolicy Bypass -File \"{ps1}\"");
+        }
+
+        var sh = Path.Combine(dir.FullName, "spawn.sh");
+        File.WriteAllText(sh, "#!/bin/sh\nsleep 60 &\necho $! > \"$1\"\nwait\n");
+        File.SetUnixFileMode(sh,
+            UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+        return ("/bin/sh", $"\"{sh}\" \"{pidFile}\"");
+    }
+
+    /// <summary>Espera até 5 s que o PID deixe de existir.</summary>
     private static async Task<bool> MortoAsync(int pid)
     {
-        for (var i = 0; i < 40; i++)
+        for (var i = 0; i < 100; i++)
         {
             try
             {

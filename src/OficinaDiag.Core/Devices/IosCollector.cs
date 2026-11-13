@@ -1,5 +1,4 @@
 using System.Collections.Concurrent;
-using System.Diagnostics;
 using System.Globalization;
 using System.IO;
 using System.Runtime.InteropServices;
@@ -135,9 +134,9 @@ public sealed class IosCollector
                     // nunca vai para o relatório/histórico. O modelo comercial sai
                     // da tabela local a partir do ProductType.
                     var serial = GetValue(client, null, "SerialNumber");
-                    var (identityModel, identityNote) = IosDecisions.IdentityModel(r.Device.Model);
+                    var identity = IosDecisions.IdentityModel(r.Device.Model);
                     r.Device.MarketingName = ModelNameTable.Lookup(r.Device.Model);
-                    r.Set("identity.model", "info", identityModel, identityNote);
+                    r.Set("identity.model", identity.Status, identity.Value, identity.Note);
                     r.Set("identity.serial", "info", serial);
                     if (!string.IsNullOrWhiteSpace(serial))
                         r.Device.Serial = serial!;

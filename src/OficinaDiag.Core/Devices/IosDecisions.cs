@@ -10,17 +10,17 @@ namespace OficinaDiag.Devices;
 internal static class IosDecisions
 {
     /// <summary>Uma linha do relatório: estado, valor e nota opcional.</summary>
-    internal readonly record struct Reading(string Status, string Value, string? Note);
+    internal readonly record struct Reading(string Status, string? Value, string? Note);
 
     /// <summary>
     /// Modelo comercial a partir do `ProductType` (ex.: `iPhone14,2`). O nome
     /// pessoal do cliente (`DeviceName`, «iPhone de Maria») nunca entra aqui:
     /// não há parâmetro para ele, por isso não pode escapar para o relatório.
     /// </summary>
-    internal static (string? Value, string? Note) IdentityModel(string? productType) =>
+    internal static Reading IdentityModel(string? productType) =>
         ModelNameTable.Lookup(productType) is { } marketing
-            ? ($"{marketing} ({productType})", productType)
-            : (productType, productType);
+            ? new Reading("info", $"{marketing} ({productType})", productType)
+            : new Reading("info", productType, productType);
 
     /// <summary>
     /// Capacidade real vs design (as duas vivem em `BatteryData`). Mesmos
