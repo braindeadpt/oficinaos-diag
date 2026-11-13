@@ -91,10 +91,21 @@ public sealed class TestServerTests
         await stream.WriteAsync(Encoding.ASCII.GetBytes("GET / HTTP/1.1\r\nHost: x\r\n\r\n"));
 
         var buf = new byte[512];
-        // EOF imediato: o servidor fechou sem responder nada. O limite é 10 s
-        // para o runner do CI não transformar uma pausa de scheduling numa
-        // falha — continua a falhar se o servidor responder, que é o defeito.
-        var n = await stream.ReadAsync(buf).AsTask().WaitAsync(TimeSpan.FromSeconds(10));
+        // O servidor fechou sem responder nada. No Linux isso chega como EOF
+        // (0 bytes); no Windows, fechar com bytes por ler chega como reset
+        // (WSAECONNRESET → IOException). Os dois são «não recebeu a página»;
+        // o que não pode acontecer é vir conteúdo. O limite de 10 s só evita
+        // transformar uma pausa de scheduling numa falha.
+        int n;
+        try
+        {
+            n = await stream.ReadAsync(buf).AsTask().WaitAsync(TimeSpan.FromSeconds(10));
+        }
+        catch (IOException)
+        {
+            // Nada foi devolvido antes do reset — nenhum byte da página.
+            n = 0;
+        }
         Assert.Equal(0, n);
     }
 

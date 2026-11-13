@@ -75,7 +75,7 @@ public class PackageFilesTests
         // Não vem de um Content, por isso escapa aos testes de divergência.
         // O updater procura-o pelo nome: renomear o AssemblyName sem mexer
         // na constante deixava-o a falhar em runtime.
-        Assert.Equal(AppExe(), PackagePaths.AppExeName);
+        Assert.Equal(PackagePaths.AppExeName, AppExe());
         Assert.Contains(AppExe(), Required());
     }
 
