@@ -48,14 +48,15 @@ jobs:
         env:
           VERSION: ${{ github.ref_name }}
 
-      - name: Verify package contains adb
+      - name: Verify package contents
         shell: pwsh
-        # O zip é o que o cliente recebe: sem tools/platform-tools o diag fica
-        # sem adb e o teste on-device não arranca. Falha aqui, antes do draft.
+        # O zip é o que o cliente recebe: sem adb o teste on-device não arranca;
+        # sem models.json não há nomes de modelo; sem a página não há teste.
+        # Falha aqui, antes do draft, em vez de publicar um pacote incompleto.
         run: >-
           Expand-Archive "oficinaos-diag-v$($env:VERSION.TrimStart('v'))-win-x64.zip" -DestinationPath pkg-check;
-          if (-not (Test-Path "pkg-check/tools/platform-tools/adb.exe")) {
-            throw "Pacote incompleto: falta tools/platform-tools/adb.exe no zip"
+          foreach ($f in 'tools/platform-tools/adb.exe','Data/models.json','Tests/wwwroot/device-test.html') {
+            if (-not (Test-Path (Join-Path 'pkg-check' $f))) { throw "Pacote incompleto: falta $f no zip" }
           }
         env:
           VERSION: ${{ github.ref_name }}
