@@ -53,7 +53,7 @@
 ---
 
 ## Critérios de Aceitação
-- [x] `UpdateCheckerTests` passa em `net8.0` (Linux/macOS/Windows) — 114/114 com SDK 8.0.428.
+- [x] `UpdateCheckerTests` passa em `net8.0` — suite **214/214** com SDK 8.0.428 em macOS; Linux/Windows pendente de CI.
 - [x] Em modo MSIX, nenhuma chamada de rede ao GitHub Releases é feita no arranque — gate em `MainWindow.OnLoaded` e em `CheckAsync`. *(Não exercitado num MSIX real; sem Windows nesta máquina.)*
 - [x] Uma falha de `tar -xf` nunca toca nos ficheiros existentes em `appDir` — staging + validação antes do backup/cópia (asserção de ordem em `UpdateCheckerTests`).
 - [x] `sign-release.ps1` preserva os bytes exatos de `SHA256SUMS.txt` (cópia do `BaseStream`) e `build-store.ps1` recusa gerar MSIX sem `adb.exe`. *(Sintaxe validada; fluxo `gh`/MSIX não executado aqui.)*
