@@ -53,9 +53,14 @@ jobs:
         # O zip é o que o cliente recebe: sem adb o teste on-device não arranca;
         # sem models.json não há nomes de modelo; sem a página não há teste.
         # Falha aqui, antes do draft, em vez de publicar um pacote incompleto.
+        # As três falhas têm mensagens próprias: zip em falta, zip ilegível e
+        # ficheiro em falta dentro do zip (com o nome do ficheiro).
         run: >-
-          Expand-Archive "oficinaos-diag-v$($env:VERSION.TrimStart('v'))-win-x64.zip" -DestinationPath pkg-check;
-          foreach ($f in 'tools/platform-tools/adb.exe','Data/models.json','Tests/wwwroot/device-test.html') {
+          $zip = "oficinaos-diag-v$($env:VERSION.TrimStart('v'))-win-x64.zip";
+          if (-not (Test-Path $zip)) { throw "Pacote em falta: $zip não existe" }
+          try { Expand-Archive $zip -DestinationPath pkg-check -ErrorAction Stop }
+          catch { throw "Pacote ilegível: $zip não abre (corrompido ou truncado)" }
+          foreach ($f in 'OficinaDiag.exe','tools/platform-tools/adb.exe','Data/models.json','Tests/wwwroot/device-test.html') {
             if (-not (Test-Path (Join-Path 'pkg-check' $f))) { throw "Pacote incompleto: falta $f no zip" }
           }
         env:
