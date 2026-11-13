@@ -23,16 +23,8 @@ public sealed class TestResultMapperTests
     /// o jsdom prova que a página o produz e este teste prova o que o
     /// mapeador faz com ele. Um literal copiado à mão divergia em silêncio.
     /// </summary>
-    private static string Fixture(string nome)
-    {
-        var dir = new DirectoryInfo(AppContext.BaseDirectory);
-        for (var i = 0; i < 10 && dir is not null; i++, dir = dir.Parent)
-        {
-            var caminho = Path.Combine(dir.FullName, "tests", "device-test", "fixtures", nome);
-            if (File.Exists(caminho)) return File.ReadAllText(caminho);
-        }
-        throw new FileNotFoundException($"fixture '{nome}' não encontrada a partir de {AppContext.BaseDirectory}");
-    }
+    private static string Fixture(string nome) =>
+        Repo.Read("tests", "device-test", "fixtures", nome);
 
     private static DeviceReport Map(string json)
     {

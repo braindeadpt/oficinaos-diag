@@ -11,24 +11,9 @@ namespace OficinaDiag.Tests;
 /// </summary>
 public class PackageFilesTests
 {
-    private static readonly string Root = RepoRoot();
-
-    private static string RepoRoot()
-    {
-        var dir = new DirectoryInfo(AppContext.BaseDirectory);
-        for (var i = 0; i < 10 && dir is not null; i++)
-        {
-            if (Directory.Exists(Path.Combine(dir.FullName, "src", "OficinaDiag")))
-                return dir.FullName;
-            dir = dir.Parent;
-        }
-        throw new DirectoryNotFoundException(
-            "raiz do repositório não encontrada a partir de " + AppContext.BaseDirectory);
-    }
-
     private static string[] Required()
     {
-        var path = Path.Combine(Root, "tools", "package-files.txt");
+        var path = Repo.Path("tools", "package-files.txt");
         Assert.True(File.Exists(path), $"lista ausente: {path}");
         return File.ReadAllLines(path)
             .Select(l => l.Trim())
@@ -46,7 +31,7 @@ public class PackageFilesTests
         var published = new List<string>();
         foreach (var csproj in new[] { "src/OficinaDiag/OficinaDiag.csproj", "src/OficinaDiag.Core/OficinaDiag.Core.csproj" })
         {
-            var doc = XDocument.Load(Path.Combine(Root, csproj));
+            var doc = XDocument.Load(Repo.Path(csproj));
             foreach (var item in doc.Descendants("Content"))
             {
                 if ((string?)item.Attribute("CopyToPublishDirectory") is null)
@@ -72,7 +57,7 @@ public class PackageFilesTests
 
     /// <summary>O exe da app, a partir do AssemblyName do csproj (não à mão).</summary>
     private static string AppExe() =>
-        XDocument.Load(Path.Combine(Root, "src/OficinaDiag/OficinaDiag.csproj"))
+        XDocument.Load(Repo.Path("src", "OficinaDiag", "OficinaDiag.csproj"))
             .Descendants("AssemblyName").First().Value + ".exe";
 
     /// <summary>
@@ -138,7 +123,7 @@ public class PackageFilesTests
     [Fact]
     public void WorkflowLeAListaEmVezDeTerCopiaPropria()
     {
-        var yml = File.ReadAllText(Path.Combine(Root, ".github", "workflows", "release.yml"));
+        var yml = Repo.Read(".github", "workflows", "release.yml");
         Assert.Contains("tools/package-files.txt", yml);
         // Nenhum caminho da lista pode voltar a estar escrito no YAML.
         Assert.DoesNotContain(Required(), r => yml.Contains(r));
