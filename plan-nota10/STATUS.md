@@ -4,6 +4,8 @@
 
 **Plano concluído:** `T-01`–`T-10` executados; `B-01`–`B-20` fechados (os 18 da auditoria + `B-19`/`B-20` do rig). Limitações por verificar em hardware/Windows estão anotadas em cada handoff.
 
+**Critérios de aceitação dos tickets fechados em 2026-11-13:** cada critério dos tickets `T-01`–`T-10` tem agora estado explícito — `[x]` com a prova (nome do teste, do handoff ou do commit) ou `[ ]` com «pendente de hardware/Windows/CI» (ou de teste automático, quando a correção existe mas ninguém a afirma). Placar: **29 provados, 13 pendentes** — ver a secção «Limitações por verificar» para o que cada pendência exige.
+
 ---
 
 ## Progresso por Ticket

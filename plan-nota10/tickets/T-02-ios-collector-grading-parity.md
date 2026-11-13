@@ -64,9 +64,9 @@
 ---
 
 ## Critérios de Aceitação
-- [ ] `ParsePlistDict` nunca deixa `AdapterDetails.*`/`BatteryData.*` sobrescrever `Voltage`, `IsCharging` ou `Current` da célula (fixture iPhone 12 Pro: `Voltage` = 3914 mV, `IsCharging` = `true`).
-- [ ] Sobre a fixture, `Watts` resolve 13 W (não 0) e `battery.temp` **não** é emitido com `0 °C`.
-- [ ] `battery.health` continua a sair de `BatteryData` (2790/2798 → 100%) depois da reescrita do parser.
-- [ ] `ScanHistory.BatteryTrend` devolve tendência para iPhones após 2 scans.
-- [ ] `DeviceName` pessoal do cliente deixa de aparecer em `identity.model`.
-- [ ] Nenhum processo `idevicediagnostics.exe` / `idevicecrashreport.exe` fica órfão após timeout.
+- [x] `ParsePlistDict` nunca deixa `AdapterDetails.*`/`BatteryData.*` sobrescrever `Voltage`, `IsCharging` ou `Current` da célula (fixture iPhone 12 Pro: `Voltage` = 3914 mV, `IsCharging` = `true`). *(prova: `IosCollectorParsingTests.SubDictsNaoPisamACelula`, com a fixture real `apple-smart-battery-iphone13_3.plist`)*
+- [x] Sobre a fixture, `Watts` resolve 13 W (não 0) e `battery.temp` **não** é emitido com `0 °C`. *(prova: `IosCollectorParsingTests.FixtureRealDoIphone13_3_TemCapacidadeDoBatteryData`; `Watts`/`temp` confirmados no handoff de 2026-11-12 contra o iPhone 12 Pro real)*
+- [x] `battery.health` continua a sair de `BatteryData` (2790/2798 → 100%) depois da reescrita do parser. *(prova: `IosCollectorParsingTests.FixtureRealDoIphone13_3_TemCapacidadeDoBatteryData`)*
+- [x] `ScanHistory.BatteryTrend` devolve tendência para iPhones após 2 scans. *(prova: `ScanHistoryTests`)*
+- [ ] `DeviceName` pessoal do cliente deixa de aparecer em `identity.model`. *(pendente de teste automático: a correção está implementada e revista por código, mas nenhum teste afirma a ausência de PII)*
+- [ ] Nenhum processo `idevicediagnostics.exe` / `idevicecrashreport.exe` fica órfão após timeout. *(pendente de hardware/Windows: só se observa com iPhone ligado e o coletor a correr)*

@@ -44,7 +44,7 @@
 ---
 
 ## Critérios de Aceitação
-- [ ] Num PC com VirtualBox (`192.168.56.1` sem gateway) e Wi-Fi da loja (`10.0.0.45` com gateway `10.0.0.1`), `ResolveLanAddress()` escolhe `10.0.0.45`.
-- [ ] `GET /{token}` e `GET /{token}/?v=1` servem a página de teste sem 404.
-- [ ] Headers > 64 KB sem `\r\n\r\n` são rejeitados de imediato sem underflow de índice.
-- [ ] Em iPhone, o timeout dos sensores só começa a contar após aceitar a permissão.
+- [x] Num PC com VirtualBox (`192.168.56.1` sem gateway) e Wi-Fi da loja (`10.0.0.45` com gateway `10.0.0.1`), `ResolveLanAddress()` escolhe `10.0.0.45`. *(prova: `TestServerTests.PrefereWiFiComGatewayAVirtualBoxSemGateway`, `IgnoraWslEDocker`, `ApipaNuncaEEscolhida`)*
+- [x] `GET /{token}` e `GET /{token}/?v=1` servem a página de teste sem 404. *(prova: `TestServerTests.GetAceitaTokenSemBarraFinalEComQuery`)*
+- [x] Headers > 64 KB sem `\r\n\r\n` são rejeitados de imediato sem underflow de índice. *(prova: `TestServerTests.HeadersAcimaDe64KSemTerminador_Dao431`)*
+- [ ] Em iPhone, o timeout dos sensores só começa a contar após aceitar a permissão. *(pendente de hardware: precisa de iPhone/iOS Safari real; o rig é Android WebView, sem `requestPermission`)*

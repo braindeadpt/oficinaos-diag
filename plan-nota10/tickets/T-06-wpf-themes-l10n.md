@@ -59,7 +59,7 @@
 ---
 
 ## Critérios de Aceitação
-- [ ] Fechar `SettingsDialog` durante um pedido de pairing nunca lança exceção nem altera `_config`.
-- [ ] Mudar o tema para `Fluent` ou `Win95` atualiza imediatamente as cores e formato de `ResultsList` e de todos os diálogos.
-- [ ] Em modo Inglês (`en`), nenhuma mensagem da Cloud, `CompareWindow` ou Relatório IA sai em Português por engano.
-- [ ] `ScopeView.OnRender` faz zero alocações de `Pen` entre frames do mesmo tema.
+- [ ] Fechar `SettingsDialog` durante um pedido de pairing nunca lança exceção nem altera `_config`. *(pendente de Windows: correção implementada (`_closing`/`_cts`/gravação atómica), mas a UI WPF não correu)*
+- [ ] Mudar o tema para `Fluent` ou `Win95` atualiza imediatamente as cores e formato de `ResultsList` e de todos os diálogos. *(pendente de Windows: mudança visual por confirmar; só compilada)*
+- [x] Em modo Inglês (`en`), nenhuma mensagem da Cloud, `CompareWindow` ou Relatório IA sai em Português por engano. *(prova: `L10nAndThemesTests` — paridade PT/EN por reflexão a `L10n.D`, e as strings hardcoded foram movidas para chaves `cloud.*`/`cmp.*`)*
+- [ ] `ScopeView.OnRender` faz zero alocações de `Pen` entre frames do mesmo tema. *(pendente de Windows: cache por tema revista por código, sem medição de alocações em execução)*

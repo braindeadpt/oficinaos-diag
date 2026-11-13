@@ -53,7 +53,7 @@
 ---
 
 ## Critérios de Aceitação
-- [ ] Nenhum esquema `javascript:` ou `data:` passa pelo `AiReportToHtml`.
-- [ ] Todos os 4 formatos HTML escapam qualquer input malicioso em `Device`, `Results`, `Notes` e `InsuranceForm`.
-- [ ] `AbandonedMutexException` é tratada sem crash em `ScanHistory`.
-- [ ] `AppLog` nunca deixa bytes UTF-8 órfãos no topo após rotação.
+- [x] Nenhum esquema `javascript:` ou `data:` passa pelo `AiReportToHtml`. *(prova: `ReportBuilderTests` — allowlist `http(s)`/`mailto`)*
+- [x] Todos os 4 formatos HTML escapam qualquer input malicioso em `Device`, `Results`, `Notes` e `InsuranceForm`. *(prova: `ReportBuilderTests`, escape nos 3 formatos + `SafeCssToken`/`SafeFileToken`)*
+- [ ] `AbandonedMutexException` é tratada sem crash em `ScanHistory`. *(pendente de teste automático: `catch` implementado em `ScanHistory`, sem teste que force o mutex abandonado)*
+- [ ] `AppLog` nunca deixa bytes UTF-8 órfãos no topo após rotação. *(pendente de teste automático; a rotação real escreve em `%APPDATA%`, sem injeção de caminho, e precisa de Windows)*

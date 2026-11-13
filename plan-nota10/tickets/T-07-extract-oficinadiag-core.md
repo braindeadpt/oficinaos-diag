@@ -57,6 +57,6 @@ Essa abordagem deixou de fora dos testes os módulos mais críticos do sistema (
 ---
 
 ## Critérios de Aceitação
-- [ ] `dotnet test tests/OficinaDiag.Tests -c Release` compila `OficinaDiag.Core` e passa 100% dos testes em Linux/macOS/Windows sem SDK Windows Desktop.
-- [ ] `dotnet publish src/OficinaDiag/OficinaDiag.csproj -c Release -r win-x64 --self-contained true /p:PublishSingleFile=true -o out` continua a produzir `OficinaDiag.exe` + `Data/models.json` + `Tests/wwwroot/device-test.html` + `tools/platform-tools/`.
-- [ ] `tools/fetch-tools.ps1` continua a encontrar a versão `1.3.17` do `iMobileDevice-net` e a validar todos os 50 hashes SHA-256.
+- [ ] `dotnet test tests/OficinaDiag.Tests -c Release` compila `OficinaDiag.Core` e passa 100% dos testes em Linux/macOS/Windows sem SDK Windows Desktop. *(parcial: macOS provado — **214/214** sem SDK Windows; Linux/Windows pendente de CI)*
+- [x] `dotnet publish src/OficinaDiag/OficinaDiag.csproj -c Release -r win-x64 --self-contained true /p:PublishSingleFile=true -o out` continua a produzir `OficinaDiag.exe` + `Data/models.json` + `Tests/wwwroot/device-test.html` + `tools/platform-tools/`. *(prova: publish real com stub de `adb` — 64 entradas, ~80 MB, conferido pelo passo `Verify package contents`)*
+- [ ] `tools/fetch-tools.ps1` continua a encontrar a versão `1.3.17` do `iMobileDevice-net` e a validar todos os 50 hashes SHA-256. *(pendente de Windows/pwsh: o script nunca foi executado, só a regex da versão foi conferida)*

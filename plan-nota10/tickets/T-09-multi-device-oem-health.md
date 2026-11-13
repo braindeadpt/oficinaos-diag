@@ -48,7 +48,7 @@ Numa loja de reparações ou recondicionamento nunca há apenas 1 telemóvel em 
 ---
 
 ## Critérios de Aceitação
-- [ ] Dois dispositivos ligados em simultâneo podem ser alternados no seletor sem reiniciar a app.
-- [ ] `ModelNameTable.Lookup("iPhone15,2")` devolve `"iPhone 14 Pro"` e `Lookup("SM-S918U1")` devolve `"Galaxy S23 Ultra"`.
-- [ ] Samsung sem `charge_full` em sysfs mas com `mSavedBatteryAsoc: 86` em `dumpsys battery` preenche `battery.capacity = "86%"`.
-- [ ] Panics `thermalmonitord` em iPhone são destacados claramente no diagnóstico.
+- [ ] Dois dispositivos ligados em simultâneo podem ser alternados no seletor sem reiniciar a app. *(pendente de Windows: o `ComboBox` está compilado, mas a UI nunca correu nem houve dois telemóveis ligados)*
+- [x] `ModelNameTable.Lookup("iPhone15,2")` devolve `"iPhone 14 Pro"` e `Lookup("SM-S918U1")` devolve `"Galaxy S23 Ultra"`. *(prova: `OemHealthTests.CatalogoResolveProductTypeApple` e `SamsungComSufixoRegionalCaiNaBaseEuropeia`)*
+- [x] Samsung sem `charge_full` em sysfs mas com `mSavedBatteryAsoc: 86` em `dumpsys battery` preenche `battery.capacity = "86%"`. *(prova: `OemHealthTests.SavedAsocDoFuelGaugeEViraPercentagem` e `SavedAsocInvalidoDevolveNulo`)*
+- [x] Panics `thermalmonitord` em iPhone são destacados claramente no diagnóstico. *(prova: `OemHealthTests.ThermalmonitordSemCheckinsEEPanicDeFlex` e `OutrosPanicsNaoSaoThermal`)*

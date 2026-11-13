@@ -56,9 +56,9 @@
 ---
 
 ## Critérios de Aceitação
-- [ ] Sob `CultureInfo("pt-PT")`, `"38.5"` em `thermal_zone` resulta em `38.5 °C` (nunca `385 °C`).
-- [ ] Um Samsung/MediaTek com `current_now = -1200000` e `status = Charging` tem `Charging == true` e `Milliamps == 1200`.
-- [ ] `dumpsys account` com 1 conta Google repetida 12 vezes nos logs de sync reporta `1 conta(s)`.
-- [ ] Capacidade real/design aparece sempre em `mAh` legíveis (`4850 / 5000 mAh`).
-- [ ] Com `Device Owner Type: -1`, `security.mdm` é `pass` e o `Grader` não aplica `Cap(3)`. *(Reproduzido no rig `diag-android` antes da correção: saía `warn` e Grau D.)*
-- [ ] Sem bateria (`present: false`), nenhum `battery.*` sai `warn` nem com valor inventado, e `security.bootloader` sai `skipped` com a prop vazia.
+- [x] Sob `CultureInfo("pt-PT")`, `"38.5"` em `thermal_zone` resulta em `38.5 °C` (nunca `385 °C`). *(prova: `AdbParsingTests.SocTemp_PtPt_LePontoComoDecimal`)*
+- [x] Um Samsung/MediaTek com `current_now = -1200000` e `status = Charging` tem `Charging == true` e `Milliamps == 1200`. *(prova: `AdbParsingTests.CorrenteNegativaComStatusCharging_ECarga`)*
+- [x] `dumpsys account` com 1 conta Google repetida 12 vezes nos logs de sync reporta `1 conta(s)`. *(prova: `AdbParsingTests.ContasRepetidasNoDump_ContamUma`)*
+- [x] Capacidade real/design aparece sempre em `mAh` legíveis (`4850 / 5000 mAh`). *(prova: `AdbParsingTests.Capacidade_EmMicroAh_ViraMah`)*
+- [x] Com `Device Owner Type: -1`, `security.mdm` é `pass` e o `Grader` não aplica `Cap(3)`. *(prova: `AdbParsingTests.DeviceOwnerTypeMenos1_NaoEMdm` e `GraderTests.MdmWarn_EHardLock_D`; reproduzido no rig antes da correção)*
+- [x] Sem bateria (`present: false`), nenhum `battery.*` sai `warn` nem com valor inventado, e `security.bootloader` sai `skipped` com a prop vazia. *(prova: `AdbParsingTests.PresentFalse_EBancada`, `BatteryProbe_TemperaturaZero_NaoEVirouMedicao` e `GraderTests.SkippedNaoDisparaHardLock`)*
