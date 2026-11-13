@@ -91,22 +91,19 @@ public sealed class TestServerTests
         await stream.WriteAsync(Encoding.ASCII.GetBytes("GET / HTTP/1.1\r\nHost: x\r\n\r\n"));
 
         var buf = new byte[512];
-        // O servidor fechou sem responder nada. No Linux isso chega como EOF
-        // (0 bytes); no Windows, fechar com bytes por ler chega como reset
-        // (WSAECONNRESET → IOException). Os dois são «não recebeu a página»;
-        // o que não pode acontecer é vir conteúdo. O limite de 10 s só evita
-        // transformar uma pausa de scheduling numa falha.
-        int n;
+        // «Fechou sem responder»: no Linux chega como EOF (0 bytes), no Windows
+        // como reset (WSAECONNRESET → IOException). Os dois valem zero bytes.
+        var recebidos = 0;
         try
         {
-            n = await stream.ReadAsync(buf).AsTask().WaitAsync(TimeSpan.FromSeconds(10));
+            recebidos = await stream.ReadAsync(buf).AsTask().WaitAsync(TimeSpan.FromSeconds(10));
         }
-        catch (IOException)
-        {
-            // Nada foi devolvido antes do reset — nenhum byte da página.
-            n = 0;
-        }
-        Assert.Equal(0, n);
+        catch (IOException) { /* reset sem dados — ver o contador abaixo */ }
+
+        Assert.Equal(0, recebidos);
+        // O cliente não distingue «fechou sem escrever» de «escreveu e cortou»
+        // quando o fecho é um reset: o contador do servidor prova o primeiro.
+        Assert.Equal(0, server.ResponsesSent);
     }
 
     [Fact]
@@ -179,6 +176,9 @@ public sealed class TestServerTests
         // QR mobile acrescenta ?from=qr; a barra final é opcional.
         var comQuery = await http.GetAsync($"{root}/{token}/?from=qr");
         Assert.Equal(HttpStatusCode.OK, comQuery.StatusCode);
+        // Prova que o contador conta: uma resposta por pedido servido. É o que
+        // dá sentido ao `ResponsesSent == 0` do teste de origem rejeitada.
+        Assert.Equal(2, server.ResponsesSent);
     }
 
     [Fact]

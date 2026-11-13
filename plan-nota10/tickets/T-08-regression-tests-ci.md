@@ -61,4 +61,4 @@ Com `OficinaDiag.Core` referenciado diretamente em `OficinaDiag.Tests` (`T-07`),
 ## Critérios de Aceitação
 - [x] Todos os novos testes passam em `dotnet test -c Release`. *(prova: **214/214**, exit 0)*
 - [x] Qualquer chave `L10n` adicionada apenas em PT (ou `x:Key` adicionada apenas num tema XAML) quebra imediatamente o teste unitário. *(prova: `L10nAndThemesTests` — paridade PT/EN e os 3 temas com o mesmo conjunto de `x:Key`)*
-- [ ] O CI valida tanto a suite `OficinaDiag.Tests` como a compilação completa do `OficinaDiag` WPF. *(pendente de CI: o job `build-wpf` está escrito e validado localmente, mas nunca correu no GitHub)*
+- [x] O CI valida tanto a suite `OficinaDiag.Tests` como a compilação completa do `OficinaDiag` WPF. *(prova: corrida `43521131345` — matriz `ubuntu-latest` + `windows-latest`, passos `Test` e `Build WPF app` `success` nos dois; `run: success`. No braço Linux corre também `JS decisions (jsdom)`, 11/11)*

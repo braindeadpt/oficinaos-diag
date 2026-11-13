@@ -43,6 +43,15 @@ public sealed class TestServer : IDisposable
     /// <summary>Results posted back by the on-device test page.</summary>
     public event Action<Dictionary<string, JsonElement>>? ResultReceived;
 
+    private int _responsesSent;
+
+    /// <summary>
+    /// Quantas respostas HTTP já saíram. O cliente não consegue distinguir
+    /// «o servidor fechou sem escrever» de «escreveu e cortou» quando o fecho
+    /// chega como reset (Windows) — o contador distingue.
+    /// </summary>
+    internal int ResponsesSent => Volatile.Read(ref _responsesSent);
+
     /// <summary>
     /// True quando não havia IP de LAN e o servidor ficou em loopback — a UI
     /// avisa que o QR não vai abrir no telemóvel.
@@ -356,8 +365,9 @@ public sealed class TestServer : IDisposable
         && data.TryGetValue("touchTotal", out var tt) && tt.ValueKind == JsonValueKind.Number
         && data.TryGetValue("colorsViewed", out var cv) && cv.ValueKind == JsonValueKind.Number;
 
-    private static void Respond(NetworkStream stream, string status, string body, string contentType)
+    private void Respond(NetworkStream stream, string status, string body, string contentType)
     {
+        Interlocked.Increment(ref _responsesSent);
         var payload = Encoding.UTF8.GetBytes(body);
         var header = Encoding.ASCII.GetBytes(
             $"HTTP/1.1 {status}\r\nContent-Type: {contentType}\r\nContent-Length: {payload.Length}\r\nConnection: close\r\n\r\n");
