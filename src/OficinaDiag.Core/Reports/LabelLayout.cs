@@ -14,11 +14,9 @@ public readonly record struct LabelLayout(bool Rotate, double Scale)
     public const double LabelHeight = 150.0;
 
     /// <summary>
-    /// Roda a etiqueta em rolos verticais estreitos (área útil mais alta que
-    /// larga e mais estreita que a etiqueta) para o lado comprido seguir o
-    /// rolo, e escala-a para caber inteira. Em A4, cuja largura excede a
-    /// etiqueta, não roda e fica no tamanho físico.
-    /// Área inválida (0, NaN, infinita) → sem transformação.
+    /// Roda a etiqueta em rolos verticais estreitos (mais altos que largos e
+    /// mais estreitos que a etiqueta) e escala-a para caber inteira; em A4
+    /// não roda. Área inválida (0, NaN, infinita) → sem transformação.
     /// </summary>
     public static LabelLayout Fit(double printableWidth, double printableHeight)
     {

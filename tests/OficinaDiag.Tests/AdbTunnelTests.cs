@@ -22,7 +22,6 @@ public class AdbTunnelTests
 
         Assert.Equal(new[] { "R58M12345 reverse --remove tcp:8801" }, calls);
         Assert.Empty(warnings);
-        Assert.False(tunnel.IsMounted);
     }
 
     [Fact]
@@ -47,7 +46,6 @@ public class AdbTunnelTests
         // activo é global e outros testes podem tê-lo trocado)
         Assert.Contains("tcp:8801", aviso);
         Assert.Contains("adb reverse --list", aviso);
-        Assert.False(tunnel.IsMounted);
     }
 
     [Fact]
@@ -83,7 +81,6 @@ public class AdbTunnelTests
         Assert.True(inicio.Elapsed < TimeSpan.FromSeconds(3), $"demorou {inicio.Elapsed}");
         var aviso = Assert.Single(warnings);
         Assert.Contains("tcp:8803", aviso);
-        Assert.False(tunnel.IsMounted);
     }
 
     [Fact]
@@ -101,7 +98,6 @@ public class AdbTunnelTests
 
         var aviso = Assert.Single(warnings);
         Assert.Contains("tcp:8804", aviso);
-        Assert.False(tunnel.IsMounted);
     }
 
     [Fact]

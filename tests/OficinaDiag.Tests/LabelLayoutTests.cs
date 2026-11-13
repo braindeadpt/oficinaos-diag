@@ -47,24 +47,15 @@ public class LabelLayoutTests
         Assert.Equal(0.8, l.Scale, 3); // 120 / 150
     }
 
-    [Fact]
-    public void RoloHorizontalEncolheSemRodar()
+    [Theory]
+    [InlineData(215, 121, 0.7679)] // Dymo 57×32 mm: mais largo que alto
+    [InlineData(189, 113, 0.6750)] // Zebra 50×30 mm
+    public void RoloHorizontalEncolhePelaLarguraSemRodar(double w, double h, double scale)
     {
-        // Dymo 57×32 mm: 215 DIP de largura, 121 de altura — mais largo que alto.
-        var l = LabelLayout.Fit(215, 121);
+        var l = LabelLayout.Fit(w, h);
 
         Assert.False(l.Rotate);
-        Assert.Equal(215.0 / 280.0, l.Scale, 3);
-    }
-
-    [Fact]
-    public void ZebraPequenaEncolheSemRodar()
-    {
-        // Zebra 50×30 mm: 189×113 DIP.
-        var l = LabelLayout.Fit(189, 113);
-
-        Assert.False(l.Rotate);
-        Assert.Equal(189.0 / 280.0, l.Scale, 3);
+        Assert.Equal(scale, l.Scale, 3);
     }
 
     [Fact]

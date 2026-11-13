@@ -156,10 +156,6 @@ public partial class MainWindow : Window
         catch { return false; }
     }
 
-    /// <summary>Remove o túnel USB — tem de correr mesmo que o teste seja cancelado.</summary>
-    private async Task ClearReverseAsync() =>
-        await _tunnel.ClearAsync().ConfigureAwait(false);
-
     /// <summary>
     /// Aviso do AdbTunnel quando o remove falha: o túnel pode continuar
     /// montado e o telefone fica a chegar a 127.0.0.1 sem ninguém à escuta.
@@ -508,7 +504,7 @@ public partial class MainWindow : Window
     {
         try
         {
-            await ClearReverseAsync(); // túnel da sessão anterior não fica pendurado
+            await _tunnel.ClearAsync(); // túnel da sessão anterior não fica pendurado
             _testServer?.Dispose(); // sessão anterior abandonada — liberta a porta
             var server = _testServer = new TestServer();
             if (!server.Start())
@@ -617,7 +613,7 @@ public partial class MainWindow : Window
                 }
                 Log(L10n.T("log.test.received"));
                 ApplyGrade();
-                await ClearReverseAsync(); // o telefone não precisa mais do túnel
+                await _tunnel.ClearAsync(); // o telefone não precisa mais do túnel
                 server.Dispose();
                 if (ReferenceEquals(_testServer, server)) _testServer = null;
             });

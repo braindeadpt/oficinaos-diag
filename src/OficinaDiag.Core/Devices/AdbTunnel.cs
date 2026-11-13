@@ -2,9 +2,8 @@ namespace OficinaDiag.Devices;
 
 /// <summary>
 /// Túnel `adb reverse` do teste on-device: guarda o que está montado e
-/// remove-o uma única vez. O remove pode falhar (adb morto, telefone
-/// desligado) e um túnel que fica montado no telefone aponta para uma
-/// porta sem ninguém à escuta — por isso o falhanço avisa pelo log.
+/// remove-o uma única vez. Se o remove falhar, avisa — um túnel órfão no
+/// telefone aponta para uma porta sem ninguém à escuta.
 /// </summary>
 public sealed class AdbTunnel
 {
@@ -28,9 +27,6 @@ public sealed class AdbTunnel
             throw new ArgumentOutOfRangeException(nameof(timeout));
     }
 
-    /// <summary>Há um túnel registado para remover.</summary>
-    public bool IsMounted => _active is not null;
-
     public void Mount(string serial, int port) => _active = (serial, port);
 
     /// <summary>
@@ -44,22 +40,17 @@ public sealed class AdbTunnel
         // Limpa antes do await: duas chamadas concorrentes não removem
         // (nem avisam) duas vezes o mesmo túnel.
         _active = null;
-        bool ok;
+        var ok = false;
         try
         {
             // Um adb pendurado (a esperar resposta do telefone) não pode
-            // deixar a limpeza sem fim nem o aviso por registar.
+            // deixar a limpeza sem fim nem o aviso por registar. Timeout ou
+            // excepção do adb são falha de limpeza: o túnel pode ter ficado.
             ok = await _adb(tunnel.Serial, $"reverse --remove tcp:{tunnel.Port}")
                 .WaitAsync(_timeout)
                 .ConfigureAwait(false);
         }
-        catch (Exception)
-        {
-            // Timeout, adb que morreu a meio ou delegate que lançou: para
-            // efeitos de limpeza é tudo falha — o túnel pode ter ficado
-            // montado, por isso não se sai daqui em silêncio.
-            ok = false;
-        }
+        catch (Exception) { }
         if (!ok) _warn(L10n.F("log.test.reverse.fail", tunnel.Port));
         return ok;
     }
