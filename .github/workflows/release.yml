@@ -58,7 +58,7 @@ jobs:
         run: >-
           $zip = "oficinaos-diag-v$($env:VERSION.TrimStart('v'))-win-x64.zip";
           if (-not (Test-Path $zip)) { throw "Pacote em falta: $zip não existe" }
-          try { Expand-Archive $zip -DestinationPath pkg-check -ErrorAction Stop }
+          try { Expand-Archive $zip -DestinationPath pkg-check -Force -ErrorAction Stop }
           catch { throw "Pacote ilegível: $zip não abre (corrompido ou truncado)" }
           foreach ($f in 'OficinaDiag.exe','tools/platform-tools/adb.exe','Data/models.json','Tests/wwwroot/device-test.html') {
             if (-not (Test-Path (Join-Path 'pkg-check' $f))) { throw "Pacote incompleto: falta $f no zip" }

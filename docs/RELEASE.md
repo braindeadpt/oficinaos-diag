@@ -35,9 +35,10 @@ git tag v0.4.0 && git push --tags
 ```
 
 1. O `release.yml` corre testes, faz publish self-contained, empacota
-   `oficinaos-diag-v<versão>-win-x64.zip`, escreve `SHA256SUMS.txt`
-   (`version` + `commit` + hash) e cria uma **release draft** no GitHub.
-   Drafts são invisíveis para `releases/latest` — o updater ignora-as.
+   `oficinaos-diag-v<versão>-win-x64.zip`, **confere o conteúdo do zip**
+   (ver abaixo), escreve `SHA256SUMS.txt` (`version` + `commit` + hash) e
+   cria uma **release draft** no GitHub. Drafts são invisíveis para
+   `releases/latest` — o updater ignora-as.
 2. Na máquina do dono (pwsh 7+, `gh` autenticado):
 
    ```powershell
@@ -58,6 +59,40 @@ git tag v0.4.0 && git push --tags
 3. O updater nos PCs vê a release publicada, valida a assinatura contra a
    chave pública embutida, exige `version == tag` e `> versão local`, e só
    então confia no hash e descarrega o zip.
+
+## Verificação do conteúdo do pacote
+
+O passo `Verify package contents` do workflow corre **depois** do
+empacotamento e **antes** do checksum e do draft. Abre o zip e falha o job
+com uma de três mensagens:
+
+| Mensagem | Quando |
+|---|---|
+| `Pacote em falta: <zip> não existe` | o `Compress-Archive` não produziu o ficheiro esperado |
+| `Pacote ilegível: <zip> não abre (corrompido ou truncado)` | `Expand-Archive` falhou (zip truncado, disco cheio, upload cortado) |
+| `Pacote incompleto: falta <caminho> no zip` | falta um dos ficheiros que a app precisa em runtime |
+
+Os caminhos exigidos: `OficinaDiag.exe`, `tools/platform-tools/adb.exe`
+(sem ele o teste on-device e o `adb reverse` não arrancam),
+`Data/models.json` (nomes de modelo) e `Tests/wwwroot/device-test.html`
+(página do teste). Um zip sem qualquer deles é inútil mesmo que o updater
+o aceite — por isso a falha é antes do draft, e não uma release a ser
+assinada por engano.
+
+Para reproduzir localmente (pwsh 7, na raiz do repo), com o zip já em
+`out/`:
+
+```powershell
+$zip = "oficinaos-diag-v0.4.0-win-x64.zip"
+Expand-Archive $zip -DestinationPath pkg-check -Force
+foreach ($f in 'OficinaDiag.exe','tools/platform-tools/adb.exe','Data/models.json','Tests/wwwroot/device-test.html') {
+  if (-not (Test-Path (Join-Path 'pkg-check' $f))) { throw "falta $f" }
+}
+```
+
+O `tools/fetch-tools.ps1` corre antes do publish no CI; localmente, sem
+ele, o `platform-tools` não existe e a verificação acusa — é o
+comportamento correto, não um falso positivo.
 
 ## Recuperação (PC novo / máquina substituída)
 
