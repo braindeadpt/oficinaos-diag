@@ -122,6 +122,38 @@ public sealed class CloudClientRetryTests
     }
 
     [Fact]
+    public async Task QuatroXX_NaoRepete()
+    {
+        var handler = new Guiao(HttpStatusCode.BadRequest);
+        var esperas = 0;
+        var cloud = Cliente(handler, onRetry: () => esperas++);
+
+        var (ok, msg) = await cloud.SendLogAsync("linha de log", "1.0.0", null);
+
+        // 400 é definitivo (pedido mal formado/loja errada): repetir dá o mesmo.
+        Assert.False(ok);
+        Assert.Equal(L10n.F("cloud.status", 400, "indisponivel"), msg);
+        Assert.Equal(1, handler.Pedidos);
+        Assert.Equal(0, esperas);
+    }
+
+    [Fact]
+    public async Task SegundoCincoXX_NoCaminhoIdempotente_Desiste()
+    {
+        var handler = new Guiao(HttpStatusCode.ServiceUnavailable);
+        var esperas = 0;
+        var cloud = Cliente(handler, onRetry: () => esperas++);
+
+        var (ok, msg) = await cloud.SendLogAsync("linha de log", "1.0.0", null);
+
+        // Uma repetição, não um ciclo: dois 503 seguidos devolvem o erro.
+        Assert.False(ok);
+        Assert.Equal(L10n.F("cloud.status", 503, "indisponivel"), msg);
+        Assert.Equal(2, handler.Pedidos);
+        Assert.Equal(1, esperas);
+    }
+
+    [Fact]
     public async Task CincoXX_NaIa_NaoRepeteEDevolveOErro()
     {
         var handler = new Guiao(HttpStatusCode.ServiceUnavailable);
@@ -132,7 +164,7 @@ public sealed class CloudClientRetryTests
 
         Assert.False(ok);
         // O 5xx pode vir depois da geração: repetir podia pagar duas vezes.
-        Assert.StartsWith("503", err);
+        Assert.Equal("503 — indisponivel", err);
         Assert.Equal(1, handler.Pedidos);
         Assert.Equal(0, esperas);
     }
