@@ -17,6 +17,11 @@
     <Company>Oficina de Sistemas</Company>
   </PropertyGroup>
 
+  <!-- Release: símbolos embutidos, sem .pdb a acompanhar o Core publicado. -->
+  <PropertyGroup Condition="'$(Configuration)' == 'Release'">
+    <DebugType>embedded</DebugType>
+  </PropertyGroup>
+
   <ItemGroup>
     <PackageReference Include="iMobileDevice-net" Version="1.3.17" />
     <PackageReference Include="Markdig" Version="1.4.0" />

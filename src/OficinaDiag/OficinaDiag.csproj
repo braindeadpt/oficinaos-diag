@@ -16,6 +16,13 @@
     <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
   </PropertyGroup>
 
+  <!-- Release: símbolos embutidos no assembly. Sem .pdb solto no pacote
+       (não serve ao cliente e expõe caminhos de build) sem perder linhas
+       de stack trace; o bin local também deixa de os produzir. -->
+  <PropertyGroup Condition="'$(Configuration)' == 'Release'">
+    <DebugType>embedded</DebugType>
+  </PropertyGroup>
+
   <ItemGroup>
     <ProjectReference Include="..\OficinaDiag.Core\OficinaDiag.Core.csproj" />
   </ItemGroup>
