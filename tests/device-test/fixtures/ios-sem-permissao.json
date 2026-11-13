@@ -8,8 +8,7 @@
   "maxTouchPoints": 0,
   "sensors": {
     "mic": "skip",
-    "light": "unavailable",
-    "multitouch": "no-data"
+    "light": "unavailable"
   },
   "vibrate": null,
   "speaker": null,

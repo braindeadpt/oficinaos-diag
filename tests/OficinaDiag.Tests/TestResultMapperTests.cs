@@ -59,7 +59,7 @@ public sealed class TestResultMapperTests
         Assert.False(r.Results.ContainsKey("sensor.orient"));
         Assert.Equal("skipped", r.Results["sensor.light"].Status);
         Assert.Equal("skipped", r.Results["sensor.mic"].Status);
-        // O `sensors.multitouch` do payload não é mapeado: a linha
+        // O payload já não traz `sensors.multitouch` (era ignorado): a linha
         // `sensor.multitouch` vem do `multiTouch` no topo, que aqui é 0.
         Assert.False(r.Results.ContainsKey("sensor.multitouch"));
         Assert.Equal("pass", r.Results["test.screen"].Status);

@@ -168,7 +168,9 @@ test('página: resultado entregue leva as decisões (mic skip sem https, multi-t
     assert.equal(p.touchHit, 0);
     assert.equal(p.multiTouch, 0);
     assert.equal(p.sensors.mic, 'skip');
-    assert.equal(p.sensors.multitouch, 'no-data');
+    // O multi-toque vai só no `multiTouch` do topo: o mapper lê dali, e um
+    // `sensors.multitouch` era dado morto. Fixado pelo fixture partilhado.
+    assert.ok(!('multitouch' in p.sensors));
     assert.equal(p.maxTouchPoints, 0);
   } finally {
     dom.window.close();

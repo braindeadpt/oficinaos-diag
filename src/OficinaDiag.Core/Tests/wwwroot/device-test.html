@@ -249,9 +249,11 @@ function startSensors(){
 
 
 
+  // Só o rótulo: o resultado vai no `multiTouch` do topo, que é o que o
+  // TestResultMapper lê para `sensor.multitouch`. Um `sensors.multitouch`
+  // aqui era dado morto que ninguém consumia.
   const mt = result.multiTouch;
   setSt('s-touch', D.multiTouchLabel(mt), D.multiTouchStatus(mt)===D.SENSOR_OK?'ok':'warn');
-  result.sensors.multitouch = D.multiTouchStatus(mt);
 
   if(navigator.getBattery){
     navigator.getBattery().then(b=>{
