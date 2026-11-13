@@ -70,12 +70,12 @@ mensagens:
 |---|---|
 | `Pacote em falta: <zip> não existe` | o `Compress-Archive` não produziu o ficheiro |
 | `Pacote ilegível: <zip> não abre (corrompido ou truncado)` | zip truncado, corrompido ou cortado a meio |
-| `Pacote incompleto: falta <caminhos> no zip` | falta a app (`OficinaDiag.exe`), o `adb` (`tools/platform-tools/adb.exe`), os nomes de modelo (`Data/models.json`) ou a página do teste (`Tests/wwwroot/device-test.html`) — lista todos os que faltarem |
+| `Pacote incompleto: falta <caminhos> no zip` | falta o exe, o `adb`, o `models.json` ou a página do teste (lista todos os que faltarem) |
 
-Sem esses ficheiros o pacote é inútil mesmo que o updater o aceite, por
-isso a falha acontece antes de haver algo para assinar. O
-`tools/fetch-tools.ps1` corre antes do publish no CI; localmente, sem ele,
-a verificação acusa — é o comportamento correto, não um falso positivo.
+Um pacote sem qualquer um deles é inútil mesmo que o updater o aceite, por
+isso a falha é antes de haver algo para assinar. O `tools/fetch-tools.ps1`
+corre antes do publish no CI; sem ele, localmente a verificação acusa — é o
+comportamento correto, não um falso positivo.
 
 ## Recuperação (PC novo / máquina substituída)
 
