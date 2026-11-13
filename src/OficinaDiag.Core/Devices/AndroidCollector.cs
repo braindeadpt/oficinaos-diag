@@ -152,12 +152,8 @@ public sealed class AndroidCollector
         // Bootloader / tamper indicators
         var vbState = await PropAsync(serial, "ro.boot.verifiedbootstate");
         var buildTags = await PropAsync(serial, "ro.build.tags");
-        r.Set("security.bootloader",
-            vbState is null ? "skipped" : vbState == "green" ? "pass" : "warn",
-            vbState ?? "prop ausente",
-            vbState is null
-                ? "ro.boot.verifiedbootstate não exposto neste Android — não verificável"
-                : "Bootloader verification state (green = stock, locked)");
+        var bootloader = AndroidDecisions.Bootloader(vbState);
+        r.Set("security.bootloader", bootloader.Status, bootloader.Value, bootloader.Note);
         if (buildTags?.Contains("test-keys") == true)
             r.Set("security.build", "warn", buildTags, "Test-keys build — software modificado");
         else
@@ -199,12 +195,8 @@ public sealed class AndroidCollector
             // "Device Owner Type: -1" é o dump de um Android SEM gestão: a
             // substring "Device Owner" dava falso positivo e, como security.mdm
             // está nos HardLocks do Grader, capava o grau em D.
-            var hasOwner = AdbParsing.HasDeviceOwner(policy);
-            r.Set("security.mdm", hasOwner ? "warn" : "pass",
-                hasOwner ? "gestão remota ativa" : "sem gestão remota",
-                hasOwner
-                    ? "device/profile owner definido — pode estar bloqueado a empresa ou contrato de leasing"
-                    : null);
+            var mdm = AndroidDecisions.Mdm(AdbParsing.HasDeviceOwner(policy));
+            r.Set("security.mdm", mdm.Status, mdm.Value, mdm.Note);
         }
 
         // Knox / warranty bit + OEM unlock — o que o fabricante usa para
@@ -305,10 +297,9 @@ public sealed class AndroidCollector
     private async Task CollectBatteryAsync(DeviceReport r, string serial)
     {
         var batt = await AdbAsync(serial, "shell dumpsys battery");
-        if (AdbParsing.ParsePresent(batt) == false)
+        if (AndroidDecisions.BatteryPresence(AdbParsing.ParsePresent(batt)) is { } absent)
         {
-            r.Set("battery.present", "skipped", "sem bateria exposta",
-                "dumpsys battery reporta present=false — nível, temperatura e tensão não são medíveis aqui");
+            r.Set("battery.present", absent.Status, absent.Value, absent.Note);
             return;
         }
 
@@ -405,10 +396,8 @@ public sealed class AndroidCollector
         // Samsung OneUI sem charge_full no sysfs: mSavedBatteryAsoc é a saúde
         // calculada pelo fuel gauge (86 = 86%) — melhor que nada.
         if (!r.Results.ContainsKey("battery.capacity")
-            && AdbParsing.ParseSavedAsoc(batt) is { } asoc)
-            r.Set("battery.capacity", asoc >= 80 ? "pass" : asoc >= 60 ? "warn" : "fail",
-                $"{asoc}%",
-                "saúde calculada pelo fuel gauge OneUI (mSavedBatteryAsoc) — kernel sem charge_full");
+            && AndroidDecisions.CapacityFromSavedAsoc(AdbParsing.ParseSavedAsoc(batt)) is { } saved)
+            r.Set("battery.capacity", saved.Status, saved.Value, saved.Note);
 
         // Capacidade aprendida pelo Android (batterystats) — fallback quando o
         // fabricante não expõe charge_full. O 1000 mAh que o Android estima
