@@ -1,7 +1,9 @@
 name: ci
 
-# O projeto de testes é net8.0 puro (liga os ficheiros sem UI) — corre em
-# Linux, não precisa do runner Windows nem das platform-tools.
+# O projeto de testes é net8.0 puro (liga os ficheiros sem UI), por isso a
+# suite corre em Linux. O job `windows` existe para o que só se prova lá — o
+# kill de árvore de processos usa Job Objects, não o kill em grupo do Unix —
+# e para o WPF compilar sem targeting pack emprestado.
 on:
   push:
     branches: ["main"]
@@ -20,8 +22,26 @@ jobs:
       - name: Test
         run: dotnet test tests/OficinaDiag.Tests -c Release
 
-  # A app é WPF (net8.0-windows), mas compila em Linux com o targeting pack:
-  # apanha XAML/using partidos sem gastar minutos de runner Windows.
+  # O mesmo par suite + WPF no sistema onde a app corre. Sem
+  # `EnableWindowsTargeting`: no runner Windows o targeting pack é nativo.
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: "8.0.x"
+
+      - name: Test
+        run: dotnet test tests/OficinaDiag.Tests -c Release
+
+      - name: Build WPF app
+        run: dotnet build src/OficinaDiag/OficinaDiag.csproj -c Release
+
+  # O atalho barato: a app é WPF (net8.0-windows), mas compila em Linux com o
+  # targeting pack, e apanha XAML/using partidos sem gastar minutos de runner
+  # Windows.
   build-wpf:
     runs-on: ubuntu-latest
     steps:

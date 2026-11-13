@@ -24,7 +24,7 @@ public class ToolProcessTests
             ? ("cmd.exe", "/c echo ok")
             : ("/bin/echo", "ok");
 
-        Assert.Equal("ok\n".Replace("\n", Environment.NewLine), ToolProcess.Run(exe, args, 5000));
+        Assert.Equal("ok", ToolProcess.Run(exe, args, 5000)?.TrimEnd('\r', '\n'));
     }
 
     [Fact]
@@ -106,7 +106,7 @@ public class ToolProcessTests
             var ps1 = Path.Combine(dir.FullName, "spawn.ps1");
             File.WriteAllText(ps1, $"""
                 $p = Start-Process -FilePath cmd.exe -ArgumentList '/c','ping -n 60 127.0.0.1 >NUL' -PassThru -WindowStyle Hidden
-                Set-Content -Path '{pidFile}' -Value $p.Id
+                Set-Content -Path '{pidFile.Replace("'", "''")}' -Value $p.Id
                 Wait-Process -Id $p.Id
                 """);
             return ("powershell.exe", $"-NoProfile -ExecutionPolicy Bypass -File \"{ps1}\"");
