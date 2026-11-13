@@ -29,18 +29,22 @@ internal static class IosDecisions
 
     /// <summary>
     /// Temperatura em °C: `&gt;150` é a escala antiga em centésimos, e `0` é
-    /// ausência de leitura (o `DeadBatteryBootData`), nunca 0 °C.
+    /// ausência de leitura (o `DeadBatteryBootData`), nunca 0 °C. Valores
+    /// negativos são medições reais (bancada ao frio) e mantêm-se.
     /// </summary>
     internal static double? Celsius(double? raw)
     {
         if (raw is not { } t)
             return null;
         if (t > 150) t /= 100;
-        return t > 0 ? t : null;
+        return t == 0 ? null : t;
     }
 
-    /// <summary>Temperatura para o relatório, ou `null` quando não há leitura.</summary>
-    internal static Reading? Temperature(double? raw) => Celsius(raw) is { } t
+    /// <summary>
+    /// Temperatura para o relatório: só medições positivas — o relatório do
+    /// cliente não ganhou linha com temperaturas abaixo de zero.
+    /// </summary>
+    internal static Reading? Temperature(double? raw) => Celsius(raw) is { } t && t > 0
         ? new Reading(t > 40 ? "warn" : "info", $"{t:0.#} °C",
             t > 40 ? "quente — afeta a saúde a longo prazo" : null)
         : null;

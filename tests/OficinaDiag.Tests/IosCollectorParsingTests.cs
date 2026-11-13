@@ -144,6 +144,16 @@ public sealed class IosCollectorParsingTests
     }
 
     [Fact]
+    public void TemperaturaNegativaEContinuaAMedicao()
+    {
+        // Bancada ao frio: -5 °C é leitura, não ausência. Antes da extração o
+        // `0` era o único valor descartado; o relatório só escreve acima de 0.
+        Assert.Equal(-5, IosDecisions.Celsius(-5));
+        Assert.Null(IosDecisions.Temperature(-5));
+        Assert.NotNull(IosDecisions.Temperature(31.5));
+    }
+
+    [Fact]
     public void FixtureRealDoIphone13_3_CapacidadeE100PorCento()
     {
         var io = Fixture();
