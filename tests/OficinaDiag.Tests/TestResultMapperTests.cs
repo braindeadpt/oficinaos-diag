@@ -18,6 +18,22 @@ public sealed class TestResultMapperTests
     private static Dictionary<string, JsonElement> Json(string json) =>
         JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(json)!;
 
+    /// <summary>
+    /// Payload partilhado com o teste jsdom (mesmo ficheiro, mesmos valores):
+    /// o jsdom prova que a página o produz e este teste prova o que o
+    /// mapeador faz com ele. Um literal copiado à mão divergia em silêncio.
+    /// </summary>
+    private static string Fixture(string nome)
+    {
+        var dir = new DirectoryInfo(AppContext.BaseDirectory);
+        for (var i = 0; i < 10 && dir is not null; i++, dir = dir.Parent)
+        {
+            var caminho = Path.Combine(dir.FullName, "tests", "device-test", "fixtures", nome);
+            if (File.Exists(caminho)) return File.ReadAllText(caminho);
+        }
+        throw new FileNotFoundException($"fixture '{nome}' não encontrada a partir de {AppContext.BaseDirectory}");
+    }
+
     private static DeviceReport Map(string json)
     {
         var r = new DeviceReport { Platform = "ios" };
@@ -41,16 +57,10 @@ public sealed class TestResultMapperTests
     [Fact]
     public void PayloadDeIphoneSemPermissaoSoTemAsLinhasMedidas()
     {
-        // Cópia do payload que o teste jsdom
-        // (`iPhone sem permissão de movimento entrega payload sem
-        // accel/gyro/orient`) captura da página real: sem gesto de permissão,
-        // nem accel nem gyro nem orient vêm, e o relatório não inventa linhas.
-        var r = Map("""
-            {"colorsViewed":13,"touchTotal":60,"touchHit":0,"edgeTotal":28,"edgeHit":0,
-             "multiTouch":0,"maxTouchPoints":5,"userAgent":"iPhone",
-             "sensors":{"light":"unavailable","multitouch":"no-data","mic":"skip"},
-             "vibrate":null,"speaker":null,"batteryApi":null}
-            """);
+        // Fixture partilhado com o jsdom (`iPhone sem permissão de movimento
+        // entrega payload sem accel/gyro/orient`): sem gesto de permissão, nem
+        // accel nem gyro nem orient vêm, e o relatório não inventa linhas.
+        var r = Map(Fixture("ios-sem-permissao.json"));
 
         Assert.False(r.Results.ContainsKey("sensor.accel"));
         Assert.False(r.Results.ContainsKey("sensor.gyro"));

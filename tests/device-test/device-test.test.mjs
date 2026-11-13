@@ -14,6 +14,14 @@ const pagePath = path.join(wwwroot, 'device-test.html');
 
 const D = createRequire(import.meta.url)(decisionsPath);
 
+/**
+ * Payload de referência do iPhone sem permissão de movimento. O mesmo ficheiro
+ * é lido pelo TestResultMapperTests (C#): se a página mudar o que envia ou o
+ * mapeador mudar o que espera, os dois lados veem a mesma verdade.
+ */
+const fixtureSemPermissao = JSON.parse(
+  readFileSync(path.join(here, 'fixtures', 'ios-sem-permissao.json'), 'utf8'));
+
 /** A página real, com as decisões injetadas tal como o TestServer as serve. */
 function openPage({ secureContext = false, deviceMotionPermission = false } = {}) {
   const html = readFileSync(pagePath, 'utf8');
@@ -227,15 +235,20 @@ test('página: iPhone sem permissão de movimento entrega payload sem accel/gyro
     await new Promise((r) => setTimeout(r, 0));
 
     assert.equal(chamadas.length, 1);
-    const sensors = chamadas[0].sensors;
+    const payload = chamadas[0];
+    const sensors = payload.sensors;
+
     // O contrato do TestResultMapper: chave ausente não vira linha no
     // relatório (nem "sem leitura"); só o que foi mesmo medido vem.
     assert.ok(!('accel' in sensors), `veio accel=${sensors.accel}`);
     assert.ok(!('gyro' in sensors), `veio gyro=${sensors.gyro}`);
     assert.ok(!('orient' in sensors), `veio orient=${sensors.orient}`);
-    assert.equal(sensors.light, 'unavailable'); // medido: browser não expõe
-    assert.equal(sensors.mic, 'skip');         // HTTP LAN, não é hardware
-    assert.equal(sensors.multitouch, 'no-data');
+
+    // E o payload inteiro é o fixture partilhado (menos o userAgent, que
+    // carrega a versão do jsdom e o sistema onde os testes correm).
+    const { userAgent, ...estavel } = payload;
+    assert.equal(typeof userAgent, 'string');
+    assert.deepEqual(estavel, fixtureSemPermissao);
   } finally {
     dom.window.close();
   }

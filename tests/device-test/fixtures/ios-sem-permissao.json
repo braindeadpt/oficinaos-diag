@@ -1,0 +1,17 @@
+{
+  "colorsViewed": 13,
+  "touchTotal": 60,
+  "touchHit": 0,
+  "edgeTotal": 28,
+  "edgeHit": 0,
+  "multiTouch": 0,
+  "maxTouchPoints": 0,
+  "sensors": {
+    "mic": "skip",
+    "light": "unavailable",
+    "multitouch": "no-data"
+  },
+  "vibrate": null,
+  "speaker": null,
+  "batteryApi": null
+}
