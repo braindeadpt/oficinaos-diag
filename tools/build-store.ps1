@@ -26,7 +26,17 @@ if ((Get-Content $manifest -Raw) -match "REPLACE_") {
 # O Content do csproj tem Condition="Exists('..\..\tools\platform-tools')" —
 # sem esta guarda o publish omitia o adb em silêncio e o MSIX saía sem
 # suporte Android, sem erro nenhum até um cliente tentar ligar um telefone.
-$adb = Join-Path $root "tools\platform-tools\adb.exe"
+# O caminho vem de tools/package-files.txt (a lista que o release.yml
+# verifica e que o PackagePaths espelha no código), para não haver aqui uma
+# terceira cópia a divergir.
+$listFile = Join-Path $root "tools\package-files.txt"
+if (-not (Test-Path $listFile)) {
+    throw "tools\package-files.txt em falta — é a fonte do caminho do adb."
+}
+$adbEntry = Get-Content $listFile | ForEach-Object { $_.Trim() } |
+    Where-Object { $_ -like "*/adb.exe" } | Select-Object -First 1
+if (-not $adbEntry) { throw "tools\package-files.txt não tem entrada adb.exe." }
+$adb = Join-Path $root ($adbEntry -replace '/', '\')
 if (-not (Test-Path $adb)) {
     throw "platform-tools em falta — corre .\tools\fetch-tools.ps1 antes de empacotar para a Store."
 }
