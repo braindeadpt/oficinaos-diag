@@ -51,17 +51,12 @@ jobs:
       - name: Verify package contains adb
         shell: pwsh
         # O zip é o que o cliente recebe: sem tools/platform-tools o diag fica
-        # sem adb e o teste on-device não arranca. Falha aqui, antes do draft,
-        # em vez de publicar um pacote incompleto em silêncio.
+        # sem adb e o teste on-device não arranca. Falha aqui, antes do draft.
         run: >-
-          Add-Type -AssemblyName System.IO.Compression.FileSystem;
-          $zip = (Resolve-Path "oficinaos-diag-v$($env:VERSION.TrimStart('v'))-win-x64.zip").Path;
-          $archive = [System.IO.Compression.ZipFile]::OpenRead($zip);
-          try {
-            $entry = $archive.Entries | Where-Object { $_.FullName -eq 'tools/platform-tools/adb.exe' };
-            if (-not $entry) { throw "Pacote incompleto: $zip não contém tools/platform-tools/adb.exe" }
-            Write-Host "adb.exe confirmado no pacote: $($entry.Length) bytes"
-          } finally { $archive.Dispose() }
+          Expand-Archive "oficinaos-diag-v$($env:VERSION.TrimStart('v'))-win-x64.zip" -DestinationPath pkg-check;
+          if (-not (Test-Path "pkg-check/tools/platform-tools/adb.exe")) {
+            throw "Pacote incompleto: falta tools/platform-tools/adb.exe no zip"
+          }
         env:
           VERSION: ${{ github.ref_name }}
 
