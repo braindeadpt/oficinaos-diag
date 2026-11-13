@@ -44,17 +44,16 @@ function advanceToSensors(dom) {
   return doc;
 }
 
-test('cores: 13, cinzentos pelo padrão antigo e tinta legível em fundo escuro', () => {
+test('cores: 13, cinzentos reconhecidos e tinta legível em fundo escuro', () => {
   assert.equal(D.COLORS.length, 13);
   assert.deepEqual(D.COLORS.slice(0, 4), ['#f00', '#0f0', '#00f', '#fff']);
   assert.deepEqual(D.COLORS.slice(8), ['#222', '#555', '#888', '#bbb', '#eee']);
 
-  // Bug conhecido preservado: o padrão espera dois dígitos (#22) e a página
-  // pinta três (#222), por isso os cinzentos nunca são reconhecidos e a
-  // mensagem de burn-in não aparece. Enquanto a página não for corrigida, o
-  // teste fixa esse comportamento em vez de o esconder.
-  for (const cinzento of D.COLORS.slice(8)) assert.equal(D.isGrey(cinzento), false, cinzento);
-  assert.equal(D.isGrey('#22'), true);
+  // Regressão: o padrão antigo esperava dois dígitos (#22) e a página pinta
+  // três (#222) — nenhum cinzento era reconhecido e a mensagem de burn-in
+  // nunca aparecia.
+  for (const cinzento of D.COLORS.slice(8)) assert.equal(D.isGrey(cinzento), true, cinzento);
+  assert.equal(D.isGrey('#22'), false);
   for (const cor of ['#f00', '#000', '#fff']) assert.equal(D.isGrey(cor), false, cor);
 
   for (const escuro of ['#000', '#222', '#555']) assert.equal(D.stageInk(escuro), '#0f0', escuro);
@@ -110,6 +109,17 @@ test('entrega: 8 tentativas de 1,5 s', () => {
   assert.equal(D.shouldRetryDelivery(1), true);
   assert.equal(D.shouldRetryDelivery(7), true);
   assert.equal(D.shouldRetryDelivery(8), false);
+});
+
+test('página: um cinzento mostra a mensagem de burn-in', () => {
+  const dom = openPage();
+  try {
+    const stage = dom.window.document.getElementById('stage');
+    for (let i = 0; i < 9; i++) stage.onclick(); // índice 8 = #222, o primeiro cinzento
+    assert.match(stage.innerHTML, /burn-in/);
+  } finally {
+    dom.window.close();
+  }
 });
 
 test('página: as 13 cores e um toque viram grelha de 60 zonas com 28 de borda', () => {

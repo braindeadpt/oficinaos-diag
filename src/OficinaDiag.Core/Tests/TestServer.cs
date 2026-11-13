@@ -173,15 +173,18 @@ public sealed class TestServer : IDisposable
 
     private async Task LoopAsync()
     {
-        var page = File.ReadAllText(PagePath);
-        var decisions = File.ReadAllText(DecisionsPath);
+        // As decisões entram na página servida: um único pedido, e a página
+        // não depende de resolver um caminho relativo (que muda quando o
+        // browser corta a barra final do token).
+        var page = InlineDecisions(
+            File.ReadAllText(PagePath), File.ReadAllText(DecisionsPath));
         while (!_cts.IsCancellationRequested && !_done)
         {
             TcpClient client;
             try { client = await _listener.AcceptTcpClientAsync(_cts.Token); }
             catch { break; }
 
-            _ = Task.Run(() => HandleClient(client, page, decisions));
+            _ = Task.Run(() => HandleClient(client, page));
         }
     }
 
@@ -234,7 +237,14 @@ public sealed class TestServer : IDisposable
     // encher a memória (o body ia parar a uma lista sem teto).
     private const int MaxBodyBytes = 256 * 1024;
 
-    private void HandleClient(TcpClient client, string page, string decisions)
+    /// <summary>Marca da página onde o módulo de decisões é injetado.</summary>
+    private const string DecisionsTag = "<script src=\"decisions.js\"></script>";
+
+    /// <summary>Troca o pedido do módulo pelo próprio módulo, inline.</summary>
+    internal static string InlineDecisions(string page, string decisions) =>
+        page.Replace(DecisionsTag, $"<script>\n{decisions}\n</script>");
+
+    private void HandleClient(TcpClient client, string page)
     {
         if (!AllowClient(client)) { try { client.Close(); } catch { } return; }
         try
@@ -325,14 +335,6 @@ public sealed class TestServer : IDisposable
                 else if (method == "GET" && cleanPath == $"/{_token}")
                 {
                     Respond(stream, "200 OK", page, "text/html; charset=utf-8");
-                }
-                // Relativo ao path da página com barra final; o caminho sem
-                // token cobre browsers que cortam a barra (o mesmo motivo que
-                // o TrimEnd('/') acima) — não é segredo, só código.
-                else if (method == "GET"
-                    && (cleanPath == $"/{_token}/decisions.js" || cleanPath == "/decisions.js"))
-                {
-                    Respond(stream, "200 OK", decisions, "text/javascript; charset=utf-8");
                 }
                 else
                 {

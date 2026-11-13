@@ -109,6 +109,44 @@ public sealed class TestServerTests
         Assert.Equal(HttpStatusCode.OK, res.StatusCode);
     }
 
+    [Fact]
+    public async Task APaginaServidaTrazAsDecisoesEmbutidas()
+    {
+        // Um pedido só: o módulo vai dentro do HTML, sem segundo GET nem
+        // caminho relativo que dependa da barra final do token.
+        using var server = new TestServer();
+        Assert.True(server.Start(), "device-test.html/decisions.js não chegaram ao output");
+        var uri = new Uri(server.LanUrl);
+        var token = uri.AbsolutePath.Trim('/');
+        var root = $"{uri.Scheme}://{uri.Authority}";
+        using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(10) };
+
+        var res = await http.GetAsync($"{root}/{token}/");
+        var html = await res.Content.ReadAsStringAsync();
+
+        Assert.Equal(HttpStatusCode.OK, res.StatusCode);
+        // A tag inteira, não o nome: o comentário da página cita-a.
+        Assert.DoesNotContain("<script src=\"decisions.js\"></script>", html);
+        Assert.Contains("DeviceTestDecisions", html);
+        Assert.Contains("advanceAt", html);          // limiar das 55 zonas
+        Assert.Contains("multiTouchStatus", html);   // 5 dedos
+        Assert.Contains("device-test", html);        // a página em si
+
+        // A rota do segundo ficheiro deixou de existir.
+        var js = await http.GetAsync($"{root}/{token}/decisions.js");
+        Assert.Equal(HttpStatusCode.NotFound, js.StatusCode);
+    }
+
+    [Fact]
+    public void InlineDecisionsSubstituiOPedidoDoModulo()
+    {
+        var page = "<html><script src=\"decisions.js\"></script><body>x</body></html>";
+        var out_ = TestServer.InlineDecisions(page, "var DeviceTestDecisions = {};");
+        Assert.DoesNotContain("src=\"decisions.js\"", out_);
+        Assert.Contains("var DeviceTestDecisions = {};", out_);
+        Assert.Contains("<body>x</body>", out_);
+    }
+
     // ── B-10b: paths e headers ─────────────────────────────────────────
 
     [Fact]

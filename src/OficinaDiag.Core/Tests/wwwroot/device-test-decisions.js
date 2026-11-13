@@ -14,12 +14,11 @@
                 '#222', '#555', '#888', '#bbb', '#eee'];
 
   /* Cinzentos: o texto muda para procurar manchas em vez de pixeis mortos.
-   * ATENÇÃO: o padrão compara com DOIS dígitos e as cores de COLORS são
-   * três (#222, #555, …), por isso hoje isto nunca casa e a mensagem de
-   * burn-in não aparece. Extraído tal e qual para não mudar a página; a
-   * correção é uma linha, fica para quando se mexer na página.
+   * Três dígitos, como as cores de COLORS — com o padrão antigo (#22) isto
+   * nunca casava e a mensagem de burn-in não aparecia em #222/#555/#888/
+   * #bbb/#eee.
    */
-  var GREY = /^#(?:22|55|88|bb|ee)$/;
+  var GREY = /^#(?:222|555|888|bbb|eee)$/;
 
   /* Fundos escuros precisam de texto verde; os claros de texto preto. */
   var DARK = { '#000': true, '#222': true, '#555': true };

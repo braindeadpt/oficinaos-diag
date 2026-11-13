@@ -75,7 +75,9 @@
 <script>
 /* Decisões puras (cores, grelha, limiares, estado dos sensores) vivem em
    device-test-decisions.js para poderem ser testadas em jsdom; aqui fica o
-   DOM. Carrega antes deste script — e sozinho não tem como funcionar. */
+   DOM. O TestServer troca a tag <script src="decisions.js"> acima pelo
+   conteúdo do módulo (InlineDecisions), por isso o telefone recebe um só
+   ficheiro. */
 const D = window.DeviceTestDecisions;
 const stage = document.getElementById('stage');
 const grid = document.getElementById('grid');
