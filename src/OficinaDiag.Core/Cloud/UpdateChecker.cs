@@ -53,7 +53,7 @@ public sealed class UpdateChecker
     /// bater com o <c>&lt;AssemblyName&gt;</c> do csproj da app — o
     /// <c>PackageFilesTests</c> falha se divergirem.
     /// </summary>
-    public const string AppExeName = "OficinaDiag.exe";
+    internal const string AppExeName = "OficinaDiag.exe";
 
     /// <summary>
     /// Chave pública EC P-256 (SubjectPublicKeyInfo, base64) que assina o
