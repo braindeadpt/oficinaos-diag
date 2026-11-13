@@ -99,6 +99,10 @@ public partial class SettingsDialog : Window
             SaveBtn.IsEnabled = false;
             var cloud = new CloudClient(_config);
             var (ok, token, shop, err) = await cloud.RedeemPairingAsync(pasted);
+            // A janela pode ter fechado durante o await — o resultado chega
+            // tarde e mostrar MessageBox aqui aparecia fora de contexto,
+            // segundos depois do utilizador ter desistido.
+            if (!IsLoaded) return;
             SaveBtn.IsEnabled = true;
             if (!ok)
             {

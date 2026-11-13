@@ -159,25 +159,7 @@ public sealed class UpdateChecker
             // must not break (or inject into) the staged script.
             var ps1Path = Path.Combine(Path.GetTempPath(), $"oficinaos-diag-update-{info.Tag}.ps1");
             var logPath = Path.Combine(Path.GetTempPath(), "oficinaos-diag-update.log");
-            var exePath = Path.Combine(appDir, "OficinaDiag.exe");
-            var script = string.Join(Environment.NewLine, new[]
-            {
-                "Start-Sleep -Seconds 3",
-                $"$log = '{Psq(logPath)}'",
-                $"\"update {Psq(info.Tag)} @ $(Get-Date -Format o)\" | Out-File $log",
-                $"$exe = '{Psq(exePath)}'",
-                "Copy-Item $exe \"$exe.bak\" -Force -ErrorAction SilentlyContinue",
-                $"tar -xf '{Psq(zipPath)}' -C '{Psq(appDir)}' 2>&1 | Out-File $log -Append",
-                "\"exit=$LASTEXITCODE\" | Out-File $log -Append",
-                "if ($LASTEXITCODE -ne 0) {",
-                "  \"extract failed — restoring previous build\" | Out-File $log -Append",
-                "  Copy-Item \"$exe.bak\" $exe -Force -ErrorAction SilentlyContinue",
-                "}",
-                "Start-Process $exe",
-                "Remove-Item \"$exe.bak\" -ErrorAction SilentlyContinue",
-                $"Remove-Item '{Psq(zipPath)}' -ErrorAction SilentlyContinue",
-                "Remove-Item $MyInvocation.MyCommand.Path -ErrorAction SilentlyContinue",
-            });
+            var script = string.Join(Environment.NewLine, BuildSwapScript(appDir, zipPath, logPath, info.Tag));
             await File.WriteAllTextAsync(ps1Path, script, new System.Text.UTF8Encoding(true));
 
             using var proc = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
@@ -192,6 +174,35 @@ public sealed class UpdateChecker
                 : (true, "A atualizar — a app reinicia já.");
         }
         catch (Exception ex) { return (false, ex.Message); }
+    }
+
+    /// <summary>
+    /// Linhas do script PS que troca o exe pelo conteúdo do zip e relança.
+    /// O tar é chamado por caminho absoluto — um `tar` nu resolve para o
+    /// GNU tar do Git (usr\bin à frente de System32 no PATH em máquinas de
+    /// dev), que lê "C:\" como host remoto e falha sempre a extração.
+    /// </summary>
+    internal static string[] BuildSwapScript(string appDir, string zipPath, string logPath, string tag)
+    {
+        var exePath = Path.Combine(appDir, "OficinaDiag.exe");
+        return new[]
+        {
+            "Start-Sleep -Seconds 3",
+            $"$log = '{Psq(logPath)}'",
+            $"\"update {Psq(tag)} @ $(Get-Date -Format o)\" | Out-File $log",
+            $"$exe = '{Psq(exePath)}'",
+            "Copy-Item $exe \"$exe.bak\" -Force -ErrorAction SilentlyContinue",
+            $"& \"$env:SystemRoot\\System32\\tar.exe\" -xf '{Psq(zipPath)}' -C '{Psq(appDir)}' 2>&1 | Out-File $log -Append",
+            "\"exit=$LASTEXITCODE\" | Out-File $log -Append",
+            "if ($LASTEXITCODE -ne 0) {",
+            "  \"extract failed — restoring previous build\" | Out-File $log -Append",
+            "  Copy-Item \"$exe.bak\" $exe -Force -ErrorAction SilentlyContinue",
+            "}",
+            "Start-Process $exe",
+            "Remove-Item \"$exe.bak\" -ErrorAction SilentlyContinue",
+            $"Remove-Item '{Psq(zipPath)}' -ErrorAction SilentlyContinue",
+            "Remove-Item $MyInvocation.MyCommand.Path -ErrorAction SilentlyContinue",
+        };
     }
 
     /// <summary>

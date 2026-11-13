@@ -157,4 +157,30 @@ public class UpdateCheckerTests
             Convert.FromBase64String(UpdateChecker.ReleaseSigningPublicKey), out var read);
         Assert.Equal(ec.ExportSubjectPublicKeyInfo().Length, read);
     }
+
+    // --- Script staged do swap ---
+
+    [Fact]
+    public void SwapScriptCallsTarByAbsolutePath()
+    {
+        // QA real: com Git\usr\bin à frente de System32 no PATH, um `tar`
+        // nu resolve para o GNU tar, que lê "C:\" como host remoto — a
+        // extração falha sempre e a app entra em loop de update silencioso.
+        var lines = UpdateChecker.BuildSwapScript(
+            @"C:\app dir", @"C:\tmp\upd.zip", @"C:\tmp\upd.log", "v9.9.9");
+        var extract = Assert.Single(lines, l => l.Contains("tar.exe"));
+        Assert.Contains("$env:SystemRoot\\System32\\tar.exe", extract);
+        Assert.DoesNotMatch(@"(^|\s)tar\s", extract); // nunca invocação nua
+    }
+
+    [Fact]
+    public void SwapScriptExtractsIntoAppDirAndRelaunches()
+    {
+        var lines = UpdateChecker.BuildSwapScript(
+            @"C:\app dir", @"C:\tmp\upd.zip", @"C:\tmp\upd.log", "v9.9.9");
+        var script = string.Join('\n', lines);
+        Assert.Contains("-C 'C:\\app dir'", script);
+        Assert.Contains("$exe.bak", script);           // rollback se a extração falhar
+        Assert.Contains("Start-Process $exe", script); // relança sempre o exe
+    }
 }

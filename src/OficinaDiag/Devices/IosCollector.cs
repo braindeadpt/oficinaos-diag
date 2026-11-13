@@ -103,9 +103,13 @@ public sealed class IosCollector
                     r.Device.Model = GetValue(client, null, "ProductType");   // ex.: iPhone14,2
                     r.Device.Brand = "Apple";
                     r.Device.OsVersion = GetValue(client, null, "ProductVersion");
-                    var marketingName = GetValue(client, null, "DeviceName");
+                    // DeviceName é o nome pessoal (Definições → Sobre → Nome) —
+                    // num "iPhone da Maria" vazava o nome da cliente para o
+                    // relatório e o histórico. O nome comercial resolve-se por
+                    // ProductType na tabela partilhada, como no Android.
+                    r.Device.MarketingName ??= ModelNameTable.Lookup(r.Device.Model);
 
-                    r.Set("identity.model", "info", marketingName ?? r.Device.Model, r.Device.Model);
+                    r.Set("identity.model", "info", r.Device.MarketingName ?? r.Device.Model, r.Device.Model);
                     r.Set("identity.serial", "info", GetValue(client, null, "SerialNumber"));
                     r.Set("os.version", "info", $"{r.Device.Os} {r.Device.OsVersion}",
                         $"build {GetValue(client, null, "BuildVersion")}");
