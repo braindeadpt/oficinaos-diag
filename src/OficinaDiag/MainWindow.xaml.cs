@@ -49,7 +49,7 @@ public sealed class StatusBrushConverter : IValueConverter
 public partial class MainWindow : Window
 {
     private readonly string _adbPath =
-        Path.Combine(AppContext.BaseDirectory, ToolPaths.AdbRelativePath);
+        Path.Combine(AppContext.BaseDirectory, PackagePaths.AdbRelativePath);
 
     private DeviceDetector? _detector;
     // Túnel `adb reverse` ativo (serial, porta) — removido sempre no fim.

@@ -32,7 +32,7 @@ public static class ModelNameTable
     {
         try
         {
-            var path = Path.Combine(AppContext.BaseDirectory, ToolPaths.ModelsJsonRelativePath);
+            var path = Path.Combine(AppContext.BaseDirectory, PackagePaths.ModelsJsonRelativePath);
             if (!File.Exists(path)) return new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
             var dict = JsonSerializer.Deserialize<Dictionary<string, string>>(File.ReadAllText(path));
             return dict is null

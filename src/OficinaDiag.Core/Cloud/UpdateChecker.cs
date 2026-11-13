@@ -3,7 +3,6 @@ using System.Net.Http;
 using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Text.Json;
-using OficinaDiag.Devices;
 
 namespace OficinaDiag.Cloud;
 
@@ -48,13 +47,6 @@ public sealed class UpdateChecker
     /// <summary>Repo publicador fixo — os assets de atualização só podem vir daqui.</summary>
     public const string TrustedOwner = "braindeadpt";
     public const string TrustedRepo = "oficinaos-diag";
-
-    /// <summary>
-    /// Nome do exe da app: o updater procura-o no staging e no appDir. Tem de
-    /// bater com o <c>&lt;AssemblyName&gt;</c> do csproj da app — o
-    /// <c>PackageFilesTests</c> falha se divergirem.
-    /// </summary>
-    internal const string AppExeName = "OficinaDiag.exe";
 
     /// <summary>
     /// Chave pública EC P-256 (SubjectPublicKeyInfo, base64) que assina o
@@ -244,8 +236,8 @@ public sealed class UpdateChecker
         string tag, string appDir, string zipPath, string logPath, int processId)
     {
         var stage = Path.Combine(Path.GetTempPath(), $"oficinaos-stage-{tag}-{Guid.NewGuid():N}");
-        var exePath = Path.Combine(appDir, AppExeName);
-        var adbPath = Path.Combine(appDir, ToolPaths.AdbRelativePath);
+        var exePath = Path.Combine(appDir, PackagePaths.AppExeName);
+        var adbPath = Path.Combine(appDir, PackagePaths.AdbRelativePath);
         return string.Join(Environment.NewLine, new[]
         {
             "$ErrorActionPreference = 'Continue'",
@@ -263,11 +255,11 @@ public sealed class UpdateChecker
             "if (Test-Path $adb) { & $adb kill-server 2>$null | Out-Null }",
             "Stop-Process -Name adb,idevicediagnostics,idevicecrashreport -Force -ErrorAction SilentlyContinue",
             // 3) Extrair para staging limpo: appDir só é tocado depois de o
-            //    zip provar que traz o exe da app (AppExeName).
+            //    zip provar que traz o exe da app (PackagePaths.AppExeName).
             "New-Item -ItemType Directory -Force $stage | Out-Null",
             "tar -xf $zip -C $stage 2>&1 | Out-File $log -Append",
             "\"extract exit=$LASTEXITCODE\" | Out-File $log -Append",
-            $"if ($LASTEXITCODE -ne 0 -or -not (Test-Path (Join-Path $stage '{AppExeName}'))) {{",
+            $"if ($LASTEXITCODE -ne 0 -or -not (Test-Path (Join-Path $stage '{PackagePaths.AppExeName}'))) {{",
             "  'extract failed — nada em appDir foi alterado' | Out-File $log -Append",
             "  Remove-Item $stage -Recurse -Force -ErrorAction SilentlyContinue",
             "  Start-Process $exe",

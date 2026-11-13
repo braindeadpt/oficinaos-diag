@@ -4,7 +4,6 @@ using System.Net.NetworkInformation;
 using System.Net.Sockets;
 using System.Text;
 using System.Text.Json;
-using OficinaDiag.Devices;
 
 namespace OficinaDiag.Tests;
 
@@ -155,7 +154,7 @@ public sealed class TestServer : IDisposable
 
     /// <summary>Página servida ao telemóvel; no pacote é uma entrada de tools/package-files.txt.</summary>
     private static readonly string PagePath =
-        Path.Combine(AppContext.BaseDirectory, ToolPaths.DeviceTestPageRelativePath);
+        Path.Combine(AppContext.BaseDirectory, PackagePaths.DeviceTestPageRelativePath);
 
     /// <summary>Returns false se a página de teste não existir junto ao exe.</summary>
     public bool Start()

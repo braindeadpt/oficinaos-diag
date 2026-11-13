@@ -9,6 +9,6 @@ Versões seguem o tag `v*` do release.
   falha antes do draft se o zip não existir, não abrir, ou se faltar
   `OficinaDiag.exe`, `tools/platform-tools/adb.exe`, `Data/models.json` ou
   `Tests/wwwroot/device-test.html`.
-- Updater: o nome do exe vem de `UpdateChecker.AppExeName` (verificado contra
-  o `AssemblyName` do csproj) em vez de estar escrito à mão no script de
-  atualização.
+- Updater: os ficheiros do pacote (exe, `adb`, `models.json`, página do teste)
+  vêm de `PackagePaths` (verificado contra a lista do pacote e o `AssemblyName`
+  do csproj) em vez de caminhos escritos à mão.

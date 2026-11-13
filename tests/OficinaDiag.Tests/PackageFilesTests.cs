@@ -85,29 +85,24 @@ public class PackageFilesTests
             : caminho == publicado;
 
     [Fact]
-    public void ExeDaAppEstaNaLista()
+    public void ExeDaAppBateComOCssprojEEstaNaLista()
     {
         // Não vem de um Content, por isso escapa aos testes de divergência.
+        // O updater procura-o pelo nome: renomear o AssemblyName sem mexer
+        // na constante deixava-o a falhar em runtime.
+        Assert.Equal(AppExe(), PackagePaths.AppExeName);
         Assert.Contains(AppExe(), Required());
     }
 
     [Theory]
-    [InlineData(OficinaDiag.Devices.ToolPaths.AdbRelativePath)]
-    [InlineData(OficinaDiag.Devices.ToolPaths.ModelsJsonRelativePath)]
-    [InlineData(OficinaDiag.Devices.ToolPaths.DeviceTestPageRelativePath)]
+    [InlineData(PackagePaths.AdbRelativePath)]
+    [InlineData(PackagePaths.ModelsJsonRelativePath)]
+    [InlineData(PackagePaths.DeviceTestPageRelativePath)]
     public void CaminhosDeRuntimeEstaoNaLista(string caminho)
     {
         // A app, o updater, a tabela de modelos e o TestServer abrem estes
         // ficheiros pelo nome; divergir da lista só se nota em runtime.
         Assert.Contains(caminho, Required());
-    }
-
-    [Fact]
-    public void NomeDoExeEmRuntimeBateComOCssproj()
-    {
-        // O updater procura o exe pelo nome: renomear o AssemblyName sem
-        // mexer no UpdateChecker deixava o updater a falhar em runtime.
-        Assert.Equal(AppExe(), OficinaDiag.Cloud.UpdateChecker.AppExeName);
     }
 
     [Fact]
