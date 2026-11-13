@@ -345,10 +345,10 @@ public sealed class IosCollector
             double? volts = Field(io, "Voltage") is { } v
                 && int.TryParse(v, NumberStyles.Integer, CultureInfo.InvariantCulture, out var mv)
                 ? mv / 1000.0 : null;
+            // 0 = ausência de leitura, não 0 °C; >150 é a escala em centésimos.
             double? tempC = Field(io, "Temperature", "AverageBattSkinTemp") is { } rawTemp
                 && double.TryParse(rawTemp, NumberStyles.Float, CultureInfo.InvariantCulture, out var tc)
-                ? (tc > 150 ? tc / 100 : tc) : null;
-            if (tempC == 0) tempC = null; // 0 = ausência de leitura, não 0 °C
+                ? IosDecisions.Celsius(tc) : null;
             int? pct = Field(io, "BatteryCurrentCapacity", "CurrentCapacity") is { } p
                 && int.TryParse(p, NumberStyles.Integer, CultureInfo.InvariantCulture, out var lv)
                 ? lv : null;
@@ -466,28 +466,18 @@ public sealed class IosCollector
         var maxCap = Field(io, "NominalChargeCapacity", "BatteryData.NominalChargeCapacity",
             "AppleRawMaxCapacity", "BatteryData.AppleRawMaxCapacity");
         var design = Field(io, "DesignCapacity", "BatteryData.DesignCapacity");
-        if (maxCap is not null && design is not null
-            && int.TryParse(maxCap, NumberStyles.Integer, CultureInfo.InvariantCulture, out var max)
+        if (int.TryParse(maxCap, NumberStyles.Integer, CultureInfo.InvariantCulture, out var max)
             && int.TryParse(design, NumberStyles.Integer, CultureInfo.InvariantCulture, out var des)
-            && des > 0)
-        {
-            var capacity = max * 100.0 / des;
-            // Mesmos limiares do Grader: <60 = D, <80 = C.
-            r.Set("battery.capacity", capacity < 60 ? "fail" : capacity < 80 ? "warn" : "pass",
-                $"{capacity:0}%", $"{max}/{des} mAh — carga real vs fábrica");
-        }
+            && IosDecisions.Capacity(max, des) is { } cap)
+            r.Set("battery.capacity", cap.Status, cap.Value, cap.Note);
 
         // Temperatura: "Temperature" (gerações antigas, centésimos de °C) ou
         // "AverageBattSkinTemp" (iOS recente, já em °C). O 0 de
         // DeadBatteryBootData já não entra — 0 significa ausência de leitura.
         if (Field(io, "Temperature", "AverageBattSkinTemp") is { } rawTemp
-            && double.TryParse(rawTemp, NumberStyles.Float, CultureInfo.InvariantCulture, out var tC))
-        {
-            if (tC > 150) tC /= 100; // escala antiga em centésimos
-            if (tC > 0)
-                r.Set("battery.temp", tC > 40 ? "warn" : "info",
-                    $"{tC:0.#} °C", tC > 40 ? "quente — afeta a saúde a longo prazo" : null);
-        }
+            && double.TryParse(rawTemp, NumberStyles.Float, CultureInfo.InvariantCulture, out var tC)
+            && IosDecisions.Temperature(tC) is { } temp)
+            r.Set("battery.temp", temp.Status, temp.Value, temp.Note);
 
         if (Field(io, "Voltage") is { } volt
             && int.TryParse(volt, NumberStyles.Integer, CultureInfo.InvariantCulture, out var mV))
@@ -504,10 +494,11 @@ public sealed class IosCollector
         }
 
         // Carregador ligado: potência negociada — só existe em AdapterDetails.
-        if (Truthy(Field(io, "ExternalConnected"))
-            && Field(io, "AdapterDetails.Watts") is { } watts
-            && int.TryParse(watts, NumberStyles.Integer, CultureInfo.InvariantCulture, out var w) && w > 0)
-            r.Set("battery.charger", "info", $"{w} W", Field(io, "AdapterDetails.Description"));
+        if (int.TryParse(Field(io, "AdapterDetails.Watts"), NumberStyles.Integer,
+                CultureInfo.InvariantCulture, out var w)
+            && IosDecisions.ChargerWatts(Truthy(Field(io, "ExternalConnected")), w,
+                Field(io, "AdapterDetails.Description")) is { } charger)
+            r.Set("battery.charger", charger.Status, charger.Value, charger.Note);
 
         if (Field(io, "Serial") is { Length: > 0 } batSerial)
             r.Set("battery.serial", "info", batSerial,
