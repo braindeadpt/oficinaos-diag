@@ -16,14 +16,6 @@ public sealed class CloudClient
     // 30s was hit in the field. The other calls answer in ms anyway.
     private static readonly HttpClient Http = new() { Timeout = TimeSpan.FromSeconds(150) };
 
-    /// <summary>
-    /// 20 s para os endpoints que respondem em ms, 150 s para a IA. Ficam em
-    /// campos (e não só nos literais das chamadas) para o teste provar o
-    /// mecanismo com valores acelerados e ler os números por defeito.
-    /// </summary>
-    internal static readonly TimeSpan FastAttempt = TimeSpan.FromSeconds(20);
-    internal static readonly TimeSpan AiAttempt = TimeSpan.FromSeconds(150);
-
     private readonly HttpMessageInvoker _http;
     private readonly TimeSpan _fastAttempt;
     private readonly TimeSpan _aiAttempt;
@@ -54,9 +46,11 @@ public sealed class CloudClient
     {
         BaseUri = new Uri(config.CloudUrl.TrimEnd('/') + "/");
         _retryDelay = retryDelay ?? (ct => Task.Delay(1500, ct));
+        // 20 s chega aos endpoints que respondem em ms; a IA leva 150 s porque
+        // recebe crash logs e o LLM pensa (30 s era curto no terreno).
         _http = http ?? Http;
-        _fastAttempt = fastAttempt ?? FastAttempt;
-        _aiAttempt = aiAttempt ?? AiAttempt;
+        _fastAttempt = fastAttempt ?? TimeSpan.FromSeconds(20);
+        _aiAttempt = aiAttempt ?? TimeSpan.FromSeconds(150);
     }
 
     /// <summary>
