@@ -53,15 +53,16 @@ jobs:
         # O zip é o que o cliente recebe: sem adb o teste on-device não arranca;
         # sem models.json não há nomes de modelo; sem a página não há teste.
         # Falha aqui, antes do draft, em vez de publicar um pacote incompleto.
-        # As três falhas têm mensagens próprias: zip em falta, zip ilegível e
-        # ficheiro em falta dentro do zip (com o nome do ficheiro).
+        # A lista vive em tools/package-files.txt (uma por linha); o
+        # PackageFilesTests garante que não diverge do que os csproj publicam.
         run: >-
           $zip = "oficinaos-diag-v$($env:VERSION.TrimStart('v'))-win-x64.zip";
           if (-not (Test-Path $zip)) { throw "Pacote em falta: $zip não existe" }
+          if (-not (Test-Path 'tools/package-files.txt')) { throw "Lista ausente: tools/package-files.txt não existe" }
           try { Expand-Archive $zip -DestinationPath pkg-check -Force -ErrorAction Stop }
           catch { throw "Pacote ilegível: $zip não abre (corrompido ou truncado)" }
-          $faltam = @('OficinaDiag.exe','tools/platform-tools/adb.exe','Data/models.json','Tests/wwwroot/device-test.html') |
-            Where-Object { -not (Test-Path "pkg-check/$_") };
+          $faltam = Get-Content 'tools/package-files.txt' | ForEach-Object { $_.Trim() } |
+            Where-Object { $_ -and -not $_.StartsWith('#') -and -not (Test-Path "pkg-check/$_") };
           if ($faltam) { throw "Pacote incompleto: falta $($faltam -join ', ') no zip" }
         env:
           VERSION: ${{ github.ref_name }}

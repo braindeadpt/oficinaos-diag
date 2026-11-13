@@ -77,6 +77,15 @@ isso a falha é antes de haver algo para assinar. O `tools/fetch-tools.ps1`
 corre antes do publish no CI; sem ele, localmente a verificação acusa — é o
 comportamento correto, não um falso positivo.
 
+A lista de caminhos vive num sítio só, `tools/package-files.txt` (uma por
+linha, `#` comenta), lida pelo passo — não há cópia no YAML. Se esse
+ficheiro faltar o passo falha com `Lista ausente: …`, para não verificar
+zero ficheiros e passar. O `PackageFilesTests` compara a lista com os
+`Content` com `CopyToPublishDirectory` dos dois csproj, nos dois sentidos:
+acusa um caminho da lista que o publish não produz e um ficheiro publicado
+que a lista não verifica, e garante que o workflow voltou a ler o ficheiro
+em vez de ter uma lista própria.
+
 ## Recuperação (PC novo / máquina substituída)
 
 1. Copia `oficinaos-release-key.enc.pem` do backup (`E:\`/pen) para o PC

@@ -1,0 +1,123 @@
+using System.Xml.Linq;
+using Xunit;
+
+namespace OficinaDiag.Tests;
+
+/// <summary>
+/// A lista do que o zip de release tem de conter (<c>tools/package-files.txt</c>)
+/// vive fora dos csproj: se um ficheiro de runtime for renomeado ou acrescentado
+/// no publish sem atualizar a lista, o passo de CI verifica o pacote errado e
+/// passa. Estes testes comparam os dois lados, nos dois sentidos.
+/// </summary>
+public class PackageFilesTests
+{
+    private static readonly string Root = RepoRoot();
+
+    private static string RepoRoot()
+    {
+        var dir = new DirectoryInfo(AppContext.BaseDirectory);
+        for (var i = 0; i < 10 && dir is not null; i++)
+        {
+            if (Directory.Exists(Path.Combine(dir.FullName, "src", "OficinaDiag")))
+                return dir.FullName;
+            dir = dir.Parent;
+        }
+        throw new DirectoryNotFoundException(
+            "raiz do repositório não encontrada a partir de " + AppContext.BaseDirectory);
+    }
+
+    private static string[] Required()
+    {
+        var path = Path.Combine(Root, "tools", "package-files.txt");
+        Assert.True(File.Exists(path), $"lista ausente: {path}");
+        return File.ReadAllLines(path)
+            .Select(l => l.Trim())
+            .Where(l => l.Length > 0 && !l.StartsWith('#'))
+            .ToArray();
+    }
+
+    /// <summary>
+    /// Caminhos que o publish leva do csproj: <c>Content</c> com
+    /// <c>CopyToPublishDirectory</c>, já sem wildcards e com o <c>LinkBase</c>
+    /// aplicado. Um diretório acaba em '/'.
+    /// </summary>
+    private static List<string> PublishedContent()
+    {
+        var published = new List<string>();
+        foreach (var csproj in new[] { "src/OficinaDiag/OficinaDiag.csproj", "src/OficinaDiag.Core/OficinaDiag.Core.csproj" })
+        {
+            var doc = XDocument.Load(Path.Combine(Root, csproj));
+            foreach (var item in doc.Descendants("Content"))
+            {
+                if ((string?)item.Attribute("CopyToPublishDirectory") is null)
+                    continue;
+
+                var linkBase = (string?)item.Attribute("LinkBase");
+                var include = ((string?)item.Attribute("Include") ?? string.Empty).Replace('\\', '/');
+                if (linkBase is not null)
+                {
+                    var hasWildcard = include.Contains('*');
+                    var name = include.TrimEnd('/').Split('/').Last().Replace("*", string.Empty);
+                    published.Add(hasWildcard ? $"{linkBase.TrimEnd('/')}/" : $"{linkBase.TrimEnd('/')}/{name}");
+                    continue;
+                }
+
+                var isWildcard = include.Contains('*');
+                var normalized = include.Replace("**", string.Empty).Replace("*", string.Empty).TrimEnd('/');
+                published.Add(isWildcard ? normalized + "/" : normalized);
+            }
+        }
+        return published;
+    }
+
+    [Fact]
+    public void ListaExigeOsQuatroFicheirosDoPacote()
+    {
+        var required = Required();
+        Assert.Equal(
+            new[] { "Data/models.json", "Tests/wwwroot/device-test.html", "tools/platform-tools/adb.exe" },
+            required.Where(r => r.Contains('/') || !r.EndsWith(".exe", StringComparison.OrdinalIgnoreCase))
+                .Order(StringComparer.Ordinal).ToArray());
+        Assert.Contains(required, r => r == "OficinaDiag.exe");
+    }
+
+    [Fact]
+    public void CadaFicheiroExigidoVemDoPublishOuE_O_Exe()
+    {
+        var published = PublishedContent();
+        var exe = Path.GetFileNameWithoutExtension(
+            XDocument.Load(Path.Combine(Root, "src/OficinaDiag/OficinaDiag.csproj"))
+                .Descendants("AssemblyName").First().Value) + ".exe";
+
+        foreach (var entry in Required())
+        {
+            if (entry == exe)
+                continue; // PublishSingleFile gera-o; não há Content.
+
+            Assert.True(
+                published.Any(p => p.EndsWith('/') ? entry.StartsWith(p, StringComparison.Ordinal) : entry == p),
+                $"'{entry}' está na lista mas nenhum copy-to-publish do csproj o produz");
+        }
+    }
+
+    [Fact]
+    public void TodoContentPublicadoEstaNaLista()
+    {
+        var required = Required();
+        foreach (var p in PublishedContent())
+        {
+            Assert.True(
+                required.Any(r => p.EndsWith('/') ? r.StartsWith(p, StringComparison.Ordinal) : r == p),
+                $"o csproj publica '{p}' mas nada em tools/package-files.txt o verifica");
+        }
+    }
+
+    [Fact]
+    public void WorkflowLeAListaEmVezDeTerCopiaPropria()
+    {
+        var yml = File.ReadAllText(Path.Combine(Root, ".github", "workflows", "release.yml"));
+        Assert.Contains("tools/package-files.txt", yml);
+        Assert.DoesNotContain("'Data/models.json'", yml);
+        Assert.DoesNotContain("\"Data/models.json\"", yml);
+    }
+}

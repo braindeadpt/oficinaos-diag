@@ -1,0 +1,10 @@
+# Ficheiros que o zip de release tem de conter, um por linha (caminho dentro
+# do zip). Lido pelo passo `Verify package contents` do release.yml e pelo
+# PackageFilesTests, que o compara com os Content/CopyToPublishDirectory dos
+# csproj para acusar divergência nos dois sentidos.
+#
+# O exe sai do publish (PublishSingleFile), não de um Content.
+OficinaDiag.exe
+tools/platform-tools/adb.exe
+Data/models.json
+Tests/wwwroot/device-test.html
