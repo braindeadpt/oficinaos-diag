@@ -70,13 +70,23 @@ public class PackageFilesTests
         return published;
     }
 
+    /// <summary>O exe da app, a partir do AssemblyName do csproj (não à mão).</summary>
+    private static string AppExe() =>
+        XDocument.Load(Path.Combine(Root, "src/OficinaDiag/OficinaDiag.csproj"))
+            .Descendants("AssemblyName").First().Value + ".exe";
+
+    [Fact]
+    public void ExeDaAppEstaNaLista()
+    {
+        // Não vem de um Content, por isso escapa aos testes de divergência.
+        Assert.Contains(AppExe(), Required());
+    }
+
     [Fact]
     public void CadaFicheiroExigidoVemDoPublishOuE_O_Exe()
     {
         var published = PublishedContent();
-        var exe = Path.GetFileNameWithoutExtension(
-            XDocument.Load(Path.Combine(Root, "src/OficinaDiag/OficinaDiag.csproj"))
-                .Descendants("AssemblyName").First().Value) + ".exe";
+        var exe = AppExe();
 
         foreach (var entry in Required())
         {
