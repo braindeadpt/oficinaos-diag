@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using System.Net;
 using System.Net.Http;
 using OficinaDiag.Cloud;
@@ -113,17 +112,15 @@ public sealed class CloudClientRetryTests
         var esperas = 0;
         var cloud = Cliente(handler, TimeSpan.FromMilliseconds(60), null, () => esperas++);
 
-        var sw = Stopwatch.StartNew();
         var (ok, msg) = await ComLimite(cloud.SendToShopAsync(
             "LOJA", new DeviceReport { Platform = "ios" }, "Ana", "912345678", null, null, null));
-        sw.Stop();
 
         Assert.False(ok);
         Assert.Equal(L10n.T("cloud.timeout"), msg);
         // 20 s (aqui 60 ms) estoura → o idempotente repete uma vez e desiste.
+        // O limite de 5 s do ComLimite já garante que não demora mais que isto.
         Assert.Equal(2, handler.Pedidos);
         Assert.Equal(1, esperas);
-        Assert.True(sw.Elapsed < TimeSpan.FromSeconds(5), $"demorou {sw.Elapsed}");
     }
 
     [Fact]
@@ -133,16 +130,32 @@ public sealed class CloudClientRetryTests
         var esperas = 0;
         var cloud = Cliente(handler, null, TimeSpan.FromMilliseconds(60), () => esperas++);
 
-        var sw = Stopwatch.StartNew();
         var (ok, err) = await ComLimite(cloud.GenerateAiReportAsync("token", new DeviceReport { Platform = "ios" }));
-        sw.Stop();
 
         Assert.False(ok);
         Assert.Equal(L10n.T("cloud.ai.timeout"), err);
         // 150 s (aqui 60 ms) estoura e NÃO repete: a geração pode ter sido cobrada.
         Assert.Equal(1, handler.Pedidos);
         Assert.Equal(0, esperas);
-        Assert.True(sw.Elapsed < TimeSpan.FromSeconds(5), $"demorou {sw.Elapsed}");
+    }
+
+    [Theory]
+    [InlineData(402, "cloud.send.nomodule")] // loja sem o módulo diag-intake
+    [InlineData(404, "cloud.send.badcode")] // código de loja errado
+    public async Task SendToShop_Com402Ou404_DevolveAMensagemPropria(int codigo, string chave)
+    {
+        var handler = new Guiao((HttpStatusCode)codigo);
+        var esperas = 0;
+        var cloud = Cliente(handler, onRetry: () => esperas++);
+
+        var (ok, msg) = await ComLimite(cloud.SendToShopAsync(
+            "LOJA", new DeviceReport { Platform = "ios" }, "Ana", "912345678", null, null, null));
+
+        // Nem o módulo em falta nem a loja errada melhoram a repetir.
+        Assert.False(ok);
+        Assert.Equal(L10n.T(chave), msg);
+        Assert.Equal(1, handler.Pedidos);
+        Assert.Equal(0, esperas);
     }
 
     [Fact]
