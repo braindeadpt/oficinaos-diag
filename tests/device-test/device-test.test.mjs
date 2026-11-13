@@ -167,22 +167,49 @@ test('página: resultado entregue leva as decisões (mic skip sem https, multi-t
   }
 });
 
-test('página: com requestPermission mostra o botão e arma os timeouts na mesma', async () => {
+/** Conta os setTimeout que a página agenda, por atraso. */
+function espiarTimers(dom) {
+  const atrasos = [];
+  const original = dom.window.setTimeout.bind(dom.window);
+  dom.window.setTimeout = (fn, ms, ...rest) => {
+    atrasos.push(ms);
+    return original(fn, ms, ...rest);
+  };
+  return atrasos;
+}
+
+test('página: no iOS os 6 s só contam a partir do gesto de permissão', async () => {
   const dom = openPage({ deviceMotionPermission: true });
   try {
+    const atrasos = espiarTimers(dom);
     const doc = advanceToSensors(dom);
-    assert.equal(doc.getElementById('permBtn').style.display, 'block');
 
-    // Bug conhecido preservado: o comentário acima do permBtn diz que os
-    // timeouts de 6 s só correm depois da permissão, mas startSensors chama
-    // armSensorTimeouts() sem condição — num iPhone o diálogo pode estar
-    // aberto quando os sensores passam a "sem leitura". O teste fixa o que a
-    // página faz hoje; corrigir isto é mudar comportamento (T-05).
-    assert.equal(dom.window.__sensorTimersArmed, true);
+    assert.equal(doc.getElementById('permBtn').style.display, 'block');
+    // Regressão: startSensors chamava armSensorTimeouts() sem condição, logo
+    // o timeout de 6 s corria com o diálogo de permissão ainda aberto e o
+    // iPhone ficava com "sem leitura" em sensores que ainda nem tinham sido
+    // autorizados.
+    assert.equal(dom.window.__sensorTimersArmed, undefined);
+    assert.deepEqual(atrasos.filter((ms) => ms >= 6000), []);
 
     doc.getElementById('permBtn').onclick();
     await new Promise((r) => setTimeout(r, 0));
+
+    assert.equal(dom.window.__sensorTimersArmed, true);
+    assert.equal(atrasos.filter((ms) => ms >= 6000).length, 1);
     assert.equal(doc.getElementById('permBtn').style.display, 'none');
+  } finally {
+    dom.window.close();
+  }
+});
+
+test('página: sem permissão a pedir, os 6 s começam logo', () => {
+  const dom = openPage();
+  try {
+    const atrasos = espiarTimers(dom);
+    advanceToSensors(dom);
+    assert.equal(dom.window.__sensorTimersArmed, true);
+    assert.equal(atrasos.filter((ms) => ms >= 6000).length, 1);
   } finally {
     dom.window.close();
   }

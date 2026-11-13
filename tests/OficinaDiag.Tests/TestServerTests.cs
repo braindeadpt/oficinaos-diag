@@ -141,10 +141,10 @@ public sealed class TestServerTests
     public void InlineDecisionsSubstituiOPedidoDoModulo()
     {
         var page = "<html><script src=\"decisions.js\"></script><body>x</body></html>";
-        var out_ = TestServer.InlineDecisions(page, "var DeviceTestDecisions = {};");
-        Assert.DoesNotContain("src=\"decisions.js\"", out_);
-        Assert.Contains("var DeviceTestDecisions = {};", out_);
-        Assert.Contains("<body>x</body>", out_);
+        var servida = TestServer.InlineDecisions(page, "var DeviceTestDecisions = {};");
+        Assert.DoesNotContain("src=\"decisions.js\"", servida);
+        Assert.Contains("var DeviceTestDecisions = {};", servida);
+        Assert.Contains("<body>x</body>", servida);
     }
 
     // ── B-10b: paths e headers ─────────────────────────────────────────

@@ -208,9 +208,10 @@ function startSensors(){
   const panel=document.getElementById('sensors');
   panel.style.display='flex';
 
-  // iOS 13+ — os eventos de movimento precisam de permissão por gesto
-  // iOS só entrega sensores depois do gesto + diálogo; contar os 6 s antes
-  // disso marcava "sem leitura" num iPhone que ainda não tinha permissão.
+  // iOS 13+ — os eventos de movimento precisam de permissão por gesto.
+  // Os 6 s contam a partir do gesto: armá-los aqui marcava "sem leitura" num
+  // iPhone que ainda tinha o diálogo aberto. Só o permBtn (e o caminho sem
+  // permissão) arma o timeout.
   const needsPermission = D.motionPermissionRequired(window);
   if(needsPermission){
     document.getElementById('permBtn').style.display='block';
@@ -246,7 +247,7 @@ function startSensors(){
   if(typeof AmbientLightSensor!=='undefined') probe('light',AmbientLightSensor);
   else { result.sensors.light='unavailable'; setSt('s-light','não exposto','no'); }
 
-  armSensorTimeouts(); // iOS: só corre depois da permissão (ver permBtn)
+
 
   const mt = result.multiTouch;
   setSt('s-touch', D.multiTouchLabel(mt), D.multiTouchStatus(mt)===D.SENSOR_OK?'ok':'warn');

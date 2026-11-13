@@ -160,10 +160,17 @@ public sealed class TestServer : IDisposable
     private static readonly string DecisionsPath =
         Path.Combine(AppContext.BaseDirectory, PackagePaths.DeviceTestDecisionsRelativePath);
 
-    /// <summary>Returns false se a página de teste não existir junto ao exe.</summary>
+    /// <summary>Marca da página onde o módulo de decisões é injetado.</summary>
+    private const string DecisionsTag = "<script src=\"decisions.js\"></script>";
+
+    /// <summary>Troca o pedido do módulo pelo próprio módulo, inline.</summary>
+    internal static string InlineDecisions(string page, string decisions) =>
+        page.Replace(DecisionsTag, $"<script>\n{decisions}\n</script>");
+
+    /// <summary>Returns false se a página ou as decisões não estiverem junto ao exe.</summary>
     public bool Start()
     {
-        // As duas juntas: a página pede `decisions.js` e sem ele não arranca.
+        // As duas: a página é servida com as decisões embutidas.
         if (!File.Exists(PagePath) || !File.Exists(DecisionsPath))
             return false;
         _listener.Start();
@@ -236,13 +243,6 @@ public sealed class TestServer : IDisposable
     // impede um cliente da LAN de declarar um Content-Length gigante e
     // encher a memória (o body ia parar a uma lista sem teto).
     private const int MaxBodyBytes = 256 * 1024;
-
-    /// <summary>Marca da página onde o módulo de decisões é injetado.</summary>
-    private const string DecisionsTag = "<script src=\"decisions.js\"></script>";
-
-    /// <summary>Troca o pedido do módulo pelo próprio módulo, inline.</summary>
-    internal static string InlineDecisions(string page, string decisions) =>
-        page.Replace(DecisionsTag, $"<script>\n{decisions}\n</script>");
 
     private void HandleClient(TcpClient client, string page)
     {
