@@ -16,6 +16,18 @@ public sealed class CloudClient
     // 30s was hit in the field. The other calls answer in ms anyway.
     private static readonly HttpClient Http = new() { Timeout = TimeSpan.FromSeconds(150) };
 
+    /// <summary>
+    /// 20 s para os endpoints que respondem em ms, 150 s para a IA. Ficam em
+    /// campos (e não só nos literais das chamadas) para o teste provar o
+    /// mecanismo com valores acelerados e ler os números por defeito.
+    /// </summary>
+    internal static readonly TimeSpan FastAttempt = TimeSpan.FromSeconds(20);
+    internal static readonly TimeSpan AiAttempt = TimeSpan.FromSeconds(150);
+
+    private readonly HttpMessageInvoker _http = Http;
+    private readonly TimeSpan _fastAttempt = FastAttempt;
+    private readonly TimeSpan _aiAttempt = AiAttempt;
+
     public Uri BaseUri { get; set; }
 
     // Espera entre tentativas. Injetável para os testes poderem provar que
@@ -27,6 +39,23 @@ public sealed class CloudClient
     {
         BaseUri = new Uri(config.CloudUrl.TrimEnd('/') + "/");
         _retryDelay = retryDelay ?? (ct => Task.Delay(1500, ct));
+    }
+
+    /// <summary>Timeouts efetivos — o teste lê os valores por defeito.</summary>
+    internal TimeSpan FastTimeout => _fastAttempt;
+    internal TimeSpan AiTimeout => _aiAttempt;
+
+    /// <summary>
+    /// Seam de teste: transporte falso e timeouts acelerados. O caminho normal
+    /// usa o <see cref="Http"/> partilhado e os valores de cima.
+    /// </summary>
+    internal CloudClient(
+        DiagConfig config, HttpMessageInvoker http, TimeSpan fastAttempt, TimeSpan aiAttempt,
+        Func<CancellationToken, Task>? retryDelay = null) : this(config, retryDelay)
+    {
+        _http = http;
+        _fastAttempt = fastAttempt;
+        _aiAttempt = aiAttempt;
     }
 
     /// <summary>
@@ -57,7 +86,7 @@ public sealed class CloudClient
             using (var timeout = new CancellationTokenSource(attemptTimeout))
             using (var cts = CancellationTokenSource.CreateLinkedTokenSource(timeout.Token, ct))
             {
-                try { res = await Http.SendAsync(req, cts.Token); }
+                try { res = await _http.SendAsync(req, cts.Token); }
                 // Cancelamento do chamador (utilizador fechou a janela) não é
                 // timeout: propaga-se e não vale uma segunda tentativa.
                 catch (OperationCanceledException) when (ct.IsCancellationRequested)
@@ -126,7 +155,7 @@ public sealed class CloudClient
                 new Uri(BaseUri, $"intake/{Uri.EscapeDataString(shopCode.Trim().ToUpperInvariant())}"))
             {
                 Content = new StringContent(json, Encoding.UTF8, "application/json"),
-            }.WithIdempotencyKey(idempotencyKey), TimeSpan.FromSeconds(20));
+            }.WithIdempotencyKey(idempotencyKey), _fastAttempt);
             if (res.IsSuccessStatusCode)
                 return (true, L10n.T("cloud.send.ok"));
             var body = await res.Content.ReadAsStringAsync();
@@ -167,7 +196,7 @@ public sealed class CloudClient
                 HttpMethod.Post, new Uri(BaseUri, "diag-logs"))
             {
                 Content = new StringContent(payload, Encoding.UTF8, "application/json"),
-            }, TimeSpan.FromSeconds(20));
+            }, _fastAttempt);
             if (res.IsSuccessStatusCode)
                 return (true, L10n.T("cloud.log.ok"));
             var body = await res.Content.ReadAsStringAsync();
@@ -196,7 +225,7 @@ public sealed class CloudClient
                 HttpMethod.Post, new Uri(BaseUri, "pairing/redeem"))
             {
                 Content = new StringContent(payload, Encoding.UTF8, "application/json"),
-            }, TimeSpan.FromSeconds(20), ct: ct);
+            }, _fastAttempt, ct: ct);
             var body = await res.Content.ReadAsStringAsync(ct);
             if (!res.IsSuccessStatusCode)
             {
@@ -250,7 +279,7 @@ public sealed class CloudClient
                 };
                 req.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", shopToken);
                 return req;
-            }, TimeSpan.FromSeconds(150), RetryMode.PaidOnce);
+            }, _aiAttempt, RetryMode.PaidOnce);
             var body = await res.Content.ReadAsStringAsync();
             if (!res.IsSuccessStatusCode) return (false, $"{(int)res.StatusCode} — {body}");
             using var doc = JsonDocument.Parse(body);

@@ -46,9 +46,8 @@ public sealed class TestServer : IDisposable
     private int _responsesSent;
 
     /// <summary>
-    /// Quantas respostas HTTP já saíram. O cliente não consegue distinguir
-    /// «o servidor fechou sem escrever» de «escreveu e cortou» quando o fecho
-    /// chega como reset (Windows) — o contador distingue.
+    /// Quantas respostas HTTP já saíram. O cliente não distingue «fechou sem
+    /// escrever» de «escreveu e cortou» quando o fecho é um reset — este conta.
     /// </summary>
     internal int ResponsesSent => Volatile.Read(ref _responsesSent);
 

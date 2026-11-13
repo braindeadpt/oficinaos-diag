@@ -92,17 +92,17 @@ public sealed class TestServerTests
 
         var buf = new byte[512];
         // «Fechou sem responder»: no Linux chega como EOF (0 bytes), no Windows
-        // como reset (WSAECONNRESET → IOException). Os dois valem zero bytes.
+        // como reset (WSAECONNRESET → IOException). O cliente não distingue
+        // «fechou sem escrever» de «escreveu e cortou» quando o fecho é um
+        // reset — o contador do servidor distingue.
         var recebidos = 0;
         try
         {
             recebidos = await stream.ReadAsync(buf).AsTask().WaitAsync(TimeSpan.FromSeconds(10));
         }
-        catch (IOException) { /* reset sem dados — ver o contador abaixo */ }
+        catch (IOException) { /* reset sem dados */ }
 
         Assert.Equal(0, recebidos);
-        // O cliente não distingue «fechou sem escrever» de «escreveu e cortou»
-        // quando o fecho é um reset: o contador do servidor prova o primeiro.
         Assert.Equal(0, server.ResponsesSent);
     }
 
@@ -176,8 +176,7 @@ public sealed class TestServerTests
         // QR mobile acrescenta ?from=qr; a barra final é opcional.
         var comQuery = await http.GetAsync($"{root}/{token}/?from=qr");
         Assert.Equal(HttpStatusCode.OK, comQuery.StatusCode);
-        // Prova que o contador conta: uma resposta por pedido servido. É o que
-        // dá sentido ao `ResponsesSent == 0` do teste de origem rejeitada.
+        // Uma resposta por pedido: é o que dá sentido ao 0 do teste de origem.
         Assert.Equal(2, server.ResponsesSent);
     }
 
