@@ -63,15 +63,37 @@ public sealed class CloudClientRetryTests
         }
     }
 
+    private static readonly TimeSpan LimiteDoTeste = TimeSpan.FromSeconds(5);
+
+    /// <summary>
+    /// Um ciclo de repetições falha com esta mensagem em segundos, em vez de
+    /// prender a suite até o runner desistir sem dizer porquê.
+    /// </summary>
+    private static async Task<T> ComLimite<T>(Task<T> tarefa)
+    {
+        try
+        {
+            return await tarefa.WaitAsync(LimiteDoTeste);
+        }
+        catch (TimeoutException)
+        {
+            throw new TimeoutException(
+                $"o CloudClient não terminou em {LimiteDoTeste.TotalSeconds} s — repetições sem limite?");
+        }
+    }
+
     private static CloudClient Cliente(
         HttpMessageHandler handler, TimeSpan? fast = null, TimeSpan? ai = null, Action? onRetry = null)
     {
         var cfg = new DiagConfig { CloudUrl = "http://127.0.0.1:1" };
         return new CloudClient(cfg, new HttpMessageInvoker(handler),
-            fast ?? TimeSpan.FromSeconds(20), ai ?? TimeSpan.FromSeconds(150), _ =>
+            fast ?? TimeSpan.FromSeconds(20), ai ?? TimeSpan.FromSeconds(150), async _ =>
             {
                 onRetry?.Invoke();
-                return Task.CompletedTask;
+                // 1 ms em vez dos 1,5 s reais: o teste não espera, e um ciclo
+                // de repetições (o defeito que o limite procura) fica travado
+                // o suficiente para o limite de 5 s conseguir disparar.
+                await Task.Delay(1);
             });
     }
 
@@ -92,8 +114,8 @@ public sealed class CloudClientRetryTests
         var cloud = Cliente(handler, TimeSpan.FromMilliseconds(60), null, () => esperas++);
 
         var sw = Stopwatch.StartNew();
-        var (ok, msg) = await cloud.SendToShopAsync(
-            "LOJA", new DeviceReport { Platform = "ios" }, "Ana", "912345678", null, null, null);
+        var (ok, msg) = await ComLimite(cloud.SendToShopAsync(
+            "LOJA", new DeviceReport { Platform = "ios" }, "Ana", "912345678", null, null, null));
         sw.Stop();
 
         Assert.False(ok);
@@ -112,7 +134,7 @@ public sealed class CloudClientRetryTests
         var cloud = Cliente(handler, null, TimeSpan.FromMilliseconds(60), () => esperas++);
 
         var sw = Stopwatch.StartNew();
-        var (ok, err) = await cloud.GenerateAiReportAsync("token", new DeviceReport { Platform = "ios" });
+        var (ok, err) = await ComLimite(cloud.GenerateAiReportAsync("token", new DeviceReport { Platform = "ios" }));
         sw.Stop();
 
         Assert.False(ok);
@@ -130,7 +152,7 @@ public sealed class CloudClientRetryTests
         var esperas = 0;
         var cloud = Cliente(handler, onRetry: () => esperas++);
 
-        var (ok, msg) = await cloud.SendLogAsync("linha de log", "1.0.0", null);
+        var (ok, msg) = await ComLimite(cloud.SendLogAsync("linha de log", "1.0.0", null));
 
         Assert.True(ok);
         Assert.Equal(L10n.T("cloud.log.ok"), msg);
@@ -150,7 +172,7 @@ public sealed class CloudClientRetryTests
         var esperas = 0;
         var cloud = Cliente(handler, onRetry: () => esperas++);
 
-        var (ok, msg) = await cloud.SendLogAsync("linha de log", "1.0.0", null);
+        var (ok, msg) = await ComLimite(cloud.SendLogAsync("linha de log", "1.0.0", null));
 
         Assert.False(ok);
         Assert.Equal(L10n.F("cloud.status", codigo, "indisponivel"), msg);
@@ -167,7 +189,7 @@ public sealed class CloudClientRetryTests
         var esperas = 0;
         var cloud = Cliente(handler, onRetry: () => esperas++);
 
-        var (ok, msg) = await cloud.SendLogAsync("linha de log", "1.0.0", null);
+        var (ok, msg) = await ComLimite(cloud.SendLogAsync("linha de log", "1.0.0", null));
 
         Assert.True(ok);
         Assert.Equal(L10n.T("cloud.log.ok"), msg);
@@ -185,7 +207,7 @@ public sealed class CloudClientRetryTests
         var esperas = 0;
         var cloud = Cliente(handler, onRetry: () => esperas++);
 
-        var (ok, report) = await cloud.GenerateAiReportAsync("token", new DeviceReport { Platform = "ios" });
+        var (ok, report) = await ComLimite(cloud.GenerateAiReportAsync("token", new DeviceReport { Platform = "ios" }));
 
         // Pedido nunca saiu (DNS/ligação/TLS): repetir não pode cobrar duas vezes.
         Assert.True(ok);
@@ -202,7 +224,7 @@ public sealed class CloudClientRetryTests
         var esperas = 0;
         var cloud = Cliente(handler, onRetry: () => esperas++);
 
-        var (ok, err) = await cloud.GenerateAiReportAsync("token", new DeviceReport { Platform = "ios" });
+        var (ok, err) = await ComLimite(cloud.GenerateAiReportAsync("token", new DeviceReport { Platform = "ios" }));
 
         Assert.False(ok);
         Assert.Equal("sem ligação", err);
@@ -217,7 +239,7 @@ public sealed class CloudClientRetryTests
         var esperas = 0;
         var cloud = Cliente(handler, onRetry: () => esperas++);
 
-        var (ok, err) = await cloud.GenerateAiReportAsync("token", new DeviceReport { Platform = "ios" });
+        var (ok, err) = await ComLimite(cloud.GenerateAiReportAsync("token", new DeviceReport { Platform = "ios" }));
 
         Assert.False(ok);
         // O 5xx pode vir depois da geração: repetir podia pagar duas vezes.
