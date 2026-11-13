@@ -262,7 +262,7 @@ public sealed class UpdateChecker
             "if (Test-Path $adb) { & $adb kill-server 2>$null | Out-Null }",
             "Stop-Process -Name adb,idevicediagnostics,idevicecrashreport -Force -ErrorAction SilentlyContinue",
             // 3) Extrair para staging limpo: appDir só é tocado depois de o
-            //    zip provar que traz um OficinaDiag.exe.
+            //    zip provar que traz o exe da app (AppExeName).
             "New-Item -ItemType Directory -Force $stage | Out-Null",
             "tar -xf $zip -C $stage 2>&1 | Out-File $log -Append",
             "\"extract exit=$LASTEXITCODE\" | Out-File $log -Append",

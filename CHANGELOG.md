@@ -9,3 +9,7 @@ Versões seguem o tag `v*` do release.
   falha antes do draft se o zip não existir, não abrir, ou se faltar
   `OficinaDiag.exe`, `tools/platform-tools/adb.exe`, `Data/models.json` ou
   `Tests/wwwroot/device-test.html`.
+- Updater: o nome do executável deixa de estar escrito à mão no script de
+  atualização; vem de `UpdateChecker.AppExeName`, verificado por teste contra
+  o `AssemblyName` do csproj, para renomear a app não partir o updater em
+  silêncio.
