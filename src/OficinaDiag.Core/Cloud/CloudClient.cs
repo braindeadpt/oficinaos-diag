@@ -24,9 +24,9 @@ public sealed class CloudClient
     internal static readonly TimeSpan FastAttempt = TimeSpan.FromSeconds(20);
     internal static readonly TimeSpan AiAttempt = TimeSpan.FromSeconds(150);
 
-    private readonly HttpMessageInvoker _http = Http;
-    private readonly TimeSpan _fastAttempt = FastAttempt;
-    private readonly TimeSpan _aiAttempt = AiAttempt;
+    private readonly HttpMessageInvoker _http;
+    private readonly TimeSpan _fastAttempt;
+    private readonly TimeSpan _aiAttempt;
 
     public Uri BaseUri { get; set; }
 
@@ -36,26 +36,27 @@ public sealed class CloudClient
     private readonly Func<CancellationToken, Task> _retryDelay;
 
     public CloudClient(DiagConfig config, Func<CancellationToken, Task>? retryDelay = null)
-    {
-        BaseUri = new Uri(config.CloudUrl.TrimEnd('/') + "/");
-        _retryDelay = retryDelay ?? (ct => Task.Delay(1500, ct));
-    }
+        : this(config, null, null, null, retryDelay) { }
 
     /// <summary>Timeouts efetivos — o teste lê os valores por defeito.</summary>
     internal TimeSpan FastTimeout => _fastAttempt;
     internal TimeSpan AiTimeout => _aiAttempt;
 
     /// <summary>
-    /// Seam de teste: transporte falso e timeouts acelerados. O caminho normal
-    /// usa o <see cref="Http"/> partilhado e os valores de cima.
+    /// Único sítio onde o cliente é montado: o público passa nulos (transporte
+    /// partilhado e timeouts reais); o teste passa um handler falso e valores
+    /// acelerados. Os parâmetros não são opcionais para não competirem com o
+    /// construtor público na resolução de overload.
     /// </summary>
     internal CloudClient(
-        DiagConfig config, HttpMessageInvoker http, TimeSpan fastAttempt, TimeSpan aiAttempt,
-        Func<CancellationToken, Task>? retryDelay = null) : this(config, retryDelay)
+        DiagConfig config, HttpMessageInvoker? http, TimeSpan? fastAttempt, TimeSpan? aiAttempt,
+        Func<CancellationToken, Task>? retryDelay)
     {
-        _http = http;
-        _fastAttempt = fastAttempt;
-        _aiAttempt = aiAttempt;
+        BaseUri = new Uri(config.CloudUrl.TrimEnd('/') + "/");
+        _retryDelay = retryDelay ?? (ct => Task.Delay(1500, ct));
+        _http = http ?? Http;
+        _fastAttempt = fastAttempt ?? FastAttempt;
+        _aiAttempt = aiAttempt ?? AiAttempt;
     }
 
     /// <summary>
