@@ -3,6 +3,7 @@ using System.Net.Http;
 using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Text.Json;
+using OficinaDiag.Devices;
 
 namespace OficinaDiag.Cloud;
 
@@ -244,7 +245,7 @@ public sealed class UpdateChecker
     {
         var stage = Path.Combine(Path.GetTempPath(), $"oficinaos-stage-{tag}-{Guid.NewGuid():N}");
         var exePath = Path.Combine(appDir, AppExeName);
-        var adbPath = Path.Combine(appDir, "tools", "platform-tools", "adb.exe");
+        var adbPath = Path.Combine(appDir, ToolPaths.AdbRelativePath);
         return string.Join(Environment.NewLine, new[]
         {
             "$ErrorActionPreference = 'Continue'",

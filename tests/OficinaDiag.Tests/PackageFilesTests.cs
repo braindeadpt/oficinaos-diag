@@ -92,6 +92,13 @@ public class PackageFilesTests
     }
 
     [Fact]
+    public void CaminhoDoAdbEmRuntimeEstaNaLista()
+    {
+        // O MainWindow e o updater montam o caminho da app com esta constante.
+        Assert.Contains(OficinaDiag.Devices.ToolPaths.AdbRelativePath, Required());
+    }
+
+    [Fact]
     public void NomeDoExeEmRuntimeBateComOCssproj()
     {
         // O updater procura o exe pelo nome: renomear o AssemblyName sem
