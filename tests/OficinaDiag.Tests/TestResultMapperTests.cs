@@ -39,6 +39,31 @@ public sealed class TestResultMapperTests
     }
 
     [Fact]
+    public void PayloadDeIphoneSemPermissaoSoTemAsLinhasMedidas()
+    {
+        // Cópia do payload que o teste jsdom
+        // (`iPhone sem permissão de movimento entrega payload sem
+        // accel/gyro/orient`) captura da página real: sem gesto de permissão,
+        // nem accel nem gyro nem orient vêm, e o relatório não inventa linhas.
+        var r = Map("""
+            {"colorsViewed":13,"touchTotal":60,"touchHit":0,"edgeTotal":28,"edgeHit":0,
+             "multiTouch":0,"maxTouchPoints":5,"userAgent":"iPhone",
+             "sensors":{"light":"unavailable","multitouch":"no-data","mic":"skip"},
+             "vibrate":null,"speaker":null,"batteryApi":null}
+            """);
+
+        Assert.False(r.Results.ContainsKey("sensor.accel"));
+        Assert.False(r.Results.ContainsKey("sensor.gyro"));
+        Assert.False(r.Results.ContainsKey("sensor.orient"));
+        Assert.Equal("skipped", r.Results["sensor.light"].Status);
+        Assert.Equal("skipped", r.Results["sensor.mic"].Status);
+        // O `sensors.multitouch` do payload não é mapeado: a linha
+        // `sensor.multitouch` vem do `multiTouch` no topo, que aqui é 0.
+        Assert.False(r.Results.ContainsKey("sensor.multitouch"));
+        Assert.Equal("pass", r.Results["test.screen"].Status);
+    }
+
+    [Fact]
     public void SensorComNoDataViraWarnComSemLeitura()
     {
         var r = Map("""{"sensors":{"accel":"no-data"}}""");

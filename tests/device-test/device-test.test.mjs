@@ -167,21 +167,26 @@ test('página: resultado entregue leva as decisões (mic skip sem https, multi-t
   }
 });
 
-/** Conta os setTimeout que a página agenda, por atraso. */
+/**
+ * Conta os setTimeout que a página agenda e permite disparar já os longos
+ * (os 6 s dos sensores), sem esperar os 6 s reais.
+ */
 function espiarTimers(dom) {
   const atrasos = [];
+  const longos = [];
   const original = dom.window.setTimeout.bind(dom.window);
   dom.window.setTimeout = (fn, ms, ...rest) => {
     atrasos.push(ms);
+    if (ms >= 6000) longos.push(fn);
     return original(fn, ms, ...rest);
   };
-  return atrasos;
+  return { atrasos, longos, dispararLongos: () => longos.forEach((fn) => fn()) };
 }
 
 test('página: no iOS os 6 s só contam a partir do gesto de permissão', async () => {
   const dom = openPage({ deviceMotionPermission: true });
   try {
-    const atrasos = espiarTimers(dom);
+    const timers = espiarTimers(dom);
     const doc = advanceToSensors(dom);
 
     assert.equal(doc.getElementById('permBtn').style.display, 'block');
@@ -190,14 +195,47 @@ test('página: no iOS os 6 s só contam a partir do gesto de permissão', async 
     // iPhone ficava com "sem leitura" em sensores que ainda nem tinham sido
     // autorizados.
     assert.equal(dom.window.__sensorTimersArmed, undefined);
-    assert.deepEqual(atrasos.filter((ms) => ms >= 6000), []);
+    assert.deepEqual(timers.atrasos.filter((ms) => ms >= 6000), []);
 
     doc.getElementById('permBtn').onclick();
     await new Promise((r) => setTimeout(r, 0));
 
     assert.equal(dom.window.__sensorTimersArmed, true);
-    assert.equal(atrasos.filter((ms) => ms >= 6000).length, 1);
+    assert.equal(timers.longos.length, 1);
     assert.equal(doc.getElementById('permBtn').style.display, 'none');
+  } finally {
+    dom.window.close();
+  }
+});
+
+test('página: iPhone sem permissão de movimento entrega payload sem accel/gyro/orient', async () => {
+  // O técnico chega aos sensores e termina sem tocar em PERMITIR SENSORES —
+  // passado mais de 6 s, que é quando o timeout marcaria "sem leitura" num
+  // sensor que nunca foi autorizado.
+  const dom = openPage({ deviceMotionPermission: true });
+  const chamadas = [];
+  try {
+    const timers = espiarTimers(dom);
+    const doc = advanceToSensors(dom); // não toca no permBtn
+    assert.deepEqual(timers.atrasos.filter((ms) => ms >= 6000), []);
+    timers.dispararLongos();          // nada a disparar: nenhum timer armado
+    dom.window.fetch = (url, opts) => {
+      chamadas.push(JSON.parse(opts.body));
+      return Promise.resolve({ ok: true });
+    };
+    doc.getElementById('endBtn').onclick();
+    await new Promise((r) => setTimeout(r, 0));
+
+    assert.equal(chamadas.length, 1);
+    const sensors = chamadas[0].sensors;
+    // O contrato do TestResultMapper: chave ausente não vira linha no
+    // relatório (nem "sem leitura"); só o que foi mesmo medido vem.
+    assert.ok(!('accel' in sensors), `veio accel=${sensors.accel}`);
+    assert.ok(!('gyro' in sensors), `veio gyro=${sensors.gyro}`);
+    assert.ok(!('orient' in sensors), `veio orient=${sensors.orient}`);
+    assert.equal(sensors.light, 'unavailable'); // medido: browser não expõe
+    assert.equal(sensors.mic, 'skip');         // HTTP LAN, não é hardware
+    assert.equal(sensors.multitouch, 'no-data');
   } finally {
     dom.window.close();
   }
@@ -206,10 +244,13 @@ test('página: no iOS os 6 s só contam a partir do gesto de permissão', async 
 test('página: sem permissão a pedir, os 6 s começam logo', () => {
   const dom = openPage();
   try {
-    const atrasos = espiarTimers(dom);
+    const timers = espiarTimers(dom);
     advanceToSensors(dom);
     assert.equal(dom.window.__sensorTimersArmed, true);
-    assert.equal(atrasos.filter((ms) => ms >= 6000).length, 1);
+    assert.equal(timers.longos.length, 1);
+
+    timers.dispararLongos();
+    assert.equal(dom.window.document.getElementById('s-accel').textContent, 'sem leitura');
   } finally {
     dom.window.close();
   }
