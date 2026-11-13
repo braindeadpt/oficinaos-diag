@@ -62,37 +62,20 @@ git tag v0.4.0 && git push --tags
 
 ## Verificação do conteúdo do pacote
 
-O passo `Verify package contents` do workflow corre **depois** do
-empacotamento e **antes** do checksum e do draft. Abre o zip e falha o job
-com uma de três mensagens:
+O passo `Verify package contents` corre **depois** do empacotamento e
+**antes** do checksum e do draft. Abre o zip e falha o job com uma de três
+mensagens:
 
 | Mensagem | Quando |
 |---|---|
-| `Pacote em falta: <zip> não existe` | o `Compress-Archive` não produziu o ficheiro esperado |
-| `Pacote ilegível: <zip> não abre (corrompido ou truncado)` | `Expand-Archive` falhou (zip truncado, disco cheio, upload cortado) |
-| `Pacote incompleto: falta <caminho> no zip` | falta um dos ficheiros que a app precisa em runtime |
+| `Pacote em falta: <zip> não existe` | o `Compress-Archive` não produziu o ficheiro |
+| `Pacote ilegível: <zip> não abre (corrompido ou truncado)` | zip truncado, corrompido ou cortado a meio |
+| `Pacote incompleto: falta <caminhos> no zip` | falta a app (`OficinaDiag.exe`), o `adb` (`tools/platform-tools/adb.exe`), os nomes de modelo (`Data/models.json`) ou a página do teste (`Tests/wwwroot/device-test.html`) — lista todos os que faltarem |
 
-Os caminhos exigidos: `OficinaDiag.exe`, `tools/platform-tools/adb.exe`
-(sem ele o teste on-device e o `adb reverse` não arrancam),
-`Data/models.json` (nomes de modelo) e `Tests/wwwroot/device-test.html`
-(página do teste). Um zip sem qualquer deles é inútil mesmo que o updater
-o aceite — por isso a falha é antes do draft, e não uma release a ser
-assinada por engano.
-
-Para reproduzir localmente (pwsh 7, na raiz do repo), com o zip já em
-`out/`:
-
-```powershell
-$zip = "oficinaos-diag-v0.4.0-win-x64.zip"
-Expand-Archive $zip -DestinationPath pkg-check -Force
-foreach ($f in 'OficinaDiag.exe','tools/platform-tools/adb.exe','Data/models.json','Tests/wwwroot/device-test.html') {
-  if (-not (Test-Path (Join-Path 'pkg-check' $f))) { throw "falta $f" }
-}
-```
-
-O `tools/fetch-tools.ps1` corre antes do publish no CI; localmente, sem
-ele, o `platform-tools` não existe e a verificação acusa — é o
-comportamento correto, não um falso positivo.
+Sem esses ficheiros o pacote é inútil mesmo que o updater o aceite, por
+isso a falha acontece antes de haver algo para assinar. O
+`tools/fetch-tools.ps1` corre antes do publish no CI; localmente, sem ele,
+a verificação acusa — é o comportamento correto, não um falso positivo.
 
 ## Recuperação (PC novo / máquina substituída)
 

@@ -60,9 +60,9 @@ jobs:
           if (-not (Test-Path $zip)) { throw "Pacote em falta: $zip não existe" }
           try { Expand-Archive $zip -DestinationPath pkg-check -Force -ErrorAction Stop }
           catch { throw "Pacote ilegível: $zip não abre (corrompido ou truncado)" }
-          foreach ($f in 'OficinaDiag.exe','tools/platform-tools/adb.exe','Data/models.json','Tests/wwwroot/device-test.html') {
-            if (-not (Test-Path (Join-Path 'pkg-check' $f))) { throw "Pacote incompleto: falta $f no zip" }
-          }
+          $faltam = @('OficinaDiag.exe','tools/platform-tools/adb.exe','Data/models.json','Tests/wwwroot/device-test.html') |
+            Where-Object { -not (Test-Path "pkg-check/$_") };
+          if ($faltam) { throw "Pacote incompleto: falta $($faltam -join ', ') no zip" }
         env:
           VERSION: ${{ github.ref_name }}
 
