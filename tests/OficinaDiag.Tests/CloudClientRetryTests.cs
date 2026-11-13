@@ -46,6 +46,23 @@ public sealed class CloudClientRetryTests
         }
     }
 
+    /// <summary>Falha a primeira tentativa como a rede falha; depois responde.</summary>
+    private sealed class Queda(HttpRequestError erro) : HttpMessageHandler
+    {
+        public int Pedidos;
+
+        protected override Task<HttpResponseMessage> SendAsync(
+            HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            if (Interlocked.Increment(ref Pedidos) == 1)
+                throw new HttpRequestException(erro, "sem ligação");
+            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent("{\"report\":\"laudo\"}"),
+            });
+        }
+    }
+
     private static CloudClient Cliente(
         HttpMessageHandler handler, TimeSpan? fast = null, TimeSpan? ai = null, Action? onRetry = null)
     {
@@ -121,36 +138,76 @@ public sealed class CloudClientRetryTests
         Assert.Equal(1, esperas);
     }
 
-    [Fact]
-    public async Task QuatroXX_NaoRepete()
+    // O guião repete o último código sem fim. Se o cliente insistisse, o
+    // timeout de 20 s acabava por o travar — daí só as contagens provarem.
+    [Theory]
+    [InlineData(400, 1, 0)] // definitivo: repetir dava o mesmo
+    [InlineData(503, 2, 1)] // repete uma vez, não faz ciclo
+    public async Task ErroDoServidor_NoCaminhoIdempotente_RespeitaAsRepeticoes(
+        int codigo, int pedidos, int esperasEsperadas)
     {
-        var handler = new Guiao(HttpStatusCode.BadRequest);
+        var handler = new Guiao((HttpStatusCode)codigo);
         var esperas = 0;
         var cloud = Cliente(handler, onRetry: () => esperas++);
 
         var (ok, msg) = await cloud.SendLogAsync("linha de log", "1.0.0", null);
 
-        // 400 é definitivo (pedido mal formado/loja errada): repetir dá o mesmo.
         Assert.False(ok);
-        Assert.Equal(L10n.F("cloud.status", 400, "indisponivel"), msg);
-        Assert.Equal(1, handler.Pedidos);
-        Assert.Equal(0, esperas);
+        Assert.Equal(L10n.F("cloud.status", codigo, "indisponivel"), msg);
+        Assert.Equal(pedidos, handler.Pedidos);
+        Assert.Equal(esperasEsperadas, esperas);
     }
 
     [Fact]
-    public async Task SegundoCincoXX_NoCaminhoIdempotente_Desiste()
+    public async Task ExcecaoDeRede_NoCaminhoIdempotente_RepeteEDevolveAResposta()
     {
-        var handler = new Guiao(HttpStatusCode.ServiceUnavailable);
+        // Qualquer HttpRequestException vale uma repetição: o endpoint é
+        // idempotente e repetir nunca custa dinheiro.
+        var handler = new Queda(HttpRequestError.Unknown);
         var esperas = 0;
         var cloud = Cliente(handler, onRetry: () => esperas++);
 
         var (ok, msg) = await cloud.SendLogAsync("linha de log", "1.0.0", null);
 
-        // Uma repetição, não um ciclo: dois 503 seguidos devolvem o erro.
-        Assert.False(ok);
-        Assert.Equal(L10n.F("cloud.status", 503, "indisponivel"), msg);
+        Assert.True(ok);
+        Assert.Equal(L10n.T("cloud.log.ok"), msg);
         Assert.Equal(2, handler.Pedidos);
         Assert.Equal(1, esperas);
+    }
+
+    [Theory]
+    [InlineData(HttpRequestError.NameResolutionError)]
+    [InlineData(HttpRequestError.ConnectionError)]
+    [InlineData(HttpRequestError.SecureConnectionError)]
+    public async Task ExcecaoAntesDeEnviar_NaIa_Repete(HttpRequestError erro)
+    {
+        var handler = new Queda(erro);
+        var esperas = 0;
+        var cloud = Cliente(handler, onRetry: () => esperas++);
+
+        var (ok, report) = await cloud.GenerateAiReportAsync("token", new DeviceReport { Platform = "ios" });
+
+        // Pedido nunca saiu (DNS/ligação/TLS): repetir não pode cobrar duas vezes.
+        Assert.True(ok);
+        Assert.Equal("laudo", report);
+        Assert.Equal(2, handler.Pedidos);
+        Assert.Equal(1, esperas);
+    }
+
+    [Fact]
+    public async Task ExcecaoDepoisDeEnviar_NaIa_NaoRepete()
+    {
+        // Resposta cortada a meio: o pedido já pode ter gerado o relatório.
+        var handler = new Queda(HttpRequestError.ResponseEnded);
+        var esperas = 0;
+        var cloud = Cliente(handler, onRetry: () => esperas++);
+
+        var (ok, err) = await cloud.GenerateAiReportAsync("token", new DeviceReport { Platform = "ios" });
+
+        Assert.False(ok);
+        Assert.Equal("sem ligação", err);
+        Assert.Equal(1, handler.Pedidos);
+        Assert.Equal(0, esperas);
     }
 
     [Fact]
