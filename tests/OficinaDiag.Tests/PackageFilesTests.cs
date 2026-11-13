@@ -91,11 +91,15 @@ public class PackageFilesTests
         Assert.Contains(AppExe(), Required());
     }
 
-    [Fact]
-    public void CaminhoDoAdbEmRuntimeEstaNaLista()
+    [Theory]
+    [InlineData(OficinaDiag.Devices.ToolPaths.AdbRelativePath)]
+    [InlineData(OficinaDiag.Devices.ToolPaths.ModelsJsonRelativePath)]
+    [InlineData(OficinaDiag.Devices.ToolPaths.DeviceTestPageRelativePath)]
+    public void CaminhosDeRuntimeEstaoNaLista(string caminho)
     {
-        // O MainWindow e o updater montam o caminho da app com esta constante.
-        Assert.Contains(OficinaDiag.Devices.ToolPaths.AdbRelativePath, Required());
+        // A app, o updater, a tabela de modelos e o TestServer abrem estes
+        // ficheiros pelo nome; divergir da lista só se nota em runtime.
+        Assert.Contains(caminho, Required());
     }
 
     [Fact]

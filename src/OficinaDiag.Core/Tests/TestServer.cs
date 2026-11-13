@@ -4,6 +4,7 @@ using System.Net.NetworkInformation;
 using System.Net.Sockets;
 using System.Text;
 using System.Text.Json;
+using OficinaDiag.Devices;
 
 namespace OficinaDiag.Tests;
 
@@ -152,11 +153,14 @@ public sealed class TestServer : IDisposable
     public string LanUrl =>
         $"http://{_bindAddress}:{Port}/{_token}/";
 
+    /// <summary>Página servida ao telemóvel; no pacote é uma entrada de tools/package-files.txt.</summary>
+    private static readonly string PagePath =
+        Path.Combine(AppContext.BaseDirectory, ToolPaths.DeviceTestPageRelativePath);
+
     /// <summary>Returns false se a página de teste não existir junto ao exe.</summary>
     public bool Start()
     {
-        if (!File.Exists(
-                Path.Combine(AppContext.BaseDirectory, "Tests", "wwwroot", "device-test.html")))
+        if (!File.Exists(PagePath))
             return false;
         _listener.Start();
         _loop = Task.Run(LoopAsync);
@@ -165,8 +169,7 @@ public sealed class TestServer : IDisposable
 
     private async Task LoopAsync()
     {
-        var page = File.ReadAllText(
-            Path.Combine(AppContext.BaseDirectory, "Tests", "wwwroot", "device-test.html"));
+        var page = File.ReadAllText(PagePath);
         while (!_cts.IsCancellationRequested && !_done)
         {
             TcpClient client;
