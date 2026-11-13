@@ -257,7 +257,10 @@ public sealed class UpdateChecker
             // 3) Extrair para staging limpo: appDir só é tocado depois de o
             //    zip provar que traz o exe da app (PackagePaths.AppExeName).
             "New-Item -ItemType Directory -Force $stage | Out-Null",
-            "tar -xf $zip -C $stage 2>&1 | Out-File $log -Append",
+            //    `tar` nu resolve para o GNU tar do Git (usr\bin à frente de
+            //    System32 em máquinas de dev), que lê "C:" como host remoto —
+            //    a extração falhava sempre e o update voltava a ser oferecido.
+            "& \"$env:SystemRoot\\System32\\tar.exe\" -xf $zip -C $stage 2>&1 | Out-File $log -Append",
             "\"extract exit=$LASTEXITCODE\" | Out-File $log -Append",
             $"if ($LASTEXITCODE -ne 0 -or -not (Test-Path (Join-Path $stage '{PackagePaths.AppExeName}'))) {{",
             "  'extract failed — nada em appDir foi alterado' | Out-File $log -Append",

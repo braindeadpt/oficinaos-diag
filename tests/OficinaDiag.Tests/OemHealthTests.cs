@@ -15,6 +15,11 @@ public sealed class OemHealthTests
     [InlineData("iPhone15,2", "iPhone 14 Pro")]
     [InlineData("iPhone13,3", "iPhone 12 Pro")]
     [InlineData("iPhone17,5", "iPhone 16e")]
+    [InlineData("iPhone12,8", "iPhone SE (2ª geração)")]
+    [InlineData("iPhone14,6", "iPhone SE (3ª geração)")]
+    [InlineData("iPhone18,1", "iPhone 17 Pro")]
+    [InlineData("iPhone18,3", "iPhone 17")]
+    [InlineData("iPhone18,4", "iPhone Air")]
     [InlineData("iPad14,1", "iPad mini (6ª geração)")]
     public void CatalogoResolveProductTypeApple(string code, string expected) =>
         Assert.Equal(expected, ModelNameTable.Lookup(code));

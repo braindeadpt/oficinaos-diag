@@ -179,10 +179,17 @@ public class UpdateCheckerTests
 
         // Ordem obrigatória: extrair para staging e validar ANTES de copiar
         // para appDir — um tar falhado deixava a instalação híbrida.
-        var extract = script.IndexOf("tar -xf $zip -C $stage", StringComparison.Ordinal);
+        var extract = script.IndexOf("-xf $zip -C $stage", StringComparison.Ordinal);
         var copy = script.IndexOf("Copy-Item (Join-Path $stage '*') $appDir", StringComparison.Ordinal);
         Assert.True(extract >= 0, "o script tem de extrair o zip para $stage");
         Assert.True(copy > extract, "a cópia para appDir tem de vir depois da extração");
+
+        // Windows real: com Git\usr\bin à frente de System32 no PATH, `tar` nu
+        // é o GNU tar, que lê "C:" como host remoto e falha sempre — app em
+        // loop de update silencioso. Só o tar do Windows, por caminho absoluto.
+        Assert.Contains(
+            @"& ""$env:SystemRoot\System32\tar.exe"" -xf $zip -C $stage", script);
+        Assert.DoesNotMatch(@"(^|\s)tar\s", script);
         Assert.Contains("oficinaos-stage-v0.3.0-", script);
         Assert.Contains($"Test-Path (Join-Path $stage '{PackagePaths.AppExeName}')", script);
         Assert.Contains("$LASTEXITCODE -ne 0", script);
