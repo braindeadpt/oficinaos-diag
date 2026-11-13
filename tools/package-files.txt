@@ -8,3 +8,4 @@ OficinaDiag.exe
 tools/platform-tools/adb.exe
 Data/models.json
 Tests/wwwroot/device-test.html
+Tests/wwwroot/device-test-decisions.js

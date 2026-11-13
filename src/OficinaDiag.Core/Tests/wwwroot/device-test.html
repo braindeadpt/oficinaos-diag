@@ -71,12 +71,16 @@
   <button id="endBtn">TERMINAR TESTE</button>
 </div>
 <div id="done">✓ TESTE COMPLETO<br><small id="doneNote">podes voltar ao PC</small></div>
+<script src="decisions.js"></script>
 <script>
+/* Decisões puras (cores, grelha, limiares, estado dos sensores) vivem em
+   device-test-decisions.js para poderem ser testadas em jsdom; aqui fica o
+   DOM. Carrega antes deste script — e sozinho não tem como funcionar. */
+const D = window.DeviceTestDecisions;
 const stage = document.getElementById('stage');
 const grid = document.getElementById('grid');
 /* cores cheias (pixeis mortos) + cinzentos (burn-in / uniformidade) */
-const colors = ['#f00','#0f0','#00f','#fff','#000','#f0f','#ff0','#0ff',
-                '#222','#555','#888','#bbb','#eee'];
+const colors = D.COLORS;
 let step = -1;
 /* Cores realmente vistas — o técnico pode terminar a meio e não é correcto
    reportar as 13 como vistas. */
@@ -95,8 +99,8 @@ stage.onclick = () => {
   if (step < colors.length) {
     seenColors.add(colors[step]);
     stage.style.background = colors[step];
-    const isGrey = /^#(?:22|55|88|bb|ee)$/.test(colors[step]);
-    stage.style.color = (colors[step]==='#000'||colors[step]==='#222'||colors[step]==='#555')?'#0f0':'#000';
+    const isGrey = D.isGrey(colors[step]);
+    stage.style.color = D.stageInk(colors[step]);
     stage.innerHTML = isGrey
       ? 'cinzento — procura manchas ou imagem fantasma (burn-in)'
       : 'procura pixeis mortos — toca para avançar';
@@ -109,11 +113,11 @@ function startGrid(){
   grid.style.display='grid';
   document.getElementById('gridUi').style.display='block';
   const hit = new Set(), edgeHit = new Set();
-  const COLS=6, ROWS=10;
+  const COLS=D.GRID.cols, ROWS=D.GRID.rows;
   for(let i=0;i<COLS*ROWS;i++){
     const c=document.createElement('div');
     const col=i%COLS, row=Math.floor(i/COLS);
-    const isEdge = col===0||col===COLS-1||row===0||row===ROWS-1;
+    const isEdge = D.isEdgeCell(i, COLS, ROWS);
     c.className='cell'+(isEdge?' edge':''); c.dataset.i=i;
     if(isEdge) c.dataset.edge='1';
     grid.appendChild(c);
@@ -131,10 +135,10 @@ function startGrid(){
   grid.addEventListener('touchstart',e=>{[...e.touches].forEach(mark)},{passive:true});
   grid.addEventListener('touchmove',e=>{[...e.touches].forEach(mark)},{passive:true});
   grid.addEventListener('touchend',()=>{
-    if(hit.size>=55) startMultiTouch(hit.size, edgeHit.size);
+    if(D.shouldAdvanceGrid(hit.size)) startMultiTouch(hit.size, edgeHit.size);
   },{passive:true});
   grid.onmousemove = e=>{ if(e.buttons) mark(e); };
-  grid.onclick = e=>{ mark(e); if(hit.size>=55) startMultiTouch(hit.size, edgeHit.size); };
+  grid.onclick = e=>{ mark(e); if(D.shouldAdvanceGrid(hit.size)) startMultiTouch(hit.size, edgeHit.size); };
   // Escape: um ecrã com zonas mortas nunca chega a 55 — sem este botão o
   // teste ficava preso e a falha real nunca chegava ao relatório.
   document.getElementById('gridNext').onclick=()=>{
@@ -205,8 +209,7 @@ function startSensors(){
   // iOS 13+ — os eventos de movimento precisam de permissão por gesto
   // iOS só entrega sensores depois do gesto + diálogo; contar os 6 s antes
   // disso marcava "sem leitura" num iPhone que ainda não tinha permissão.
-  const needsPermission = typeof DeviceMotionEvent!=='undefined'
-    && typeof DeviceMotionEvent.requestPermission==='function';
+  const needsPermission = D.motionPermissionRequired(window);
   if(needsPermission){
     document.getElementById('permBtn').style.display='block';
   } else {
@@ -244,8 +247,8 @@ function startSensors(){
   armSensorTimeouts(); // iOS: só corre depois da permissão (ver permBtn)
 
   const mt = result.multiTouch;
-  setSt('s-touch', mt>0 ? mt+' dedos' : 'não testado', mt>=5?'ok':mt>0?'warn':'warn');
-  result.sensors.multitouch = mt>=5 ? 'ok' : mt>0 ? 'warn' : 'no-data';
+  setSt('s-touch', D.multiTouchLabel(mt), D.multiTouchStatus(mt)===D.SENSOR_OK?'ok':'warn');
+  result.sensors.multitouch = D.multiTouchStatus(mt);
 
   if(navigator.getBattery){
     navigator.getBattery().then(b=>{
@@ -300,7 +303,7 @@ document.getElementById('earNo').onclick=()=>{ result.sensors.earpiece='fail'; d
 
 /* microfone: só em contexto seguro (https ou 127.0.0.1 via adb reverse).
    Mede o pico 5 s e liberta o stream logo no fim — nada fica a gravar. */
-if(window.isSecureContext && navigator.mediaDevices && navigator.mediaDevices.getUserMedia){
+if(D.micAvailability(window)==='available'){
   const mb=document.getElementById('micBtn');
   mb.style.display='block';
   mb.onclick=async()=>{
@@ -320,7 +323,7 @@ if(window.isSecureContext && navigator.mediaDevices && navigator.mediaDevices.ge
         if(Date.now()-t0<5000){ requestAnimationFrame(tick); return; }
         stream.getTracks().forEach(t=>t.stop());
         try{ ctx.close(); }catch(e){}
-        const ok=peak>0.08;
+        const ok = D.micStatusFromPeak(peak)===D.SENSOR_OK;
         result.sensors.mic=ok?'ok':'fail';
         setSt('s-mic', ok?'sinal ✓':'sem sinal', ok?'ok':'no');
         mb.textContent=ok?'MICROFONE OK ✓':'NÃO ouviu nada — repetir';
@@ -343,11 +346,11 @@ function armSensorTimeouts(){
   if(window.__sensorTimersArmed) return;
   window.__sensorTimersArmed=true;
   setTimeout(()=>{
-    if(!result.sensors.accel){ result.sensors.accel='no-data'; setSt('s-accel','sem leitura','warn'); }
-    if(!result.sensors.gyro){ result.sensors.gyro='no-data'; setSt('s-gyro','sem leitura','warn'); }
-    if(!result.sensors.orient){ result.sensors.orient='no-data'; setSt('s-orient','sem leitura','warn'); }
-    if(!result.sensors.light){ result.sensors.light='no-data'; setSt('s-light','sem leitura','warn'); }
-  }, 6000);
+    if(!result.sensors.accel){ result.sensors.accel=D.sensorStatusAfterTimeout(result.sensors.accel); setSt('s-accel','sem leitura','warn'); }
+    if(!result.sensors.gyro){ result.sensors.gyro=D.sensorStatusAfterTimeout(result.sensors.gyro); setSt('s-gyro','sem leitura','warn'); }
+    if(!result.sensors.orient){ result.sensors.orient=D.sensorStatusAfterTimeout(result.sensors.orient); setSt('s-orient','sem leitura','warn'); }
+    if(!result.sensors.light){ result.sensors.light=D.sensorStatusAfterTimeout(result.sensors.light); setSt('s-light','sem leitura','warn'); }
+  }, D.SENSOR_TIMEOUT_MS);
 }
 
 document.getElementById('permBtn').onclick=async()=>{
@@ -385,10 +388,10 @@ function finish(){
     fetch('result',{method:'POST',headers:{'Content-Type':'application/json'},body})
       .then(r=>{
         if(r.ok){ note.textContent='resultado entregue — podes voltar ao PC'; }
-        else if(tries<8){ setTimeout(send,1500); }
+        else if(D.shouldRetryDelivery(tries)){ setTimeout(send,D.DELIVERY.delayMs); }
         else{ note.textContent='NÃO consegui entregar — aproxima o telefone do PC e volta a abrir a página'; }
       })
-      .catch(()=>{ if(tries<8){ setTimeout(send,1500); }
+      .catch(()=>{ if(D.shouldRetryDelivery(tries)){ setTimeout(send,D.DELIVERY.delayMs); }
         else{ note.textContent='NÃO consegui entregar — aproxima o telefone do PC e volta a abrir a página'; } });
   };
   send();

@@ -1,0 +1,12 @@
+{
+  "name": "oficinaos-diag-device-test",
+  "private": true,
+  "description": "Testes jsdom das decisões da device-test.html (ecrã, toque, sensores)",
+  "type": "module",
+  "scripts": {
+    "test": "node --test device-test.test.mjs"
+  },
+  "devDependencies": {
+    "jsdom": "^24.1.3"
+  }
+}

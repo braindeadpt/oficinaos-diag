@@ -98,6 +98,7 @@ public class PackageFilesTests
     [InlineData(PackagePaths.AdbRelativePath)]
     [InlineData(PackagePaths.ModelsJsonRelativePath)]
     [InlineData(PackagePaths.DeviceTestPageRelativePath)]
+    [InlineData(PackagePaths.DeviceTestDecisionsRelativePath)]
     public void CaminhosDeRuntimeEstaoNaLista(string caminho)
     {
         // A app, o updater, a tabela de modelos e o TestServer abrem estes

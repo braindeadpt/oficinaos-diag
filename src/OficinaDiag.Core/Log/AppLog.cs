@@ -25,9 +25,9 @@ public sealed class LogFile
         {
             lock (_gate)
             {
-                Directory.CreateDirectory(System.IO.Path.GetDirectoryName(FilePath)!);
+                Directory.CreateDirectory(Path.GetDirectoryName(FilePath)!);
                 TrimIfNeeded();
-                System.IO.File.AppendAllText(FilePath, $"{DateTime.Now:yyyy-MM-dd HH:mm:ss} {line}{Environment.NewLine}");
+                File.AppendAllText(FilePath, $"{DateTime.Now:yyyy-MM-dd HH:mm:ss} {line}{Environment.NewLine}");
             }
         }
         catch { /* logging nunca derruba a app */ }
@@ -58,7 +58,7 @@ public sealed class LogFile
 /// <summary>Fachada estática do log da app sobre um único <see cref="LogFile"/>.</summary>
 public static class AppLog
 {
-    private static LogFile _sink = new(System.IO.Path.Combine(
+    private static LogFile _sink = new(Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
         "OficinaDiag", "diag.log"));
 

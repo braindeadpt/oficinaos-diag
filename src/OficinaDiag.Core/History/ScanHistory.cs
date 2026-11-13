@@ -10,6 +10,14 @@ namespace OficinaDiag.History;
 public sealed class ScanHistory
 {
     private readonly string _file;
+
+    /// <summary>
+    /// Append+poda intercalados por duas instâncias (ex.: app + segundo
+    /// processo) perdiam linhas: a poda lia o ficheiro, outro processo
+    /// escrevia, o Move sobrescrevia a linha nova. Um named mutex (nome
+    /// derivado do caminho, ver <see cref="LockNameFor"/>) torna a sequência
+    /// atómica entre processos — e só entre os que partilham o ficheiro.
+    /// </summary>
     private readonly Mutex _writeLock;
 
     public ScanHistory(string? file = null)
@@ -33,12 +41,6 @@ public sealed class ScanHistory
 
     private static readonly JsonSerializerOptions Opts = new() { WriteIndented = false };
 
-    /// <summary>
-    /// Append+poda intercalados por duas instâncias (ex.: app + segundo
-    /// processo) perdiam linhas: a poda lia o ficheiro, outro processo
-    /// escrevia, o Move sobrescrevia a linha nova. Um named mutex torna a
-    /// sequência atómica entre processos.
-    /// </summary>
     /// <summary>
     /// Mutex com timeout: uma instância presa não pode congelar a UI. Dono
     /// anterior morto com o mutex lança AbandonedMutexException — a posse

@@ -29,3 +29,10 @@ jobs:
 
       - name: Build WPF app
         run: dotnet build src/OficinaDiag/OficinaDiag.csproj -c Release -p:EnableWindowsTargeting=true
+
+      # As decisões da página on-device não dependem do sistema: correm uma vez.
+      - name: JS decisions (jsdom)
+        if: runner.os == 'Linux'
+        run: |
+          npm ci --prefix tests/device-test --no-audit --no-fund
+          node --test tests/device-test/device-test.test.mjs

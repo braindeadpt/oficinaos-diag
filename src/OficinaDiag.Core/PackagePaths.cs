@@ -20,4 +20,5 @@ internal static class PackagePaths
 
     /// <summary>Página servida ao telemóvel pelo <c>TestServer</c>.</summary>
     internal const string DeviceTestPageRelativePath = "Tests/wwwroot/device-test.html";
+    internal const string DeviceTestDecisionsRelativePath = "Tests/wwwroot/device-test-decisions.js";
 }

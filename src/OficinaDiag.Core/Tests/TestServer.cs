@@ -156,10 +156,15 @@ public sealed class TestServer : IDisposable
     private static readonly string PagePath =
         Path.Combine(AppContext.BaseDirectory, PackagePaths.DeviceTestPageRelativePath);
 
+    /// <summary>Decisões da página (cores, grelha, limiares) — mesmo pacote.</summary>
+    private static readonly string DecisionsPath =
+        Path.Combine(AppContext.BaseDirectory, PackagePaths.DeviceTestDecisionsRelativePath);
+
     /// <summary>Returns false se a página de teste não existir junto ao exe.</summary>
     public bool Start()
     {
-        if (!File.Exists(PagePath))
+        // As duas juntas: a página pede `decisions.js` e sem ele não arranca.
+        if (!File.Exists(PagePath) || !File.Exists(DecisionsPath))
             return false;
         _listener.Start();
         _loop = Task.Run(LoopAsync);
@@ -169,13 +174,14 @@ public sealed class TestServer : IDisposable
     private async Task LoopAsync()
     {
         var page = File.ReadAllText(PagePath);
+        var decisions = File.ReadAllText(DecisionsPath);
         while (!_cts.IsCancellationRequested && !_done)
         {
             TcpClient client;
             try { client = await _listener.AcceptTcpClientAsync(_cts.Token); }
             catch { break; }
 
-            _ = Task.Run(() => HandleClient(client, page));
+            _ = Task.Run(() => HandleClient(client, page, decisions));
         }
     }
 
@@ -228,7 +234,7 @@ public sealed class TestServer : IDisposable
     // encher a memória (o body ia parar a uma lista sem teto).
     private const int MaxBodyBytes = 256 * 1024;
 
-    private void HandleClient(TcpClient client, string page)
+    private void HandleClient(TcpClient client, string page, string decisions)
     {
         if (!AllowClient(client)) { try { client.Close(); } catch { } return; }
         try
@@ -319,6 +325,14 @@ public sealed class TestServer : IDisposable
                 else if (method == "GET" && cleanPath == $"/{_token}")
                 {
                     Respond(stream, "200 OK", page, "text/html; charset=utf-8");
+                }
+                // Relativo ao path da página com barra final; o caminho sem
+                // token cobre browsers que cortam a barra (o mesmo motivo que
+                // o TrimEnd('/') acima) — não é segredo, só código.
+                else if (method == "GET"
+                    && (cleanPath == $"/{_token}/decisions.js" || cleanPath == "/decisions.js"))
+                {
+                    Respond(stream, "200 OK", decisions, "text/javascript; charset=utf-8");
                 }
                 else
                 {
