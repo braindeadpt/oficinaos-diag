@@ -1,3 +1,5 @@
+using System.Globalization;
+
 namespace OficinaDiag.Devices;
 
 /// <summary>
@@ -40,14 +42,23 @@ internal static class IosDecisions
         return t == 0 ? null : t;
     }
 
+    /// <summary>Temperatura em °C a partir do valor cru do plist.</summary>
+    internal static double? CelsiusFrom(string? raw) =>
+        double.TryParse(raw, NumberStyles.Float, CultureInfo.InvariantCulture, out var t)
+            ? Celsius(t)
+            : null;
+
     /// <summary>
-    /// Temperatura para o relatório: só medições positivas — o relatório do
-    /// cliente não ganhou linha com temperaturas abaixo de zero.
+    /// Linha do relatório a partir da temperatura já em °C: só medições
+    /// positivas — o relatório do cliente não leva temperaturas abaixo de zero.
     /// </summary>
-    internal static Reading? Temperature(double? raw) => Celsius(raw) is { } t && t > 0
+    internal static Reading? Temperature(double? celsius) => celsius is { } t && t > 0
         ? new Reading(t > 40 ? "warn" : "info", $"{t:0.#} °C",
             t > 40 ? "quente — afeta a saúde a longo prazo" : null)
         : null;
+
+    /// <summary>Linha do relatório a partir do valor cru do plist.</summary>
+    internal static Reading? TemperatureFrom(string? raw) => Temperature(CelsiusFrom(raw));
 
     /// <summary>
     /// Potência do carregador: os watts só existem em `AdapterDetails` e só

@@ -345,10 +345,8 @@ public sealed class IosCollector
             double? volts = Field(io, "Voltage") is { } v
                 && int.TryParse(v, NumberStyles.Integer, CultureInfo.InvariantCulture, out var mv)
                 ? mv / 1000.0 : null;
-            // 0 = ausência de leitura, não 0 °C; >150 é a escala em centésimos.
-            double? tempC = Field(io, "Temperature", "AverageBattSkinTemp") is { } rawTemp
-                && double.TryParse(rawTemp, NumberStyles.Float, CultureInfo.InvariantCulture, out var tc)
-                ? IosDecisions.Celsius(tc) : null;
+            double? tempC = IosDecisions.CelsiusFrom(
+                Field(io, "Temperature", "AverageBattSkinTemp"));
             int? pct = Field(io, "BatteryCurrentCapacity", "CurrentCapacity") is { } p
                 && int.TryParse(p, NumberStyles.Integer, CultureInfo.InvariantCulture, out var lv)
                 ? lv : null;
@@ -474,9 +472,8 @@ public sealed class IosCollector
         // Temperatura: "Temperature" (gerações antigas, centésimos de °C) ou
         // "AverageBattSkinTemp" (iOS recente, já em °C). O 0 de
         // DeadBatteryBootData já não entra — 0 significa ausência de leitura.
-        if (Field(io, "Temperature", "AverageBattSkinTemp") is { } rawTemp
-            && double.TryParse(rawTemp, NumberStyles.Float, CultureInfo.InvariantCulture, out var tC)
-            && IosDecisions.Temperature(tC) is { } temp)
+        if (IosDecisions.TemperatureFrom(
+                Field(io, "Temperature", "AverageBattSkinTemp")) is { } temp)
             r.Set("battery.temp", temp.Status, temp.Value, temp.Note);
 
         if (Field(io, "Voltage") is { } volt

@@ -154,6 +154,19 @@ public sealed class IosCollectorParsingTests
     }
 
     [Fact]
+    public void TemperaturaDoPlistPassaPeloMesmoFiltro()
+    {
+        // O valor chega como texto do plist; a conversão vive num sítio só.
+        var quente = IosDecisions.TemperatureFrom("3150");
+        Assert.NotNull(quente);
+        Assert.StartsWith("31", quente!.Value.Value);
+        Assert.Null(IosDecisions.TemperatureFrom("0"));
+        Assert.Null(IosDecisions.TemperatureFrom("-5"));
+        Assert.Null(IosDecisions.TemperatureFrom(null));
+        Assert.Equal(-5, IosDecisions.CelsiusFrom("-5"));
+    }
+
+    [Fact]
     public void FixtureRealDoIphone13_3_CapacidadeE100PorCento()
     {
         var io = Fixture();
