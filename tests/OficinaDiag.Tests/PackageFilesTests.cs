@@ -75,6 +75,15 @@ public class PackageFilesTests
         XDocument.Load(Path.Combine(Root, "src/OficinaDiag/OficinaDiag.csproj"))
             .Descendants("AssemblyName").First().Value + ".exe";
 
+    /// <summary>
+    /// Um caminho publicado como diretório (acaba em '/') cobre tudo lá dentro;
+    /// um ficheiro tem de bater certo à letra.
+    /// </summary>
+    private static bool Cobre(string publicado, string caminho) =>
+        publicado.EndsWith('/')
+            ? caminho.StartsWith(publicado, StringComparison.Ordinal)
+            : caminho == publicado;
+
     [Fact]
     public void ExeDaAppEstaNaLista()
     {
@@ -94,7 +103,7 @@ public class PackageFilesTests
                 continue; // PublishSingleFile gera-o; não há Content.
 
             Assert.True(
-                published.Any(p => p.EndsWith('/') ? entry.StartsWith(p, StringComparison.Ordinal) : entry == p),
+                published.Any(p => Cobre(p, entry)),
                 $"'{entry}' está na lista mas nenhum copy-to-publish do csproj o produz");
         }
     }
@@ -106,7 +115,7 @@ public class PackageFilesTests
         foreach (var p in PublishedContent())
         {
             Assert.True(
-                required.Any(r => p.EndsWith('/') ? r.StartsWith(p, StringComparison.Ordinal) : r == p),
+                required.Any(r => Cobre(p, r)),
                 $"o csproj publica '{p}' mas nada em tools/package-files.txt o verifica");
         }
     }
@@ -116,7 +125,7 @@ public class PackageFilesTests
     {
         var yml = File.ReadAllText(Path.Combine(Root, ".github", "workflows", "release.yml"));
         Assert.Contains("tools/package-files.txt", yml);
-        Assert.DoesNotContain("'Data/models.json'", yml);
-        Assert.DoesNotContain("\"Data/models.json\"", yml);
+        // Nenhum caminho da lista pode voltar a estar escrito no YAML.
+        Assert.DoesNotContain(Required(), r => yml.Contains(r));
     }
 }
