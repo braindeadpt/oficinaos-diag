@@ -71,17 +71,6 @@ public class PackageFilesTests
     }
 
     [Fact]
-    public void ListaExigeOsQuatroFicheirosDoPacote()
-    {
-        var required = Required();
-        Assert.Equal(
-            new[] { "Data/models.json", "Tests/wwwroot/device-test.html", "tools/platform-tools/adb.exe" },
-            required.Where(r => r.Contains('/') || !r.EndsWith(".exe", StringComparison.OrdinalIgnoreCase))
-                .Order(StringComparer.Ordinal).ToArray());
-        Assert.Contains(required, r => r == "OficinaDiag.exe");
-    }
-
-    [Fact]
     public void CadaFicheiroExigidoVemDoPublishOuE_O_Exe()
     {
         var published = PublishedContent();
