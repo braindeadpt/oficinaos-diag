@@ -92,6 +92,14 @@ public class PackageFilesTests
     }
 
     [Fact]
+    public void NomeDoExeEmRuntimeBateComOCssproj()
+    {
+        // O updater procura o exe pelo nome: renomear o AssemblyName sem
+        // mexer no UpdateChecker deixava o updater a falhar em runtime.
+        Assert.Equal(AppExe(), OficinaDiag.Cloud.UpdateChecker.AppExeName);
+    }
+
+    [Fact]
     public void CadaFicheiroExigidoVemDoPublishOuE_O_Exe()
     {
         var published = PublishedContent();

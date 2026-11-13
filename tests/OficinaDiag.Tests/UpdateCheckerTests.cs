@@ -184,7 +184,7 @@ public class UpdateCheckerTests
         Assert.True(extract >= 0, "o script tem de extrair o zip para $stage");
         Assert.True(copy > extract, "a cópia para appDir tem de vir depois da extração");
         Assert.Contains("oficinaos-stage-v0.3.0-", script);
-        Assert.Contains("Test-Path (Join-Path $stage 'OficinaDiag.exe')", script);
+        Assert.Contains($"Test-Path (Join-Path $stage '{UpdateChecker.AppExeName}')", script);
         Assert.Contains("$LASTEXITCODE -ne 0", script);
     }
 

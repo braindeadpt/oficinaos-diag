@@ -49,6 +49,13 @@ public sealed class UpdateChecker
     public const string TrustedRepo = "oficinaos-diag";
 
     /// <summary>
+    /// Nome do exe da app: o updater procura-o no staging e no appDir. Tem de
+    /// bater com o <c>&lt;AssemblyName&gt;</c> do csproj da app — o
+    /// <c>PackageFilesTests</c> falha se divergirem.
+    /// </summary>
+    public const string AppExeName = "OficinaDiag.exe";
+
+    /// <summary>
     /// Chave pública EC P-256 (SubjectPublicKeyInfo, base64) que assina o
     /// SHA256SUMS de cada release. A privada vive num cofre offline do dono
     /// — nunca no repo nem no CI (rodada 2026-10-15: a primeira versão
@@ -236,7 +243,7 @@ public sealed class UpdateChecker
         string tag, string appDir, string zipPath, string logPath, int processId)
     {
         var stage = Path.Combine(Path.GetTempPath(), $"oficinaos-stage-{tag}-{Guid.NewGuid():N}");
-        var exePath = Path.Combine(appDir, "OficinaDiag.exe");
+        var exePath = Path.Combine(appDir, AppExeName);
         var adbPath = Path.Combine(appDir, "tools", "platform-tools", "adb.exe");
         return string.Join(Environment.NewLine, new[]
         {
@@ -259,7 +266,7 @@ public sealed class UpdateChecker
             "New-Item -ItemType Directory -Force $stage | Out-Null",
             "tar -xf $zip -C $stage 2>&1 | Out-File $log -Append",
             "\"extract exit=$LASTEXITCODE\" | Out-File $log -Append",
-            "if ($LASTEXITCODE -ne 0 -or -not (Test-Path (Join-Path $stage 'OficinaDiag.exe'))) {",
+            $"if ($LASTEXITCODE -ne 0 -or -not (Test-Path (Join-Path $stage '{AppExeName}'))) {{",
             "  'extract failed — nada em appDir foi alterado' | Out-File $log -Append",
             "  Remove-Item $stage -Recurse -Force -ErrorAction SilentlyContinue",
             "  Start-Process $exe",
