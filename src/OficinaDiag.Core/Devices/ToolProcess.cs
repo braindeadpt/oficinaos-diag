@@ -44,6 +44,14 @@ internal static class ToolProcess
                 return null;
             }
 
+            // Cancelado a meio: o kill do registo faz o processo sair antes do
+            // timeout, e um `WaitForExit` bem-sucedido não distingue «acabou»
+            // de «mataram-no». Sem esta guarda devolvia-se o stdout parcial
+            // (muitas vezes "") como se a ferramenta tivesse corrido bem —
+            // era isto que fazia o teste de cancelamento oscilar e que,
+            // em produção, entregava uma lista vazia em vez de «cancelado».
+            if (ct.IsCancellationRequested) return null;
+
             return stdout.Result;
         }
         catch { return null; }
