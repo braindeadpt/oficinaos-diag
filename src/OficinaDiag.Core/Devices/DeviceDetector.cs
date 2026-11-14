@@ -140,6 +140,20 @@ public sealed class DeviceDetector : IDisposable
         catch { return null; }
     }
 
+    /// <summary>
+    /// Uma entrada por UDID: o mesmo aparelho pode vir enumerado por dois
+    /// transportes na mesma ronda (iPhone por USB e por Wi-Fi), e o último
+    /// enumerado é o mais fresco. Puro para o teste o poder exercitar sem
+    /// adb nem timer — um <c>ToDictionary</c> direto rebentava com duplicate
+    /// key e a ronda inteira era perdida.
+    /// </summary>
+    internal static Dictionary<string, DetectedDevice> DedupeById(IEnumerable<DetectedDevice> devices)
+    {
+        var byId = new Dictionary<string, DetectedDevice>();
+        foreach (var d in devices) byId[d.Id] = d;
+        return byId;
+    }
+
     private void Poll()
     {
         // Timer callbacks overlap on the thread pool — a slow adb/iOS scan
@@ -149,12 +163,7 @@ public sealed class DeviceDetector : IDisposable
             return;
         try
         {
-            // O mesmo UDID pode vir enumerado por dois transportes na mesma
-            // ronda (ex.: iPhone emparelhado por USB e por Wi-Fi) — um
-            // ToDictionary direto rebentava com duplicate key e a ronda
-            // inteira era perdida. Último enumerado fica.
-            var now = new Dictionary<string, DetectedDevice>();
-            foreach (var d in Current()) now[d.Id] = d;
+            var now = DedupeById(Current());
             lock (_seen)
             {
                 foreach (var (id, d) in now)
