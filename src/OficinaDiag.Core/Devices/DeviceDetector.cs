@@ -149,7 +149,12 @@ public sealed class DeviceDetector : IDisposable
             return;
         try
         {
-            var now = Current().ToDictionary(d => d.Id);
+            // O mesmo UDID pode vir enumerado por dois transportes na mesma
+            // ronda (ex.: iPhone emparelhado por USB e por Wi-Fi) — um
+            // ToDictionary direto rebentava com duplicate key e a ronda
+            // inteira era perdida. Último enumerado fica.
+            var now = new Dictionary<string, DetectedDevice>();
+            foreach (var d in Current()) now[d.Id] = d;
             lock (_seen)
             {
                 foreach (var (id, d) in now)

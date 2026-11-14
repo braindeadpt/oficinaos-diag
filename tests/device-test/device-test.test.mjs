@@ -25,7 +25,7 @@ const fixtureSemPermissao = JSON.parse(
 /** A página real, com as decisões injetadas tal como o TestServer as serve. */
 function openPage({ secureContext = false, deviceMotionPermission = false } = {}) {
   const html = readFileSync(pagePath, 'utf8');
-  const inline = html.match(/<script>\n([\s\S]*?)<\/script>/)[1];
+  const inline = html.match(/<script>\r?\n([\s\S]*?)<\/script>/)[1];
   const dom = new JSDOM(html.replace('<script src="decisions.js"></script>', ''), {
     url: 'http://192.168.1.50:8765/abc123/',
     runScripts: 'outside-only',
@@ -34,7 +34,11 @@ function openPage({ secureContext = false, deviceMotionPermission = false } = {}
   const w = dom.window;
   Object.defineProperty(w, 'isSecureContext', { value: secureContext, configurable: true });
   if (deviceMotionPermission) {
-    w.DeviceMotionEvent = { requestPermission: () => Promise.resolve('granted') };
+    w.DeviceMotionEvent = {
+      requestPermission: () => deviceMotionPermission === 'denied'
+        ? Promise.reject(new Error('denied'))
+        : Promise.resolve('granted'),
+    };
   }
   w.eval(readFileSync(decisionsPath, 'utf8'));
   w.eval(inline);
@@ -100,6 +104,11 @@ test('sensores: permissão do iOS, timeout não apaga leitura e microfone exige 
   assert.equal(D.sensorStatusAfterTimeout(undefined), 'no-data');
   assert.equal(D.sensorStatusAfterTimeout('ok'), 'ok');
   assert.equal(D.SENSOR_TIMEOUT_MS, 6000);
+
+  // Movimento recusado: o timeout só arma o que não depende da permissão —
+  // accel/gyro/orient ficam de fora («não medido», sem linha no relatório).
+  assert.deepEqual(D.armedSensorKeys(false), ['accel', 'gyro', 'orient', 'light']);
+  assert.deepEqual(D.armedSensorKeys(true), ['light']);
 
   const comMedia = { isSecureContext: true, navigator: { mediaDevices: { getUserMedia() {} } } };
   assert.equal(D.micAvailability(comMedia), 'available');
@@ -251,6 +260,47 @@ test('página: iPhone sem permissão de movimento entrega payload sem accel/gyro
     const { userAgent, ...estavel } = payload;
     assert.equal(typeof userAgent, 'string');
     assert.deepEqual(estavel, fixtureSemPermissao);
+  } finally {
+    dom.window.close();
+  }
+});
+
+test('página: iPhone que recusa o diálogo de permissão entrega payload sem accel/gyro/orient', async () => {
+  // Diferente de nunca tocar no botão: aqui o técnico toca em PERMITIR
+  // SENSORES e escolhe «Não Permitir» no diálogo do iOS. Os timeouts eram
+  // armados na mesma e os sensores saíam "no-data" → linhas «sem leitura»
+  // no relatório, violando o contrato do fixture partilhado.
+  const dom = openPage({ deviceMotionPermission: 'denied' });
+  const chamadas = [];
+  try {
+    const timers = espiarTimers(dom);
+    const doc = advanceToSensors(dom);
+    assert.equal(doc.getElementById('permBtn').style.display, 'block');
+
+    doc.getElementById('permBtn').onclick();
+    await new Promise((r) => setTimeout(r, 0));
+
+    assert.equal(dom.window.__motionDenied, true);
+    assert.equal(doc.getElementById('s-accel').textContent, 'sem permissão');
+    assert.equal(doc.getElementById('s-gyro').textContent, 'sem permissão');
+    assert.equal(doc.getElementById('s-orient').textContent, 'sem permissão');
+
+    timers.dispararLongos();
+    assert.equal(doc.getElementById('s-accel').textContent, 'sem permissão'); // não vira «sem leitura»
+
+    dom.window.fetch = (url, opts) => {
+      chamadas.push(JSON.parse(opts.body));
+      return Promise.resolve({ ok: true });
+    };
+    doc.getElementById('endBtn').onclick();
+    await new Promise((r) => setTimeout(r, 0));
+
+    const sensors = chamadas[0].sensors;
+    assert.ok(!('accel' in sensors), `veio accel=${sensors.accel}`);
+    assert.ok(!('gyro' in sensors), `veio gyro=${sensors.gyro}`);
+    assert.ok(!('orient' in sensors), `veio orient=${sensors.orient}`);
+    // light não depende da permissão de movimento — continua a ser medido.
+    assert.equal(sensors.light, 'unavailable');
   } finally {
     dom.window.close();
   }
