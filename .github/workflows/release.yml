@@ -9,7 +9,9 @@ permissions:
 
 jobs:
   build:
-    runs-on: windows-latest
+    # Fixo como no ci.yml: a release tem de sair do mesmo Windows em que a
+    # matriz a testou, e `windows-latest` mudaria isso sem commit.
+    runs-on: windows-2022
     steps:
       - uses: actions/checkout@v7
 
