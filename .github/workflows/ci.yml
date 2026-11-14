@@ -16,7 +16,10 @@ jobs:
     strategy:
       fail-fast: false   # um sistema a falhar não esconde o resultado do outro
       matrix:
-        os: [ubuntu-latest, windows-latest]
+        # Versões fixas, não `-latest`: o `ubuntu-latest` migra para Ubuntu 26
+        # (anúncio do runner-images #14748) e um ambiente novo não pode entrar
+        # sem se ver a matriz. Subir de versão passa a ser um commit.
+        os: [ubuntu-24.04, windows-2022]
     steps:
       - uses: actions/checkout@v7
 
