@@ -28,9 +28,15 @@ internal static class ToolProcess
             });
             if (p is null) return null;
 
-            var stdout = p.StandardOutput.ReadToEndAsync(ct);
+            // Sem `ct` nas leituras de propósito: com ele, cancelar fazia a
+            // leitura lançar e o `catch` devolvia null por uma via lateral —
+            // a guarda do cancelamento ficava sem dono e o comportamento
+            // dependia de quem chegasse primeiro. A leitura termina quando o
+            // pipe fecha (processo morto pelo kill) e a decisão «cancelado →
+            // null» fica num sítio só, depois do `WaitForExit`.
+            var stdout = p.StandardOutput.ReadToEndAsync();
             // Drenar o stderr: o buffer cheio bloqueia o processo antes do exit.
-            _ = p.StandardError.ReadToEndAsync(ct);
+            _ = p.StandardError.ReadToEndAsync();
 
             // Cancelamento mata o filho logo, em vez de deixar órfãos.
             using var kill = ct.Register(() =>
