@@ -49,6 +49,20 @@ jobs:
             if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           }
 
+      # O cenário que o `DiagConfigTests` não aguentava: duas suites completas
+      # no mesmo checkout, ao mesmo tempo. `--no-build` porque o passo `Test`
+      # já deixou o binário pronto — dois MSBuild no mesmo obj seria outra corrida.
+      - name: Duas suites em paralelo
+        if: inputs.stress
+        shell: pwsh
+        run: |
+          $a = Start-Process dotnet -ArgumentList 'test','tests/OficinaDiag.Tests','-c','Release','--no-build' -NoNewWindow -PassThru -RedirectStandardOutput a.log
+          $b = Start-Process dotnet -ArgumentList 'test','tests/OficinaDiag.Tests','-c','Release','--no-build' -NoNewWindow -PassThru -RedirectStandardOutput b.log
+          $a.WaitForExit(); $b.WaitForExit()
+          Get-Content a.log | Select-String -Pattern 'Passed!|Failed!' | ForEach-Object { "A: $_" }
+          Get-Content b.log | Select-String -Pattern 'Passed!|Failed!' | ForEach-Object { "B: $_" }
+          if ($a.ExitCode -ne 0 -or $b.ExitCode -ne 0) { exit 1 }
+
       - name: Build WPF app
         run: dotnet build src/OficinaDiag/OficinaDiag.csproj -c Release -p:EnableWindowsTargeting=true
 
