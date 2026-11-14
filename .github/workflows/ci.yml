@@ -33,6 +33,12 @@ jobs:
       - name: Build WPF app
         run: dotnet build src/OficinaDiag/OficinaDiag.csproj -c Release -p:EnableWindowsTargeting=true
 
+      # O plano tem de continuar verificável: placar a bater com os tickets,
+      # [x] com prova, [ ] com motivo, e nenhum teste citado que já não exista.
+      - name: Plan criteria
+        if: runner.os == 'Linux'
+        run: node tools/plan-check.mjs
+
       # As decisões da página on-device não dependem do sistema: correm uma vez.
       - name: JS decisions (jsdom)
         if: runner.os == 'Linux'

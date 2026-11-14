@@ -11,6 +11,9 @@ namespace OficinaDiag.Tests;
 /// com �. Agora salta até ao fim da linha; aqui prova-se com um ficheiro cujo
 /// corte cai dentro de um "€" de 3 bytes.
 /// </summary>
+/// O destino do `AppLog` é estático: em paralelo com outro teste que o
+/// redirecione (ou que provoque um log), as escritas caem no ficheiro errado.
+[Collection(SerialCollection.Name)]
 public sealed class AppLogTests : IDisposable
 {
     private readonly string _dir = Path.Combine(Path.GetTempPath(), $"log-{Guid.NewGuid():N}");

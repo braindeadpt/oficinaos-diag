@@ -20,6 +20,7 @@ public sealed class DeviceDetector : IDisposable
     private readonly IosCollector _ios = new();
     private readonly Timer _timer;
     private readonly Dictionary<string, DetectedDevice> _seen = new();
+    private readonly Func<IReadOnlyList<DetectedDevice>> _current;
     private int _polling;
 
     public event Action<DetectedDevice>? Attached;
@@ -30,7 +31,20 @@ public sealed class DeviceDetector : IDisposable
     public DeviceDetector(string adbPath)
     {
         _adbPath = adbPath;
+        _current = Current;
         _timer = new Timer(_ => Poll(), null, 0, 2000);
+    }
+
+    /// <summary>
+    /// Seam de teste: fonte falsa e sem timer — a ronda é chamada à mão com
+    /// <see cref="Poll"/>, para exercitar anexar/refrescar/desanexar, a guarda
+    /// de reentrância e o handler que rebenta sem adb nem espera de 2 s.
+    /// </summary>
+    internal DeviceDetector(Func<IReadOnlyList<DetectedDevice>> source)
+    {
+        _adbPath = "";
+        _current = source;
+        _timer = new Timer(_ => { }, null, Timeout.Infinite, Timeout.Infinite);
     }
 
     private List<DetectedDevice> Current()
@@ -154,24 +168,21 @@ public sealed class DeviceDetector : IDisposable
         return byId;
     }
 
-    private void Poll()
+    /// <summary>
+    /// Guarda de reentrância: os callbacks do timer sobrepõem-se no thread
+    /// pool (um scan adb/iOS lento, ~5 s, reentrava na ronda anterior), o
+    /// <c>_seen</c> não é thread-safe e os eventos saíam duplicados.
+    /// </summary>
+    internal bool BeginPoll() => Interlocked.Exchange(ref _polling, 1) == 0;
+
+    internal void EndPoll() => Volatile.Write(ref _polling, 0);
+
+    internal void Poll()
     {
-        // Timer callbacks overlap on the thread pool — a slow adb/iOS scan
-        // (~5s) would re-enter while a previous poll still runs. _seen is
-        // not thread-safe and double events would fire, so skip the round.
-        if (Interlocked.Exchange(ref _polling, 1) == 1)
-            return;
+        if (!BeginPoll()) return;
         try
         {
-            var now = DedupeById(Current());
-            lock (_seen)
-            {
-                foreach (var (id, d) in now)
-                    if (_seen.Remove(id)) _seen[id] = d;   // refresca label (unauthorized→device)
-                    else { _seen[id] = d; Attached?.Invoke(d); }
-                foreach (var (id, d) in _seen.ToArray())
-                    if (!now.ContainsKey(id)) { _seen.Remove(id); Detached?.Invoke(d); }
-            }
+            PollOnce();
         }
         catch (Exception ex)
         {
@@ -182,9 +193,27 @@ public sealed class DeviceDetector : IDisposable
         }
         finally
         {
-            Volatile.Write(ref _polling, 0);
+            EndPoll();
         }
     }
+
+    /// <summary>Uma ronda: anexa, refresca e desanexa. Sem timer nem guarda.</summary>
+    internal void PollOnce()
+    {
+        var now = DedupeById(_current());
+        lock (_seen)
+        {
+            foreach (var (id, d) in now)
+                if (_seen.Remove(id)) _seen[id] = d;   // refresca label (unauthorized→device)
+                else { _seen[id] = d; Attached?.Invoke(d); }
+            foreach (var (id, d) in _seen.ToArray())
+                if (!now.ContainsKey(id)) { _seen.Remove(id); Detached?.Invoke(d); }
+        }
+    }
+
+    internal int SeenCount { get { lock (_seen) return _seen.Count; } }
+
+    internal DetectedDevice? SeenById(string id) { lock (_seen) return _seen.GetValueOrDefault(id); }
 
     public void Dispose() => _timer.Dispose();
 }
