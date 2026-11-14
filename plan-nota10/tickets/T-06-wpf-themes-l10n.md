@@ -60,6 +60,7 @@
 
 ## Critérios de Aceitação
 - [ ] Fechar `SettingsDialog` durante um pedido de pairing nunca lança exceção nem altera `_config`. *(pendente de Windows: correção implementada (`_closing`/`_cts`/gravação atómica), mas a UI WPF não correu)*
+- [ ] `SettingsDialog`, `ChecklistDialog`, `InsuranceDialog`, `SendDialog` e `TokenDialog` abrem nos temas Terminal, Fluent e Win95 sem rebentar no `InitializeComponent`. *(pendente de Windows: o PR #11 trocou `BasedOn="{DynamicResource TermButton}"` por `StaticResource` nos cinco — `BasedOn` não aceita `DynamicResource` no WPF e o QA em Windows apanhou os cinco a rebentar ao abrir; compila e está coberto pelos testes de tema só na compilação, a UI nunca abriu)*
 - [ ] Mudar o tema para `Fluent` ou `Win95` atualiza imediatamente as cores e formato de `ResultsList` e de todos os diálogos. *(pendente de Windows: mudança visual por confirmar; só compilada)*
 - [x] Em modo Inglês (`en`), nenhuma mensagem da Cloud, `CompareWindow` ou Relatório IA sai em Português por engano. *(prova: `L10nAndThemesTests` garante que cada chave tem PT e EN, e o handoff de `T-06` regista as strings movidas para `cloud.*`/`cmp.*`; a ausência de literais na UI foi revista por código, não por teste)*
 - [ ] `ScopeView.OnRender` faz zero alocações de `Pen` entre frames do mesmo tema. *(pendente de Windows: cache por tema revista por código, sem medição de alocações em execução)*
