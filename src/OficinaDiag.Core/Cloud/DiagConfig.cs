@@ -15,8 +15,28 @@ public sealed class DiagConfig
     // dir não é gravável (instalação MSIX/Store — pasta de instalação só de
     // leitura), cai para %APPDATA%\OficinaDiag — sem o fallback o tema, o
     // idioma e o token perdiam-se a cada arranque na versão da Store.
-    private static readonly string PortablePath =
-        System.IO.Path.Combine(AppContext.BaseDirectory, "oficinaos-diag.config.json");
+    // Onde vive o config. Injetável — `OFICINAOS_CONFIG_DIR` (variável de
+    // processo, herdada pelos filhos) ou `RedirectTo` (seam de teste). O
+    // default é o bin do projeto, que duas suites `dotnet test` em paralelo
+    // partilhavam: uma apagava o ficheiro enquanto a outra o lia, e o
+    // `DiagConfigTests` falhava sem que nada estivesse errado no código.
+    private static string _root =
+        Environment.GetEnvironmentVariable("OFICINAOS_CONFIG_DIR") ?? AppContext.BaseDirectory;
+
+    private static string PortablePath =>
+        System.IO.Path.Combine(_root, "oficinaos-diag.config.json");
+
+    /// <summary>
+    /// Muda a raiz do config e devolve a anterior (o `LogFile`/`AppLog` fazem
+    /// o mesmo com o `diag.log`). Devolver a anterior permite ao teste repor
+    /// o estado sem saber qual era.
+    /// </summary>
+    internal static string RedirectTo(string dir)
+    {
+        var anterior = _root;
+        _root = dir;
+        return anterior;
+    }
     private static readonly string AppDataPath =
         System.IO.Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),

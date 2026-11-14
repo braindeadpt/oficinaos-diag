@@ -10,24 +10,30 @@ namespace OficinaDiag.Tests;
 /// DPAPI (ProtectedData) só existe em Windows — os testes aqui não tocam
 /// em Protect/Unprotect, por isso correm em Linux/macOS também.
 /// </summary>
+[Collection(SerialCollection.Name)]
 public class DiagConfigTests : IDisposable
 {
-    private static readonly string ConfigPath = Path.Combine(
-        AppContext.BaseDirectory, "oficinaos-diag.config.json");
+    // Raiz própria por teste, como o `AppLogTests` faz com o `diag.log`.
+    // Antes, o config ia para o bin do projeto — duas suites em paralelo
+    // apagavam/liam o mesmo ficheiro e esta classe falhava por causa disso.
+    private readonly string _dir = Path.Combine(Path.GetTempPath(), $"config-{Guid.NewGuid():N}");
+    private readonly string _anterior;
 
     public DiagConfigTests()
     {
-        try { File.Delete(ConfigPath); } catch { }
-        try { File.Delete(ConfigPath + ".tmp"); } catch { }
+        Directory.CreateDirectory(_dir);
+        _anterior = DiagConfig.RedirectTo(_dir);
     }
+
+    private string ConfigPath => Path.Combine(_dir, "oficinaos-diag.config.json");
 
     public void Dispose()
     {
-        try { File.Delete(ConfigPath); } catch { }
-        try { File.Delete(ConfigPath + ".tmp"); } catch { }
+        DiagConfig.RedirectTo(_anterior);
+        try { Directory.Delete(_dir, recursive: true); } catch { }
     }
 
-    private static void WriteConfig(object cfg) =>
+    private void WriteConfig(object cfg) =>
         File.WriteAllText(ConfigPath, JsonSerializer.Serialize(cfg));
 
     [Fact]
