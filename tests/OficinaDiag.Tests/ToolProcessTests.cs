@@ -7,9 +7,13 @@ namespace OficinaDiag.Tests;
 /// <summary>
 /// `ToolProcess` substituiu o bloco repetido do `IosCollector`: o timeout tem
 /// de matar a árvore toda, não só o processo lançado — um `idevicediagnostics`
-/// órfão segura o relay e o scan seguinte falha. O cenário é montado com um
-/// lançador nativo de cada sistema (`sh` no Unix, `powershell.exe` no Windows),
-/// por isso a prova vale nos dois e não passa em vazio em nenhum.
+/// órfão segura o relay e o scan seguinte falha.
+/// O cenário é montado com um lançador nativo (`sh` no Unix, `cmd` no Windows)
+/// que cria um filho de longa duração; o filho **bate** um ficheiro enquanto
+/// vive, e é a paragem das batidas que prova a morte dele. Sem PowerShell e sem
+/// PID: o arranque do `powershell.exe` foi o único componente cujo tempo não
+/// controlávamos, e foi ele que deixou dois testes pendurados aos 30 s no
+/// Windows sem diagnóstico.
 /// </summary>
 [Collection(SerialCollection.Name)]
 public class ToolProcessTests
@@ -34,15 +38,17 @@ public class ToolProcessTests
         var dir = Directory.CreateTempSubdirectory("oficinadiag-kill-");
         try
         {
-            var launch = await StartChildAsync(dir, timeoutMs: 2000);
+            // 5 s, não 2: o lançador e o filho arrancam em ms, mas dar folga
+            // ao *arranque* não enfraquece a asserção — ela é sobre o kill.
+            var launch = await StartChildAsync(dir, timeoutMs: 5000);
 
             var saida = await launch.Run;
             launch.Clock.Stop();
 
             Assert.Null(saida);
-            Assert.InRange(launch.Clock.ElapsedMilliseconds, 1800, 15000);
-            Assert.True(await MortoAsync(launch.ChildPid),
-                $"o filho {launch.ChildPid} sobreviveu ao timeout");
+            Assert.InRange(launch.Clock.ElapsedMilliseconds, 4500, 20000);
+            Assert.True(await ParouDeBaterAsync(launch.BeatFile),
+                $"o filho continuou vivo depois do timeout — {Diagnostico(dir)}");
         }
         finally { dir.Delete(true); }
     }
@@ -54,60 +60,59 @@ public class ToolProcessTests
         try
         {
             using var cts = new CancellationTokenSource();
-            var launch = await StartChildAsync(dir, timeoutMs: 20_000, cts.Token);
+            var launch = await StartChildAsync(dir, timeoutMs: 60_000, cts.Token);
 
             cts.Cancel();
-            Assert.Null(await launch.Run);
-            Assert.True(await MortoAsync(launch.ChildPid),
-                $"o filho {launch.ChildPid} sobreviveu ao cancelamento");
+
+            // O limite de 5 s é o que dá sentido ao teste: sem ele, um
+            // cancelamento que não mata nada passava na mesma, porque o
+            // lançador acaba sozinho aos 60 s e o `Run` devolve null.
+            string? saida;
+            try
+            {
+                saida = await launch.Run.WaitAsync(TimeSpan.FromSeconds(5));
+            }
+            catch (TimeoutException)
+            {
+                Assert.True(false, $"o cancelamento não matou o processo em 5 s — {Diagnostico(dir)}");
+                return;
+            }
+
+            Assert.Null(saida);
+            Assert.True(await ParouDeBaterAsync(launch.BeatFile),
+                $"o filho continuou vivo depois do cancelamento — {Diagnostico(dir)}");
         }
         finally { dir.Delete(true); }
     }
 
-    private sealed record Launch(Task<string?> Run, int ChildPid, Stopwatch Clock);
+    private sealed record Launch(Task<string?> Run, string BeatFile, Stopwatch Clock);
 
     /// <summary>
-    /// Arranca um processo que cria um filho de longa duração e escreve o PID
-    /// do filho antes de esperar por ele. O `Run` corre em paralelo com a espera
-    /// pelo PID: com a máquina carregada, o lançador pode demorar e o teste não
-    /// pode depender disso.
+    /// Arranca o lançador e espera que o filho dê sinal de vida. O `Run` corre
+    /// em paralelo com essa espera: o teste não depende de o filho aparecer
+    /// depressa, só de aparecer.
     /// </summary>
     private static async Task<Launch> StartChildAsync(
         DirectoryInfo dir, int timeoutMs, CancellationToken ct = default)
     {
-        var pidFile = Path.Combine(dir.FullName, "child.pid");
-        var (exe, args) = Spawner(dir, pidFile);
+        var beat = Path.Combine(dir.FullName, "beat.txt");
+        var (exe, args) = Spawner(dir);
 
         var clock = Stopwatch.StartNew();
         var run = Task.Run(() => ToolProcess.Run(exe, args, timeoutMs, ct), CancellationToken.None);
 
-        // 30 s: o runner do release já falhou aqui aos 10 s (arranque do
-        // powershell a frio) e passou na re-execução. A asserção é «o PID
-        // aparece», não «aparece depressa» — um servidor lento não é o
-        // defeito que o teste procura, e o processo fica limitado pelo
-        // timeoutMs do ToolProcess.
-        int? child = null;
         var espera = Stopwatch.StartNew();
-        while (child is null && espera.ElapsedMilliseconds < 30_000)
-        {
+        while (!File.Exists(beat) && espera.ElapsedMilliseconds < 30_000)
             await Task.Delay(20);
-            try
-            {
-                if (File.Exists(pidFile)
-                    && int.TryParse(File.ReadAllText(pidFile).Trim(), out var pid) && pid > 0)
-                    child = pid;
-            }
-            catch (IOException) { /* ficheiro a ser escrito */ }
-        }
 
-        Assert.True(child is not null,
-            $"o lançador não chegou a escrever o PID do filho — {Diagnostico(dir)}");
-        return new Launch(run, child!.Value, clock);
+        Assert.True(File.Exists(beat), $"o filho não chegou a bater — {Diagnostico(dir)}");
+        return new Launch(run, beat, clock);
     }
 
     /// <summary>
-    /// O que o lançador deixou no diretório: PID, marcador de arranque e erro.
-    /// Sem isto, uma falha no CI dizia só «o PID não apareceu».
+    /// O que ficou no diretório. Sem isto, uma falha dizia só «não apareceu»;
+    /// com isto distingue-se «o lançador nunca correu» de «correu e o filho
+    /// não arrancou».
     /// </summary>
     private static string Diagnostico(DirectoryInfo dir)
     {
@@ -118,54 +123,69 @@ public class ToolProcessTests
             catch (IOException) { return "(bloqueado)"; }
         }
 
-        return $"started={Ler("launcher-started.txt")}; pid={Ler("child.pid")}; " +
-               $"erro={Ler("launcher-err.txt")}; ficheiros={string.Join(",", dir.GetFileSystemInfos().Select(f => f.Name))}";
+        return $"started={Ler("launcher-started.txt")}; beat={Ler("beat.txt")}; " +
+               $"ficheiros={string.Join(",", dir.GetFileSystemInfos().Select(f => f.Name))}";
     }
 
-    /// <summary>Lançador nativo: `sh` no Unix, `powershell.exe` no Windows.</summary>
-    private static (string Exe, string Args) Spawner(DirectoryInfo dir, string pidFile)
+    /// <summary>
+    /// Espera 2,5 s e diz se o ficheiro parou de mudar. O filho bate a cada
+    /// ~0,5 s (Unix) / ~1 s (Windows), por isso quatro batidas perdidas são
+    /// morte, não lentidão.
+    /// </summary>
+    private static async Task<bool> ParouDeBaterAsync(string beatFile)
     {
+        static DateTime Mtime(string path)
+        {
+            try { return File.Exists(path) ? File.GetLastWriteTimeUtc(path) : DateTime.MinValue; }
+            catch (IOException) { return DateTime.MinValue; }
+        }
+
+        var antes = Mtime(beatFile);
+        await Task.Delay(2500);
+        return Mtime(beatFile) == antes;
+    }
+
+    /// <summary>
+    /// Lançador nativo: `sh` no Unix, `cmd` no Windows. O lançador deixa um
+    /// marcador, arranca o filho e fica vivo até ser morto — é ele que o
+    /// `ToolProcess` lança e cuja árvore tem de morrer.
+    /// </summary>
+    private static (string Exe, string Args) Spawner(DirectoryInfo dir)
+    {
+        var beat = Path.Combine(dir.FullName, "beat.txt");
+        var marcador = Path.Combine(dir.FullName, "launcher-started.txt");
+
         if (OperatingSystem.IsWindows())
         {
-            var ps1 = Path.Combine(dir.FullName, "spawn.ps1");
-            // O marcador e o catch existem para o teste poder dizer PORQUE o
-            // PID não apareceu: «o PowerShell nem chegou a correr» e «correu e
-            // rebentou» são avarias diferentes, e no CI só se vê o resultado.
-            File.WriteAllText(ps1, $$"""
-                Set-Content -Path (Join-Path '{{dir.FullName.Replace("'", "''")}}' 'launcher-started.txt') -Value 'ok'
-                try {
-                    $p = Start-Process -FilePath cmd.exe -ArgumentList '/c','ping -n 60 127.0.0.1 >NUL' -PassThru -WindowStyle Hidden
-                    Set-Content -Path '{{pidFile.Replace("'", "''")}}' -Value $p.Id
-                    Wait-Process -Id $p.Id
-                } catch {
-                    Set-Content -Path (Join-Path '{{dir.FullName.Replace("'", "''")}}' 'launcher-err.txt') -Value ($_ | Out-String)
-                    throw
-                }
+            var filho = Path.Combine(dir.FullName, "child.cmd");
+            File.WriteAllText(filho, $"""
+                @echo off
+                :loop
+                echo %RANDOM% > "{beat}"
+                ping -n 2 127.0.0.1 >NUL
+                goto loop
                 """);
-            return ("powershell.exe", $"-NoProfile -ExecutionPolicy Bypass -File \"{ps1}\"");
+
+            var lancador = Path.Combine(dir.FullName, "launcher.cmd");
+            File.WriteAllText(lancador, $"""
+                @echo off
+                echo ok > "{marcador}"
+                start "" /b cmd /c "{filho}"
+                ping -n 60 127.0.0.1 >NUL
+                """);
+            return ("cmd.exe", $"/c \"\"{lancador}\"\"");
         }
 
-        var sh = Path.Combine(dir.FullName, "spawn.sh");
-        File.WriteAllText(sh, "#!/bin/sh\nsleep 60 &\necho $! > \"$1\"\nwait\n");
+        var shFilho = Path.Combine(dir.FullName, "child.sh");
+        File.WriteAllText(shFilho, $"#!/bin/sh\nwhile :; do echo $$ > \"{beat}\"; sleep 0.5; done\n");
+        File.SetUnixFileMode(shFilho,
+            UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+
+        var sh = Path.Combine(dir.FullName, "launcher.sh");
+        File.WriteAllText(sh,
+            $"#!/bin/sh\necho ok > \"{marcador}\"\n\"{shFilho}\" &\nwait\n");
         File.SetUnixFileMode(sh,
             UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
-        return ("/bin/sh", $"\"{sh}\" \"{pidFile}\"");
-    }
-
-    /// <summary>Espera até 10 s que o PID deixe de existir.</summary>
-    private static async Task<bool> MortoAsync(int pid)
-    {
-        for (var i = 0; i < 200; i++)
-        {
-            try
-            {
-                using var p = Process.GetProcessById(pid);
-                if (p.HasExited) return true;
-            }
-            catch (ArgumentException) { return true; }
-
-            await Task.Delay(50);
-        }
-        return false;
+        return ("/bin/sh", $"\"{sh}\"");
     }
 }
