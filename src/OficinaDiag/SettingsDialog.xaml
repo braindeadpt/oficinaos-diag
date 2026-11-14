@@ -28,7 +28,7 @@
             <Setter Property="Foreground" Value="{DynamicResource FgBrush}"/>
             <Setter Property="Margin" Value="0,2,0,0"/>
         </Style>
-        <Style TargetType="Button" BasedOn="{DynamicResource TermButton}"/>
+        <Style TargetType="Button" BasedOn="{StaticResource TermButton}"/>
     </Window.Resources>
     <StackPanel Margin="20">
         <TextBlock x:Name="HeaderText" FontSize="14" Foreground="{DynamicResource FgBrush}"

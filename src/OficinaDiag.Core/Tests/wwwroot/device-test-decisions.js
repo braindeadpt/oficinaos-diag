@@ -72,6 +72,14 @@
   /* O timeout só marca o que ainda não tem leitura — nunca apaga um "ok". */
   function sensorStatusAfterTimeout(current) { return current || SENSOR_NO_DATA; }
 
+  /* Sensores cujo timeout de 6 s pode marcar "no-data": com o movimento
+     recusado no iOS, accel/gyro/orient nunca produzem leitura — as chaves
+     ficam de fora do payload (o mapper trata ausente como «não medido»,
+     sem linha). O light não depende dessa permissão e mantém o timeout. */
+  function armedSensorKeys(motionDenied) {
+    return motionDenied ? ['light'] : ['accel', 'gyro', 'orient', 'light'];
+  }
+
   /* Microfone precisa de contexto seguro (https ou 127.0.0.1 via adb reverse). */
   function micAvailability(scope) {
     var nav = scope.navigator;
@@ -101,6 +109,7 @@
     multiTouchLabel: multiTouchLabel,
     motionPermissionRequired: motionPermissionRequired,
     sensorStatusAfterTimeout: sensorStatusAfterTimeout,
+    armedSensorKeys: armedSensorKeys,
     micAvailability: micAvailability,
     micStatusFromPeak: micStatusFromPeak,
     shouldRetryDelivery: shouldRetryDelivery

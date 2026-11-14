@@ -351,10 +351,12 @@ function armSensorTimeouts(){
   if(window.__sensorTimersArmed) return;
   window.__sensorTimersArmed=true;
   setTimeout(()=>{
-    if(!result.sensors.accel){ result.sensors.accel=D.sensorStatusAfterTimeout(result.sensors.accel); setSt('s-accel','sem leitura','warn'); }
-    if(!result.sensors.gyro){ result.sensors.gyro=D.sensorStatusAfterTimeout(result.sensors.gyro); setSt('s-gyro','sem leitura','warn'); }
-    if(!result.sensors.orient){ result.sensors.orient=D.sensorStatusAfterTimeout(result.sensors.orient); setSt('s-orient','sem leitura','warn'); }
-    if(!result.sensors.light){ result.sensors.light=D.sensorStatusAfterTimeout(result.sensors.light); setSt('s-light','sem leitura','warn'); }
+    for(const name of D.armedSensorKeys(window.__motionDenied===true)){
+      if(!result.sensors[name]){
+        result.sensors[name]=D.sensorStatusAfterTimeout(result.sensors[name]);
+        setSt('s-'+name,'sem leitura','warn');
+      }
+    }
   }, D.SENSOR_TIMEOUT_MS);
 }
 
@@ -364,7 +366,15 @@ document.getElementById('permBtn').onclick=async()=>{
       typeof DeviceMotionEvent!=='undefined'&&DeviceMotionEvent.requestPermission?DeviceMotionEvent.requestPermission():Promise.resolve('granted'),
       typeof DeviceOrientationEvent!=='undefined'&&DeviceOrientationEvent.requestPermission?DeviceOrientationEvent.requestPermission():Promise.resolve('granted')
     ]);
-  }catch(e){ /* recusado — os sensores ficam "no-data" no fim */ }
+  }catch(e){
+    /* Recusado: accel/gyro/orient nunca vão produzir leitura — as chaves
+       ficam de fora do payload (o mapper só escreve linha para chaves
+       presentes). O rótulo é só visual e não escreve em result.sensors. */
+    window.__motionDenied=true;
+    setSt('s-accel','sem permissão','warn');
+    setSt('s-gyro','sem permissão','warn');
+    setSt('s-orient','sem permissão','warn');
+  }
   document.getElementById('permBtn').style.display='none';
   armSensorTimeouts(); // agora sim: a partir daqui há dados a esperar
 };
