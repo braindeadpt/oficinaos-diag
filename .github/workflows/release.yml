@@ -3,6 +3,14 @@ name: release
 on:
   push:
     tags: ["v*"]
+  # Manual: corre o mesmo caminho no mesmo runner sem criar um tag. Não
+  # publica release — o passo do GitHub Release só corre em tags.
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Versão do build manual (sem 'v', ex. 0.0.0-ci)"
+        required: false
+        default: "0.0.0-ci"
 
 permissions:
   contents: write
@@ -18,6 +26,15 @@ jobs:
       - uses: actions/setup-dotnet@v6
         with:
           dotnet-version: "8.0.x"
+
+      - name: Resolve version
+        shell: pwsh
+        # Tag: a versão é o nome do tag. Manual: o input. Os passos seguintes
+        # leem `$env:VERSION` daqui — num dispatch, `github.ref_name` seria o
+        # nome do branch.
+        run: |
+          $v = if ("${{ github.event_name }}" -eq "workflow_dispatch") { "${{ inputs.version }}" } else { "${{ github.ref_name }}" }
+          "VERSION=$($v.TrimStart('v'))" | Out-File -Append -Encoding utf8 $env:GITHUB_ENV
 
       - name: Fetch bundled tools (adb platform-tools)
         shell: pwsh
@@ -35,9 +52,7 @@ jobs:
           dotnet publish src/OficinaDiag/OficinaDiag.csproj
           -c Release -r win-x64 --self-contained true
           /p:PublishSingleFile=true
-          /p:Version=$($env:VERSION.TrimStart('v')) -o out
-        env:
-          VERSION: ${{ github.ref_name }}
+          /p:Version=$env:VERSION -o out
 
       - name: Package
         shell: pwsh
@@ -46,9 +61,7 @@ jobs:
         # num tag mais alto é recusado).
         run: >-
           Compress-Archive -Path out/*
-          -DestinationPath "oficinaos-diag-v$($env:VERSION.TrimStart('v'))-win-x64.zip"
-        env:
-          VERSION: ${{ github.ref_name }}
+          -DestinationPath "oficinaos-diag-v$($env:VERSION)-win-x64.zip"
 
       - name: Verify package contents
         shell: pwsh
@@ -58,7 +71,7 @@ jobs:
         # A lista vive em tools/package-files.txt (uma por linha); o
         # PackageFilesTests garante que não diverge do que os csproj publicam.
         run: >-
-          $zip = "oficinaos-diag-v$($env:VERSION.TrimStart('v'))-win-x64.zip";
+          $zip = "oficinaos-diag-v$($env:VERSION)-win-x64.zip";
           if (-not (Test-Path $zip)) { throw "Pacote em falta: $zip não existe" }
           if (-not (Test-Path 'tools/package-files.txt')) { throw "Lista ausente: tools/package-files.txt não existe" }
           try { Expand-Archive $zip -DestinationPath pkg-check -Force -ErrorAction Stop }
@@ -66,8 +79,6 @@ jobs:
           $faltam = Get-Content 'tools/package-files.txt' | ForEach-Object { $_.Trim() } |
             Where-Object { $_ -and -not $_.StartsWith('#') -and -not (Test-Path "pkg-check/$_") };
           if ($faltam) { throw "Pacote incompleto: falta $($faltam -join ', ') no zip" }
-        env:
-          VERSION: ${{ github.ref_name }}
 
       - name: Checksum
         shell: pwsh
@@ -78,19 +89,20 @@ jobs:
         # assinatura é OFFLINE, porque uma chave no CI deixava de provar
         # origem. Ver docs/RELEASE.md.
         run: >-
-          "version $($env:VERSION.TrimStart('v'))"
+          "version $env:VERSION"
           | Out-File -Encoding ascii SHA256SUMS.txt;
           "commit $($env:BUILD_SHA)"
           | Out-File -Append -Encoding ascii SHA256SUMS.txt;
           "$((
-          Get-FileHash "oficinaos-diag-v$($env:VERSION.TrimStart('v'))-win-x64.zip" -Algorithm SHA256
-          ).Hash.ToLower())  oficinaos-diag-v$($env:VERSION.TrimStart('v'))-win-x64.zip"
+          Get-FileHash "oficinaos-diag-v$env:VERSION-win-x64.zip" -Algorithm SHA256
+          ).Hash.ToLower())  oficinaos-diag-v$env:VERSION-win-x64.zip"
           | Out-File -Append -Encoding ascii SHA256SUMS.txt
         env:
-          VERSION: ${{ github.ref_name }}
           BUILD_SHA: ${{ github.sha }}
 
       - name: GitHub release (draft)
+        # Num dispatch não há tag nem release: o resto do caminho corre todo.
+        if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v3
         with:
           # Draft: invisível para releases/latest até a assinatura offline
