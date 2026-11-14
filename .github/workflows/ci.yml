@@ -9,6 +9,15 @@ on:
   push:
     branches: ["main"]
   pull_request:
+  # Manual, para investigar falhas que só aparecem de vez em quando: com
+  # `stress` a matriz repete os testes de árvore de processos 10x e o log da
+  # primeira falha traz o diagnóstico do lançador (started/pid/erro).
+  workflow_dispatch:
+    inputs:
+      stress:
+        description: "Repetir os testes de árvore de processos 10x"
+        type: boolean
+        default: false
 
 jobs:
   build:
@@ -29,6 +38,16 @@ jobs:
 
       - name: Test
         run: dotnet test tests/OficinaDiag.Tests -c Release
+
+      - name: Stress tree-kill tests
+        if: inputs.stress
+        shell: pwsh
+        run: |
+          foreach ($i in 1..10) {
+            Write-Host "=== iteração $i ==="
+            dotnet test tests/OficinaDiag.Tests -c Release --filter "FullyQualifiedName~ToolProcessTests"
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
 
       - name: Build WPF app
         run: dotnet build src/OficinaDiag/OficinaDiag.csproj -c Release -p:EnableWindowsTargeting=true
