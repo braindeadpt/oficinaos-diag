@@ -39,9 +39,10 @@ jobs:
         if: runner.os == 'Linux'
         run: node tools/plan-check.mjs
 
-      # As decisões da página on-device não dependem do sistema: correm uma vez.
+      # Corre nos dois braços: o harness já é EOL-agnóstico (a regressão do
+      # CRLF que o PR #11 corrigiu só aparecia no Windows), e correr lá é o que
+      # impede o `autocrlf` de voltar a esconder um problema.
       - name: JS decisions (jsdom)
-        if: runner.os == 'Linux'
         run: |
           npm ci --prefix tests/device-test --no-audit --no-fund
           node --test tests/device-test/device-test.test.mjs

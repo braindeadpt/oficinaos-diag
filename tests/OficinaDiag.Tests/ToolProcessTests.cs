@@ -100,8 +100,26 @@ public class ToolProcessTests
             catch (IOException) { /* ficheiro a ser escrito */ }
         }
 
-        Assert.True(child is not null, "o lançador não chegou a escrever o PID do filho");
+        Assert.True(child is not null,
+            $"o lançador não chegou a escrever o PID do filho — {Diagnostico(dir)}");
         return new Launch(run, child!.Value, clock);
+    }
+
+    /// <summary>
+    /// O que o lançador deixou no diretório: PID, marcador de arranque e erro.
+    /// Sem isto, uma falha no CI dizia só «o PID não apareceu».
+    /// </summary>
+    private static string Diagnostico(DirectoryInfo dir)
+    {
+        string Ler(string nome)
+        {
+            var p = Path.Combine(dir.FullName, nome);
+            try { return File.Exists(p) ? File.ReadAllText(p).Trim() : "(ausente)"; }
+            catch (IOException) { return "(bloqueado)"; }
+        }
+
+        return $"started={Ler("launcher-started.txt")}; pid={Ler("child.pid")}; " +
+               $"erro={Ler("launcher-err.txt")}; ficheiros={string.Join(",", dir.GetFileSystemInfos().Select(f => f.Name))}";
     }
 
     /// <summary>Lançador nativo: `sh` no Unix, `powershell.exe` no Windows.</summary>
@@ -110,10 +128,19 @@ public class ToolProcessTests
         if (OperatingSystem.IsWindows())
         {
             var ps1 = Path.Combine(dir.FullName, "spawn.ps1");
-            File.WriteAllText(ps1, $"""
-                $p = Start-Process -FilePath cmd.exe -ArgumentList '/c','ping -n 60 127.0.0.1 >NUL' -PassThru -WindowStyle Hidden
-                Set-Content -Path '{pidFile.Replace("'", "''")}' -Value $p.Id
-                Wait-Process -Id $p.Id
+            // O marcador e o catch existem para o teste poder dizer PORQUE o
+            // PID não apareceu: «o PowerShell nem chegou a correr» e «correu e
+            // rebentou» são avarias diferentes, e no CI só se vê o resultado.
+            File.WriteAllText(ps1, $$"""
+                Set-Content -Path (Join-Path '{{dir.FullName.Replace("'", "''")}}' 'launcher-started.txt') -Value 'ok'
+                try {
+                    $p = Start-Process -FilePath cmd.exe -ArgumentList '/c','ping -n 60 127.0.0.1 >NUL' -PassThru -WindowStyle Hidden
+                    Set-Content -Path '{{pidFile.Replace("'", "''")}}' -Value $p.Id
+                    Wait-Process -Id $p.Id
+                } catch {
+                    Set-Content -Path (Join-Path '{{dir.FullName.Replace("'", "''")}}' 'launcher-err.txt') -Value ($_ | Out-String)
+                    throw
+                }
                 """);
             return ("powershell.exe", $"-NoProfile -ExecutionPolicy Bypass -File \"{ps1}\"");
         }
