@@ -81,11 +81,14 @@ public class ToolProcessTests
         var clock = Stopwatch.StartNew();
         var run = Task.Run(() => ToolProcess.Run(exe, args, timeoutMs, ct), CancellationToken.None);
 
-        // 10 s, não 5: o runner do CI é mais lento a arrancar um shell do que
-        // esta máquina, e a asserção é «o PID aparece», não «em 5 s».
+        // 30 s: o runner do release já falhou aqui aos 10 s (arranque do
+        // powershell a frio) e passou na re-execução. A asserção é «o PID
+        // aparece», não «aparece depressa» — um servidor lento não é o
+        // defeito que o teste procura, e o processo fica limitado pelo
+        // timeoutMs do ToolProcess.
         int? child = null;
         var espera = Stopwatch.StartNew();
-        while (child is null && espera.ElapsedMilliseconds < 10_000)
+        while (child is null && espera.ElapsedMilliseconds < 30_000)
         {
             await Task.Delay(20);
             try
