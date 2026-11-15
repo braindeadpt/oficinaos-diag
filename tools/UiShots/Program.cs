@@ -97,6 +97,13 @@ internal static class Program
             Capturar(() => new SettingsDialog(DiagConfig.Load()),
                 Path.Combine(destino, $"opcoes-{tema}-400.png"), 420, 640,
                 workArea: 400, acoes: ["SaveBtn", "CancelBtn"]);
+
+            // Os três diálogos que só eram capturados no terminal: abrir em cada
+            // tema é o que o T-06 pede («abrem nos três temas»).
+            Capturar(() => new InsuranceDialog(DiagConfig.Load()),
+                Path.Combine(destino, $"seguradora-{tema}.png"), 480, 640);
+            Capturar(() => new SendDialog(), Path.Combine(destino, $"envio-{tema}.png"), 420, 560);
+            Capturar(() => new TokenDialog(), Path.Combine(destino, $"token-{tema}.png"), 380, 320);
             // ecrã curto: força o scroll das Opções (o que o SizeToContent escondia)
             Capturar(() => new SettingsDialog(DiagConfig.Load()),
                 Path.Combine(destino, $"opcoes-{tema}-curta.png"), 420, 560, LimitarScroll);
@@ -114,12 +121,13 @@ internal static class Program
             ProvarCombo(destino, tema);
         }
 
+        // Troca de tema com as janelas já abertas: antes só se provava abrir
+        // já no tema; o T-06 pede a troca a quente.
+        ProvarTrocaTema(destino, relatorio);
+
         ThemeManager.Apply(ThemeManager.Terminal);
         Console.WriteLine("== diálogos (tema terminal) ==");
-        Capturar(() => new SendDialog(), Path.Combine(destino, "envio.png"), 420, 560);
-        Capturar(() => new TokenDialog(), Path.Combine(destino, "token.png"), 380, 320);
-        Capturar(() => new InsuranceDialog(DiagConfig.Load()),
-            Path.Combine(destino, "seguradora.png"), 480, 640);
+        // envio/token/seguro são capturados dentro do ciclo dos temas.
         Capturar(() => new InsuranceDialog(DiagConfig.Load()),
             Path.Combine(destino, "seguradora-614.png"), 480, 640,
             workArea: 614, acoes: ["GenerateBtn", "CancelBtn"]);
@@ -138,6 +146,112 @@ internal static class Program
         Console.WriteLine($"capturas em {Path.GetFullPath(destino)}");
         if (_falhas > 0) Console.WriteLine($"FALHAS: {_falhas}");
         return _falhas == 0 ? 0 : 1;
+    }
+
+    /// <summary>Cor sólida de um brush (null se for gradiente ou nulo).</summary>
+    private static Color? Cor(Brush? brush) => brush is SolidColorBrush s ? s.Color : null;
+
+    /// <summary>
+    /// Troca de tema com a janela **já aberta**: prova que os DynamicResource
+    /// chegam à ResultsList e aos cinco diálogos sem os reabrir. Antes só se
+    /// sabia que abrem já no tema — o T-06 pede a troca a quente.
+    /// </summary>
+    private static void ProvarTrocaTema(string destino, DeviceReport relatorio)
+    {
+        Console.WriteLine("== troca de tema com a janela aberta ==");
+
+        ThemeManager.Apply(ThemeManager.Terminal);
+        var janela = ComRelatorio(new MainWindow(), relatorio);
+        janela.WindowStartupLocation = WindowStartupLocation.Manual;
+        janela.ShowInTaskbar = false;
+        janela.Left = -20_000;
+        janela.Top = -20_000;
+        janela.Width = 1000;
+        janela.Height = 700;
+        janela.Show();
+        Respirar();
+
+        try
+        {
+            if (VisualTreeHelper.GetChildrenCount(janela) == 0) return;
+            if (VisualTreeHelper.GetChild(janela, 0) is not FrameworkElement raiz) return;
+            raiz.UpdateLayout();
+            Respirar();
+
+            var fundoAntes = Cor(Application.Current.TryFindResource("BgBrush") as Brush);
+            var item = janela.FindName("ResultsList") is ItemsControl lista
+                ? Primeiro<TextBlock>(lista)
+                : null;
+            var textoAntes = Cor(item?.Foreground);
+
+            Gravar(raiz, Path.Combine(destino, "troca-terminal.png"));
+            Console.WriteLine("  troca-terminal.png");
+
+            ThemeManager.Apply(ThemeManager.Win95);
+            Respirar();
+            raiz.UpdateLayout();
+            Respirar();
+
+            var fundoDepois = Cor(Application.Current.TryFindResource("BgBrush") as Brush);
+            var textoDepois = Cor(item?.Foreground);
+
+            Verificar($"troca: fundo muda (terminal {fundoAntes} → win95 {fundoDepois})",
+                fundoAntes is not null && fundoDepois is not null && fundoAntes != fundoDepois);
+            Verificar("troca: janela já aberta apanha o BgBrush novo",
+                Cor(janela.Background) is { } fundoJanela && fundoJanela == fundoDepois);
+            Verificar($"troca: ResultsList repinta sem reabrir ({textoAntes} → {textoDepois})",
+                textoAntes is not null && textoDepois is not null && textoAntes != textoDepois);
+
+            Gravar(raiz, Path.Combine(destino, "troca-win95.png"));
+            Console.WriteLine("  troca-win95.png");
+        }
+        finally { janela.Close(); }
+
+        // Os cinco diálogos do T-06, cada um aberto uma vez e trocado a quente.
+        var dialogos = new (string Nome, Func<Window> Criar)[]
+        {
+            ("checklist", () => new ChecklistDialog(relatorio)),
+            ("seguro", () => new InsuranceDialog(DiagConfig.Load())),
+            ("envio", () => new SendDialog()),
+            ("token", () => new TokenDialog()),
+            ("opcoes", () => new SettingsDialog(DiagConfig.Load())),
+        };
+
+        foreach (var (nome, criar) in dialogos)
+        {
+            ThemeManager.Apply(ThemeManager.Terminal);
+            var dialogo = criar();
+            dialogo.WindowStartupLocation = WindowStartupLocation.Manual;
+            dialogo.Left = -20_000;
+            dialogo.Top = -20_000;
+            dialogo.ShowInTaskbar = false;
+            dialogo.Show();
+            Respirar();
+            try
+            {
+                dialogo.UpdateLayout();
+                var antes = Cor(dialogo.Background);
+
+                ThemeManager.Apply(ThemeManager.Fluent);
+                Respirar();
+                dialogo.UpdateLayout();
+
+                var depois = Cor(dialogo.Background);
+                var esperado = Cor(Application.Current.TryFindResource("BgBrush") as Brush);
+                Verificar($"troca: {nome} repinta aberto ({antes} → {depois})",
+                    antes is not null && depois is not null && antes != depois && depois == esperado);
+
+                if (nome == "opcoes" && VisualTreeHelper.GetChildrenCount(dialogo) > 0
+                    && VisualTreeHelper.GetChild(dialogo, 0) is FrameworkElement raizDialogo)
+                {
+                    Gravar(raizDialogo, Path.Combine(destino, "troca-opcoes-fluent.png"));
+                    Console.WriteLine("  troca-opcoes-fluent.png");
+                }
+            }
+            finally { dialogo.Close(); }
+        }
+
+        ThemeManager.Apply(ThemeManager.Terminal);
     }
 
     /// <summary>
