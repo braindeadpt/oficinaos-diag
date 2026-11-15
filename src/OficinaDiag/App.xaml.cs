@@ -22,8 +22,7 @@ public partial class App : Application
             // não recebe o remetente): à terceira falha na mesma ação avisa o
             // técnico e desliga o botão, em vez de deixar um botão que não faz
             // nada. Fora de uma ação dele, fica só no log.
-            if (Current.MainWindow is MainWindow janela) janela.RegistarFalha(args.Exception);
-            else Log.AppLog.Exception("UI", args.Exception);
+            Log.AppLog.Exception("UI", args.Exception); // SONDA (a remover): sem delegar
             args.Handled = true; // regista e deixa a app viva — o utilizador vê o erro na consola
         };
         AppDomain.CurrentDomain.UnhandledException += (_, args) =>
