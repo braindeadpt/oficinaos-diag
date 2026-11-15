@@ -108,6 +108,22 @@ const mutantes = [
     prova: "botões: a etiqueta leva o serial do relatório",
   },
   {
+    nome: "a seta para cima do Win95 perde o glifo",
+    ficheiro: "src/OficinaDiag/Themes/Win95.xaml",
+    de: 'Data="M 0 4 L 8 4 L 4 0 Z"',
+    para: 'Data="M 0 0 L 0 0 Z"',
+    guarda: "uishots",
+    prova: "setas: as duas setas têm glifo",
+  },
+  {
+    nome: "o track do Win95 pinta como as zonas de página",
+    ficheiro: "src/OficinaDiag/Themes/Win95.xaml",
+    de: '    <Style TargetType="ScrollBar">\n        <Setter Property="Background" Value="#C0C0C0"/>',
+    para: '    <Style TargetType="ScrollBar">\n        <Setter Property="Background" Value="#DFDFDF"/> // mutante: igual às zonas',
+    guarda: "uishots",
+    prova: "setas: a zona de página distingue-se do track",
+  },
+  {
     nome: "o App deixa de delegar no MainWindow",
     ficheiro: "src/OficinaDiag/App.xaml.cs",
     de: "            if (Current.MainWindow is MainWindow janela) janela.RegistarFalha(args.Exception);",

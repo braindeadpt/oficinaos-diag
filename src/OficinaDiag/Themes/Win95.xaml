@@ -155,56 +155,160 @@
         </Setter>
     </Style>
 
-    <!-- Barra de scroll com bevel de 95; a nativa destoava do resto. -->
+    <!-- Barra de scroll com bevel de 95; a nativa destoava do resto.
+         Setas a sério (LineUp/LineDown) e zonas de página mais claras que o
+         corpo: antes as zonas pintavam o `BgBrush` do tema e não havia seta
+         nenhuma, por isso a barra lia-se como um bloco cinzento sem fim.
+         Dois templates, um por orientação — com colunas em vez de linhas e as
+         setas nos lados — e nenhum `x:Key` novo (os três temas têm de expor o
+         mesmo conjunto). -->
     <Style TargetType="ScrollBar">
         <Setter Property="Background" Value="#C0C0C0"/>
         <Setter Property="Width" Value="16"/>
-        <Setter Property="Template">
-            <Setter.Value>
-                <ControlTemplate TargetType="ScrollBar">
-                    <Grid Background="{TemplateBinding Background}">
-                        <Track x:Name="PART_Track" Orientation="{TemplateBinding Orientation}"
-                               IsDirectionReversed="True">
-                            <Track.DecreaseRepeatButton>
-                                <RepeatButton Command="ScrollBar.PageUpCommand" Focusable="False">
+        <Style.Triggers>
+            <Trigger Property="Orientation" Value="Vertical">
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="ScrollBar">
+                            <Grid Background="{TemplateBinding Background}">
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="16"/>
+                                    <RowDefinition Height="*"/>
+                                    <RowDefinition Height="16"/>
+                                </Grid.RowDefinitions>
+                                <RepeatButton Grid.Row="0" Command="ScrollBar.LineUpCommand" Focusable="False">
                                     <RepeatButton.Template>
                                         <ControlTemplate TargetType="RepeatButton">
-                                            <Border Background="{DynamicResource BgBrush}"/>
-                                        </ControlTemplate>
-                                    </RepeatButton.Template>
-                                </RepeatButton>
-                            </Track.DecreaseRepeatButton>
-                            <Track.Thumb>
-                                <Thumb>
-                                    <Thumb.Template>
-                                        <ControlTemplate TargetType="Thumb">
-                                            <Border Background="#808080" Margin="1">
-                                                <Border Background="#C0C0C0" BorderBrush="#FFFFFF" BorderThickness="1,1,0,0"/>
+                                            <Border Background="#C0C0C0" BorderBrush="#808080" BorderThickness="0,0,1,1">
+                                                <Border BorderBrush="#FFFFFF" BorderThickness="1,1,0,0">
+                                                    <Path Fill="#000000" Data="M 0 4 L 8 4 L 4 0 Z"
+                                                          HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                </Border>
                                             </Border>
                                         </ControlTemplate>
-                                    </Thumb.Template>
-                                </Thumb>
-                            </Track.Thumb>
-                            <Track.IncreaseRepeatButton>
-                                <RepeatButton Command="ScrollBar.PageDownCommand" Focusable="False">
+                                    </RepeatButton.Template>
+                                </RepeatButton>
+                                <Track Grid.Row="1" x:Name="PART_Track" Orientation="Vertical"
+                                       IsDirectionReversed="True">
+                                    <Track.DecreaseRepeatButton>
+                                        <RepeatButton Command="ScrollBar.PageUpCommand" Focusable="False">
+                                            <RepeatButton.Template>
+                                                <ControlTemplate TargetType="RepeatButton">
+                                                    <Border Background="#DFDFDF"/>
+                                                </ControlTemplate>
+                                            </RepeatButton.Template>
+                                        </RepeatButton>
+                                    </Track.DecreaseRepeatButton>
+                                    <Track.Thumb>
+                                        <Thumb>
+                                            <Thumb.Template>
+                                                <ControlTemplate TargetType="Thumb">
+                                                    <Border Background="#808080" Margin="1">
+                                                        <Border Background="#C0C0C0" BorderBrush="#FFFFFF" BorderThickness="1,1,0,0"/>
+                                                    </Border>
+                                                </ControlTemplate>
+                                            </Thumb.Template>
+                                        </Thumb>
+                                    </Track.Thumb>
+                                    <Track.IncreaseRepeatButton>
+                                        <RepeatButton Command="ScrollBar.PageDownCommand" Focusable="False">
+                                            <RepeatButton.Template>
+                                                <ControlTemplate TargetType="RepeatButton">
+                                                    <Border Background="#DFDFDF"/>
+                                                </ControlTemplate>
+                                            </RepeatButton.Template>
+                                        </RepeatButton>
+                                    </Track.IncreaseRepeatButton>
+                                </Track>
+                                <RepeatButton Grid.Row="2" Command="ScrollBar.LineDownCommand" Focusable="False">
                                     <RepeatButton.Template>
                                         <ControlTemplate TargetType="RepeatButton">
-                                            <Border Background="{DynamicResource BgBrush}"/>
+                                            <Border Background="#C0C0C0" BorderBrush="#808080" BorderThickness="0,0,1,1">
+                                                <Border BorderBrush="#FFFFFF" BorderThickness="1,1,0,0">
+                                                    <Path Fill="#000000" Data="M 0 0 L 8 0 L 4 4 Z"
+                                                          HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                </Border>
+                                            </Border>
                                         </ControlTemplate>
                                     </RepeatButton.Template>
                                 </RepeatButton>
-                            </Track.IncreaseRepeatButton>
-                        </Track>
-                    </Grid>
-                    <ControlTemplate.Triggers>
-                        <Trigger Property="Orientation" Value="Horizontal">
-                            <Setter Property="Width" Value="Auto"/>
-                            <Setter Property="Height" Value="16"/>
-                            <Setter TargetName="PART_Track" Property="IsDirectionReversed" Value="False"/>
-                        </Trigger>
-                    </ControlTemplate.Triggers>
-                </ControlTemplate>
-            </Setter.Value>
-        </Setter>
+                            </Grid>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Trigger>
+            <Trigger Property="Orientation" Value="Horizontal">
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="ScrollBar">
+                            <Grid Background="{TemplateBinding Background}" Height="16">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="16"/>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="16"/>
+                                </Grid.ColumnDefinitions>
+                                <RepeatButton Grid.Column="0" Command="ScrollBar.LineLeftCommand" Focusable="False">
+                                    <RepeatButton.Template>
+                                        <ControlTemplate TargetType="RepeatButton">
+                                            <Border Background="#C0C0C0" BorderBrush="#808080" BorderThickness="0,0,1,1">
+                                                <Border BorderBrush="#FFFFFF" BorderThickness="1,1,0,0">
+                                                    <Path Fill="#000000" Data="M 4 0 L 4 8 L 0 4 Z"
+                                                          HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                </Border>
+                                            </Border>
+                                        </ControlTemplate>
+                                    </RepeatButton.Template>
+                                </RepeatButton>
+                                <Track Grid.Column="1" x:Name="PART_Track" Orientation="Horizontal">
+                                    <Track.DecreaseRepeatButton>
+                                        <RepeatButton Command="ScrollBar.PageLeftCommand" Focusable="False">
+                                            <RepeatButton.Template>
+                                                <ControlTemplate TargetType="RepeatButton">
+                                                    <Border Background="#DFDFDF"/>
+                                                </ControlTemplate>
+                                            </RepeatButton.Template>
+                                        </RepeatButton>
+                                    </Track.DecreaseRepeatButton>
+                                    <Track.Thumb>
+                                        <Thumb>
+                                            <Thumb.Template>
+                                                <ControlTemplate TargetType="Thumb">
+                                                    <Border Background="#808080" Margin="1">
+                                                        <Border Background="#C0C0C0" BorderBrush="#FFFFFF" BorderThickness="1,1,0,0"/>
+                                                    </Border>
+                                                </ControlTemplate>
+                                            </Thumb.Template>
+                                        </Thumb>
+                                    </Track.Thumb>
+                                    <Track.IncreaseRepeatButton>
+                                        <RepeatButton Command="ScrollBar.PageRightCommand" Focusable="False">
+                                            <RepeatButton.Template>
+                                                <ControlTemplate TargetType="RepeatButton">
+                                                    <Border Background="#DFDFDF"/>
+                                                </ControlTemplate>
+                                            </RepeatButton.Template>
+                                        </RepeatButton>
+                                    </Track.IncreaseRepeatButton>
+                                </Track>
+                                <RepeatButton Grid.Column="2" Command="ScrollBar.LineRightCommand" Focusable="False">
+                                    <RepeatButton.Template>
+                                        <ControlTemplate TargetType="RepeatButton">
+                                            <Border Background="#C0C0C0" BorderBrush="#808080" BorderThickness="0,0,1,1">
+                                                <Border BorderBrush="#FFFFFF" BorderThickness="1,1,0,0">
+                                                    <Path Fill="#000000" Data="M 0 0 L 0 8 L 4 4 Z"
+                                                          HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                </Border>
+                                            </Border>
+                                        </ControlTemplate>
+                                    </RepeatButton.Template>
+                                </RepeatButton>
+                            </Grid>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+                <Setter Property="Height" Value="16"/>
+                <Setter Property="Width" Value="Auto"/>
+            </Trigger>
+        </Style.Triggers>
     </Style>
 </ResourceDictionary>

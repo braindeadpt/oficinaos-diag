@@ -273,6 +273,8 @@ internal static class Program
         ProvarFalhaRepetida(destino);
         Marcar("falha repetida pelo handler do App");
         ProvarFalhaPeloHandlerDeProducao(destino);
+        Marcar("barra de scroll do Win95");
+        ProvarBarraDeScroll(destino);
         Marcar("diálogos e capturas finais");
 
         ThemeManager.Apply(ThemeManager.Terminal);
@@ -1202,6 +1204,73 @@ internal static class Program
     private static void Definir(object alvo, string campo, object? valor) =>
         alvo.GetType().GetField(campo, BindingFlags.NonPublic | BindingFlags.Instance)!
             .SetValue(alvo, valor);
+
+    /// <summary>
+    /// A barra de scroll do tema Win95: setas visíveis e zonas de página que se
+    /// distinguem do corpo. Ficou «pendente de decisão de design» desde o T-11
+    /// e não precisa de hardware nenhum — precisa de um template que a desenhe
+    /// e de alguém que olhe para ela.
+    /// </summary>
+    private static void ProvarBarraDeScroll(string destino)
+    {
+        Console.WriteLine("== barra de scroll do Win95 ==");
+        ThemeManager.Apply(ThemeManager.Win95);
+        L10n.Set("pt");
+
+        var janela = ForaDoEcra(new SettingsDialog(DiagConfig.Load()));
+        janela.Width = 420;
+        janela.Height = 640;
+        janela.Show();
+        try
+        {
+            if (Primeiro<ScrollViewer>(janela) is not { } sv)
+            {
+                Verificar("setas: as Opções têm um ScrollViewer", false);
+                return;
+            }
+            sv.MaxHeight = 200; // sem isto a barra não aparece: o conteúdo cabe
+            janela.UpdateLayout();
+            Respirar();
+
+            var barra = Descendentes<ScrollBar>(sv)
+                .FirstOrDefault(b => b.Orientation == Orientation.Vertical && b.IsVisible);
+            if (barra is null)
+            {
+                Verificar("setas: a barra vertical apareceu", false);
+                return;
+            }
+
+            var botoes = Descendentes<RepeatButton>(barra).ToList();
+            var setas = botoes.Where(b => ReferenceEquals(b.Command, ScrollBar.LineUpCommand)
+                                       || ReferenceEquals(b.Command, ScrollBar.LineDownCommand)).ToList();
+            Verificar($"setas: uma seta para cima e outra para baixo ({setas.Count})", setas.Count == 2);
+            Verificar("setas: as duas setas têm glifo",
+                setas.Count == 2 && setas.All(b => Descendentes<System.Windows.Shapes.Path>(b).Any(p =>
+                    p.Data is { } d && d.Bounds.Width > 1 && d.Bounds.Height > 1)));
+
+            var zonas = botoes.Where(b => ReferenceEquals(b.Command, ScrollBar.PageUpCommand)
+                                       || ReferenceEquals(b.Command, ScrollBar.PageDownCommand)).ToList();
+            var corTrack = Cor(barra.Background);
+            var corZona = zonas.Count == 2
+                ? Cor(Descendentes<Border>(zonas[0]).FirstOrDefault()?.Background)
+                : null;
+            Verificar($"setas: a zona de página distingue-se do track ({corZona} vs {corTrack})",
+                zonas.Count == 2 && corZona is not null && corTrack is not null && corZona != corTrack);
+            Verificar("setas: a zona de página é o cinza claro do 95",
+                corZona == (Color)ColorConverter.ConvertFromString("#DFDFDF"));
+            Verificar("setas: o polegar existe",
+                Descendentes<Thumb>(barra).Any(t => t.IsVisible && t.ActualHeight > 1));
+
+            var (w, h) = Gravar(barra, Path.Combine(destino, "scrollbar-win95.png"));
+            Console.WriteLine($"  scrollbar-win95.png {w}x{h}");
+            Verificar($"setas: a captura é a largura da barra ({w})", w == 16);
+        }
+        finally
+        {
+            Fechar(janela);
+            ThemeManager.Apply(ThemeManager.Terminal);
+        }
+    }
 
     /// <summary>As três vias do `App` que transformam uma exceção numa linha de log.</summary>
     private static readonly string[] ViasEngolidas = ["! UI:", "! background:", "! fatal:"];
