@@ -88,7 +88,7 @@ internal static class Program
             // prova que os botões não vão com os campos.
             Capturar(() => new SettingsDialog(DiagConfig.Load()),
                 Path.Combine(destino, $"opcoes-{tema}-614-curta.png"), 420, 640,
-                LimitarScroll, workArea: 614, acoes: ["SaveBtn", "CancelBtn"]);
+                LimitarScrollA(200), workArea: 614, acoes: ["SaveBtn", "CancelBtn"]);
             // ecrã curto: força o scroll das Opções (o que o SizeToContent escondia)
             Capturar(() => new SettingsDialog(DiagConfig.Load()),
                 Path.Combine(destino, $"opcoes-{tema}-curta.png"), 420, 560, LimitarScroll);
@@ -383,10 +383,16 @@ internal static class Program
     /// o foco; se o ambiente não o permitir, mede-se o conteúdo à mão.
     /// </summary>
     /// <summary>Encolhe o ScrollViewer para provar que a barra aparece.</summary>
-    private static void LimitarScroll(Window janela)
+    private static void LimitarScroll(Window janela) => LimitarScrollA(360)(janela);
+
+    /// <summary>
+    /// O mesmo com um limite à escolha. Com as ações fora do scroll, 360 já não
+    /// aperta os campos das Opções (~342) — para os apertar é preciso menos.
+    /// </summary>
+    private static Action<Window> LimitarScrollA(double max) => janela =>
     {
-        if (Primeiro<ScrollViewer>(janela) is { } sv) sv.MaxHeight = 360;
-    }
+        if (Primeiro<ScrollViewer>(janela) is { } sv) sv.MaxHeight = max;
+    };
 
     private static void Capturar(Func<Window> criar, string ficheiro, double largura, double altura,
         Action<Window>? ajustar = null, double? workArea = null, string[]? acoes = null)
