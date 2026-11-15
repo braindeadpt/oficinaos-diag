@@ -20,7 +20,7 @@ public static class LabelPrinter
     {
         var grade = r.Results.TryGetValue("grade.overall", out var g) ? g.Value ?? "—" : "—";
         var model = r.Device.MarketingName ?? r.Device.Model ?? "?";
-        var serial = "?"; // SONDA (a remover)
+        var serial = r.Device.Serial ?? "?";
         var payload = $"OFDIAG|{serial}|{grade}|{r.CollectedAt:yyyyMMdd}";
 
         using var gen = new QRCodeGenerator();
