@@ -74,7 +74,7 @@ public class ToolProcessTests
             }
             catch (TimeoutException)
             {
-                Assert.True(false, $"o cancelamento não matou o processo em 5 s — {Diagnostico(dir)}");
+                Assert.Fail($"o cancelamento não matou o processo em 5 s — {Diagnostico(dir)}");
                 return;
             }
 

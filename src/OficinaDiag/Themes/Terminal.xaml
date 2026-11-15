@@ -61,31 +61,6 @@
             </Setter.Value>
         </Setter>
     </Style>
-    <!-- Itens do seletor: sem estilo próprio ficavam com o cinza do sistema
-         dentro do dropdown. -->
-    <Style x:Key="TermComboItem" TargetType="ComboBoxItem">
-        <Setter Property="Foreground" Value="{DynamicResource FgBrush}"/>
-        <Setter Property="Background" Value="Transparent"/>
-        <Setter Property="Padding" Value="6,3"/>
-        <Setter Property="FontFamily" Value="{DynamicResource MonoFont}"/>
-        <Setter Property="FontSize" Value="12"/>
-        <Setter Property="Template">
-            <Setter.Value>
-                <ControlTemplate TargetType="ComboBoxItem">
-                    <Border x:Name="bd" Background="{TemplateBinding Background}"
-                            Padding="{TemplateBinding Padding}">
-                        <ContentPresenter/>
-                    </Border>
-                    <ControlTemplate.Triggers>
-                        <Trigger Property="IsHighlighted" Value="True">
-                            <Setter TargetName="bd" Property="Background" Value="{DynamicResource HoverBrush}"/>
-                        </Trigger>
-                    </ControlTemplate.Triggers>
-                </ControlTemplate>
-            </Setter.Value>
-        </Setter>
-    </Style>
-
     <!-- Seletor de dispositivos: mesma linguagem do botão, altura fixa para
          não esticar o header quando há dois telemóveis na bancada.
          Template próprio porque o nativo trazia o cinza do sistema para dentro
@@ -102,7 +77,34 @@
         <Setter Property="MinWidth" Value="150"/>
         <Setter Property="MaxWidth" Value="240"/>
         <Setter Property="VerticalContentAlignment" Value="Center"/>
-        <Setter Property="ItemContainerStyle" Value="{StaticResource TermComboItem}"/>
+        <!-- itens inline, sem x:Key: os três temas têm de definir o mesmo
+             conjunto de chaves (há teste para isso) e o Fluent não usa este. -->
+        <Setter Property="ItemContainerStyle">
+            <Setter.Value>
+                <Style TargetType="ComboBoxItem">
+                    <Setter Property="Foreground" Value="{DynamicResource FgBrush}"/>
+                    <Setter Property="Background" Value="Transparent"/>
+                    <Setter Property="Padding" Value="6,3"/>
+                    <Setter Property="FontFamily" Value="{DynamicResource MonoFont}"/>
+                    <Setter Property="FontSize" Value="12"/>
+                    <Setter Property="Template">
+                        <Setter.Value>
+                            <ControlTemplate TargetType="ComboBoxItem">
+                                <Border x:Name="bd" Background="{TemplateBinding Background}"
+                                        Padding="{TemplateBinding Padding}">
+                                    <ContentPresenter/>
+                                </Border>
+                                <ControlTemplate.Triggers>
+                                    <Trigger Property="IsHighlighted" Value="True">
+                                        <Setter TargetName="bd" Property="Background" Value="{DynamicResource HoverBrush}"/>
+                                    </Trigger>
+                                </ControlTemplate.Triggers>
+                            </ControlTemplate>
+                        </Setter.Value>
+                    </Setter>
+                </Style>
+            </Setter.Value>
+        </Setter>
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="ComboBox">
