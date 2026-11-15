@@ -155,16 +155,10 @@ public sealed partial class ChecklistDialog : Window
 
     private void Apply_Click(object sender, RoutedEventArgs e)
     {
-        foreach (var item in Grader.ChecklistItems)
-        {
-            var s = _state.GetValueOrDefault(item.Key);
-            if (s == 0) continue;
-            var label = L10n.Current == "en" ? item.LabelEn : item.LabelPt;
-            _report.Set(item.Key,
-                ChecklistMarks.Status(s),
-                s == 1 ? "ok" : s == 2 ? "defeito" : "não testado",
-                label);
-        }
+        // A escrita no relatório vive no Core, com testes: era aqui que o
+        // checklist ficava a zero linhas quando a marca nunca pegava.
+        ChecklistMarks.Apply(_report, _state,
+            item => L10n.Current == "en" ? item.LabelEn : item.LabelPt);
         var notes = NotesBox.Text.Trim();
         // MaxLength trava a escrita, mas notas antigas (histórico) podem vir maiores.
         if (!Cloud.IntakeRules.NotesWithinLimit(notes))

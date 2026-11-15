@@ -1,3 +1,5 @@
+using OficinaDiag.Devices;
+
 namespace OficinaDiag.Grading;
 
 /// <summary>
@@ -28,4 +30,25 @@ public static class ChecklistMarks
         2 => "fail",
         _ => "skipped",
     };
+
+    /// <summary>
+    /// Passa as marcas para o relatório como checks `checklist.*` e devolve
+    /// quantas escreveu. Itens sem marca ficam de fora — não é "não testado",
+    /// é "o técnico não chegou a olhar".
+    /// </summary>
+    public static int Apply(DeviceReport report, IReadOnlyDictionary<string, int> marcas,
+        Func<ChecklistItem, string> rotulo)
+    {
+        var aplicadas = 0;
+        foreach (var item in Grader.ChecklistItems)
+        {
+            var marca = marcas.TryGetValue(item.Key, out var v) ? v : 0;
+            if (marca == 0) continue;
+            report.Set(item.Key, Status(marca),
+                marca == 1 ? "ok" : marca == 2 ? "defeito" : "não testado",
+                rotulo(item));
+            aplicadas++;
+        }
+        return aplicadas;
+    }
 }

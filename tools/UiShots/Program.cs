@@ -415,40 +415,36 @@ internal static class Program
             ShowInTaskbar = false,
         };
 
-        var marcou = false;
-        var desmarcou = false;
-        // BeginInvoke, não o corpo do Loaded: o `DialogResult` só é aceite depois
-        // de a janela estar de facto a correr como diálogo, e no evento Loaded
-        // ainda não está (InvalidOperationException visto no CI).
-        janela.Loaded += (_, _) => janela.Dispatcher.BeginInvoke(new Action(() =>
+        // A escrita no relatório é provada por `ChecklistMarksTests` (sem WPF,
+        // por isso determinística). Aqui prova-se o que só a UI prova: o clique
+        // marca e volta a desmarcar — era o `KeyNotFoundException` que matava
+        // o checklist em relatórios novos.
+        janela.Show();
+        Respirar();
+        try
         {
             // Ordem dos botões: por item, [ok, defeito, n/t].
             var botoes = Descendentes<Button>(janela).ToArray();
-            if (botoes.Length < 6) { janela.Close(); return; }
+            Verificar("checklist: os botões dos itens existem", botoes.Length >= 6);
+            if (botoes.Length < 6) return;
 
             botoes[0].RaiseEvent(new RoutedEventArgs(Button.ClickEvent)); // 1ª marca: o caso que rebentava
-            marcou = botoes[0].FontWeight == FontWeights.Bold;
+            Verificar("checklist: a marca pegou (botão a negrito)",
+                botoes[0].FontWeight == FontWeights.Bold);
+
             botoes[0].RaiseEvent(new RoutedEventArgs(Button.ClickEvent)); // premir de novo desmarca
-            desmarcou = botoes[0].FontWeight == FontWeights.Normal;
-            botoes[0].RaiseEvent(new RoutedEventArgs(Button.ClickEvent)); // volta a marcar (pass)
-            botoes[5].RaiseEvent(new RoutedEventArgs(Button.ClickEvent)); // 2º item em n/t (skipped)
+            Verificar("checklist: premir outra vez desmarca",
+                botoes[0].FontWeight == FontWeights.Normal);
 
-            if (janela.FindName("ApplyBtn") is Button aplicar)
-                aplicar.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
-            else janela.Close(); // nunca deixar o modal aberto
-        }));
-
-        var fechou = janela.ShowDialog() == true;
-
-        Verificar("checklist: a marca pegou (botão a negrito)", marcou);
-        Verificar("checklist: premir outra vez desmarca", desmarcou);
-        Verificar("checklist: o APPLY fechou o diálogo", fechou);
-        Verificar("checklist: o relatório ficou com `pass` no 1º item",
-            relatorio.Results.TryGetValue("checklist.frame", out var primeiro)
-            && primeiro.Status == "pass");
-        Verificar("checklist: o relatório ficou com `skipped` no 2º item",
-            relatorio.Results.TryGetValue("checklist.backglass", out var segundo)
-            && segundo.Status == "skipped");
+            botoes[0].RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            botoes[5].RaiseEvent(new RoutedEventArgs(Button.ClickEvent)); // 2º item em n/t
+            Verificar("checklist: marcar outro item não desmarca o primeiro",
+                botoes[0].FontWeight == FontWeights.Bold && botoes[5].FontWeight == FontWeights.Bold);
+        }
+        finally
+        {
+            try { janela.Close(); } catch { }
+        }
     }
 
     /// <summary>

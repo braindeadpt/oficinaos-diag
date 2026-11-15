@@ -66,4 +66,34 @@ public sealed class ChecklistMarksTests
     {
         Assert.Equal(esperado, ChecklistMarks.Status(marca));
     }
+
+    [Fact]
+    public void AplicarEscreveAsLinhasMarcadasNoRelatorio()
+    {
+        var relatorio = new Devices.DeviceReport();
+        var marcas = new Dictionary<string, int>
+        {
+            ["checklist.frame"] = 1,
+            ["checklist.backglass"] = 3,
+        };
+
+        var aplicadas = ChecklistMarks.Apply(relatorio, marcas, item => item.LabelPt);
+
+        Assert.Equal(2, aplicadas);
+        Assert.Equal("pass", relatorio.Results["checklist.frame"].Status);
+        Assert.Equal("skipped", relatorio.Results["checklist.backglass"].Status);
+        // Só as marcadas entram: um item por olhar não vira «não testado».
+        Assert.False(relatorio.Results.ContainsKey("checklist.buttons"));
+    }
+
+    [Fact]
+    public void SemMarcasNaoEscreveNada()
+    {
+        var relatorio = new Devices.DeviceReport();
+
+        var aplicadas = ChecklistMarks.Apply(relatorio, new Dictionary<string, int>(), item => item.LabelPt);
+
+        Assert.Equal(0, aplicadas);
+        Assert.Empty(relatorio.Results);
+    }
 }
