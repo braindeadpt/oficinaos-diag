@@ -366,7 +366,7 @@ public partial class MainWindow : Window
     /// omissão são exactamente os de produção — o handler em si não mudou.
     /// </summary>
     internal Func<Cloud.UpdateChecker.UpdateInfo, Version, Task<(bool ok, string message)>> Baixar =
-        (info, current) => BaixarPara(PastaDeInstalacao, info, current); // SONDA: lambda
+        BaixarDeProducao;
 
     internal Action Terminar = TerminarDeProducao;
 
@@ -376,7 +376,7 @@ public partial class MainWindow : Window
     /// que o caminho de produção é este. Com nome, a prova compara o
     /// `Method.Name` do delegate e chama o resto directamente.
     /// </summary>
-    internal static string PastaDeInstalacao => System.IO.Path.GetTempPath(); // SONDA: fora da pasta da app
+    internal static string PastaDeInstalacao => AppContext.BaseDirectory;
 
     internal static Task<(bool ok, string message)> BaixarDeProducao(
         Cloud.UpdateChecker.UpdateInfo info, Version current) =>
@@ -387,7 +387,7 @@ public partial class MainWindow : Window
         string appDir, Cloud.UpdateChecker.UpdateInfo info, Version current) =>
         Cloud.UpdateChecker.DownloadAndStageAsync(info, appDir, current);
 
-    internal static void TerminarDeProducao() { } // SONDA: não fecha
+    internal static void TerminarDeProducao() => Application.Current.Shutdown();
 
     private async Task CheckForUpdateAsync()
     {
