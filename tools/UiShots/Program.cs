@@ -159,7 +159,9 @@ internal static class Program
             if (painel is not null)
             {
                 painel.UpdateLayout();
-                Gravar(painel, Path.Combine(destino, $"combo-{tema}-aberto.png"));
+                var ficheiro = Path.Combine(destino, $"combo-{tema}-aberto.png");
+                var (pw, ph) = Gravar(painel, ficheiro);
+                Console.WriteLine($"  {Path.GetFileName(ficheiro),-26} {pw}x{ph}");
             }
 
             // Down destaca o item seguinte; Enter confirma. Espera-se pelo
@@ -245,7 +247,11 @@ internal static class Program
         if (!ok) _falhas++;
     }
 
-    private static void Gravar(FrameworkElement raiz, string ficheiro)
+    /// <summary>
+    /// Grava um elemento em PNG sobre o fundo do tema. Único sítio que escreve
+    /// imagens — havia dois e só um pintava o fundo opaco.
+    /// </summary>
+    private static (int W, int H) Gravar(FrameworkElement raiz, string ficheiro)
     {
         var w = Math.Max(1, (int)Math.Ceiling(raiz.ActualWidth));
         var h = Math.Max(1, (int)Math.Ceiling(raiz.ActualHeight));
@@ -256,7 +262,7 @@ internal static class Program
         enc.Frames.Add(BitmapFrame.Create(bmp));
         using var fs = File.Create(ficheiro);
         enc.Save(fs);
-        Console.WriteLine($"  {Path.GetFileName(ficheiro),-26} {bmp.PixelWidth}x{bmp.PixelHeight}");
+        return (bmp.PixelWidth, bmp.PixelHeight);
     }
 
     /// <summary>
@@ -370,18 +376,7 @@ internal static class Program
             Respirar();
 
             var foco = mostrou ? TentarFoco(janela) : "não";
-            var w = Math.Max(1, (int)Math.Ceiling(raiz.ActualWidth));
-            var h = Math.Max(1, (int)Math.Ceiling(raiz.ActualHeight));
-            var bmp = new RenderTargetBitmap(w, h, 96, 96, PixelFormats.Pbgra32);
-            // Fundo opaco do tema primeiro: sem ele o PNG fica com alpha e cada
-            // visualizador mostra a cor que quer — foi o "branco" do painel
-            // de resultados vazio.
-            bmp.Render(Fundo(w, h));
-            bmp.Render(raiz);
-
-            var enc = new PngBitmapEncoder();
-            enc.Frames.Add(BitmapFrame.Create(bmp));
-            using (var fs = File.Create(ficheiro)) enc.Save(fs);
+            var (w, h) = Gravar(raiz, ficheiro);
             // Diagnóstico: se o fundo dos descendentes passar da altura do
             // conteúdo, é a app que arruma fora da janela; se ficar dentro, o
             // corte é da captura.
@@ -395,7 +390,7 @@ internal static class Program
                 }
                 catch { /* ainda não ligado à árvore */ }
             }
-            Console.WriteLine($"  {Path.GetFileName(ficheiro),-26} {bmp.PixelWidth}x{bmp.PixelHeight}  " +
+            Console.WriteLine($"  {Path.GetFileName(ficheiro),-26} {w}x{h}  " +
                               $"janela {janela.ActualHeight:0} foco: {foco}  fundo {fundo:0} " +
                               (fundo > raiz.ActualHeight + 1 ? "FORA DA JANELA" : ""));
         }
