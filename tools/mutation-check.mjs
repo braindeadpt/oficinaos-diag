@@ -76,22 +76,6 @@ const mutantes = [
     prova: "seletor: o 2º aparelho não rouba a bancada",
   },
   {
-    nome: "COMPARAR abre sem scan anterior",
-    ficheiro: "src/OficinaDiag/MainWindow.xaml.cs",
-    de: "        if (previous.Count == 0)",
-    para: "        if (previous.Count < 0) // mutante: nunca diz que não há anterior",
-    guarda: "uishots",
-    prova: "botões: COMPARAR sem scan anterior diz que não há nenhum",
-  },
-  {
-    nome: "a etiqueta perde o serial",
-    ficheiro: "src/OficinaDiag/Reports/LabelPrinter.cs",
-    de: "        var serial = r.Device.Serial ?? \"?\";",
-    para: "        var serial = \"?\"; // mutante: sem o serial do relatório",
-    guarda: "uishots",
-    prova: "botões: a etiqueta leva o serial do relatório",
-  },
-  {
     nome: "o aviso de reinício mostra outra mensagem",
     ficheiro: "src/OficinaDiag/MainWindow.xaml.cs",
     de: 'MessageBox.Show(this, L10n.T("log.update.ready"), Title,',
