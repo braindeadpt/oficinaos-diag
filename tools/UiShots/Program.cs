@@ -61,7 +61,7 @@ internal static class Program
                 Path.Combine(destino, $"checklist-{tema}-default.png"), 560, 620);
             // janela apertada: os itens têm de rolar e os botões continuar visíveis
             Capturar(() => new ChecklistDialog(relatorio),
-                Path.Combine(destino, $"checklist-{tema}-baixa.png"), 560, 420);
+                Path.Combine(destino, $"checklist-{tema}-baixa.png"), 560, 480);
             // ecrã curto: força o scroll das Opções (o que o SizeToContent escondia)
             Capturar(() => new SettingsDialog(DiagConfig.Load()),
                 Path.Combine(destino, $"opcoes-{tema}-curta.png"), 420, 560, LimitarScroll);
@@ -185,7 +185,12 @@ internal static class Program
                 Console.WriteLine($"  show indisponível ({ex.GetType().Name}) — a medir sem mostrar");
             }
 
-            if (janela.Content is not FrameworkElement raiz) return;
+            // Raiz do cliente da janela, não o Content: o Content tem Margin 20
+            // e ao renderizá-lo só o offset dele se perdia, o que fazia os
+            // botões de baixo parecerem cortados. O primeiro filho visual é a
+            // área do cliente, já com as margens dentro.
+            if (VisualTreeHelper.GetChildrenCount(janela) == 0) return;
+            if (VisualTreeHelper.GetChild(janela, 0) is not FrameworkElement raiz) return;
             // Nada de redimensionar depois do Show: o WPF só refaz o layout
             // quando processa o WM_SIZE, por isso o conteúdo ficava arrumado
             // para o tamanho antigo e a imagem saía cortada em baixo (foi o
