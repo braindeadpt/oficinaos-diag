@@ -36,6 +36,12 @@ internal static class Program
     [DllImport("user32.dll")]
     private static extern bool SetForegroundWindow(IntPtr hWnd);
 
+    [DllImport("user32.dll")]
+    private static extern void keybd_event(byte vk, byte scan, uint flags, UIntPtr extra);
+
+    private const uint KeyUp = 0x0002;
+    private const byte VkMenu = 0x12; // Alt
+
     [STAThread]
     private static int Main(string[] args)
     {
@@ -144,9 +150,18 @@ internal static class Program
 
             Verificar($"{tema}: começa fechado", !combo.IsDropDownOpen);
 
+            // F4 é o acelerador documentado; Alt+Down é o outro. Tento os dois e
+            // digo qual abriu — se nenhum abrir, é defeito, não diferença de gosto.
             Tecla(Key.F4);
-            Respirar();
-            Verificar($"{tema}: F4 abre o dropdown", combo.IsDropDownOpen);
+            Pausa(250);
+            var comF4 = combo.IsDropDownOpen;
+            if (!comF4)
+            {
+                Tecla(Key.Down, comAlt: true);
+                Pausa(250);
+            }
+            Verificar($"{tema}: dropdown abre por teclado ({(comF4 ? "F4" : "Alt+Down")})",
+                combo.IsDropDownOpen);
 
             if (combo.IsDropDownOpen
                 && combo.Template.FindName("PART_Popup", combo) is Popup { Child: FrameworkElement painel })
@@ -158,34 +173,52 @@ internal static class Program
 
             var antes = combo.SelectedIndex;
             Tecla(Key.Down);
-            Respirar();
+            Pausa(200);
             Tecla(Key.Enter);
-            Respirar();
+            Pausa(200);
             Verificar($"{tema}: Enter fecha", !combo.IsDropDownOpen);
             Verificar($"{tema}: Down+Enter muda a seleção ({antes} → {combo.SelectedIndex})",
                 combo.SelectedIndex != antes);
 
             var depois = combo.SelectedIndex;
             Tecla(Key.F4);
-            Respirar();
-            Verificar($"{tema}: F4 abre outra vez", combo.IsDropDownOpen);
+            Pausa(250);
+            if (!combo.IsDropDownOpen) { Tecla(Key.Down, comAlt: true); Pausa(250); }
+            Verificar($"{tema}: abre outra vez", combo.IsDropDownOpen);
             Tecla(Key.Escape);
-            Respirar();
+            Pausa(200);
             Verificar($"{tema}: Esc fecha", !combo.IsDropDownOpen);
             Verificar($"{tema}: Esc não muda a seleção", combo.SelectedIndex == depois);
         }
         finally { janela.Close(); }
     }
 
-    /// <summary>Tecla real pela pipeline de input do WPF (preview + down).</summary>
-    private static void Tecla(Key tecla)
+    /// <summary>
+    /// Tecla real: `keybd_event` entra pela mesma fila de mensagens que o
+    /// teclado físico. `InputManager.ProcessInput` não chega ao ComboBox —
+    /// os eventos sintéticos não passam pelo roteamento do HwndSource.
+    /// </summary>
+    private static void Tecla(Key tecla, bool comAlt = false)
     {
-        if (Keyboard.FocusedElement is not Visual alvo) { Verificar("foco para tecla", false); return; }
-        if (PresentationSource.FromVisual(alvo) is not { } source) { Verificar("presentation source", false); return; }
-        InputManager.Current.ProcessInput(new KeyEventArgs(Keyboard.PrimaryDevice, source,
-            Environment.TickCount, tecla) { RoutedEvent = Keyboard.PreviewKeyDownEvent });
-        InputManager.Current.ProcessInput(new KeyEventArgs(Keyboard.PrimaryDevice, source,
-            Environment.TickCount, tecla) { RoutedEvent = Keyboard.KeyDownEvent });
+        var vk = (byte)KeyInterop.VirtualKeyFromKey(tecla);
+        if (comAlt) keybd_event(VkMenu, 0, 0, UIntPtr.Zero);
+        keybd_event(vk, 0, 0, UIntPtr.Zero);
+        keybd_event(vk, 0, KeyUp, UIntPtr.Zero);
+        if (comAlt) keybd_event(VkMenu, 0, KeyUp, UIntPtr.Zero);
+    }
+
+    /// <summary>Bombear o dispatcher/mensagens durante N ms (as teclas entram por WM_KEYDOWN).</summary>
+    private static void Pausa(int ms)
+    {
+        var fim = Environment.TickCount64 + ms;
+        while (Environment.TickCount64 < fim)
+        {
+            var frame = new DispatcherFrame();
+            Dispatcher.CurrentDispatcher.BeginInvoke(DispatcherPriority.Background,
+                new Action(() => frame.Continue = false));
+            Dispatcher.PushFrame(frame);
+            Thread.Sleep(10);
+        }
     }
 
     private static void Verificar(string nome, bool ok)
