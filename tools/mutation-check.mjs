@@ -131,6 +131,30 @@ const mutantes = [
     guarda: "uishots",
     prova: "produção: o handler do App avisou à terceira",
   },
+  {
+    nome: "o descarregador por omissão escreve fora da pasta da app",
+    ficheiro: "src/OficinaDiag/MainWindow.xaml.cs",
+    de: "    internal static string PastaDeInstalacao => AppContext.BaseDirectory;",
+    para: "    internal static string PastaDeInstalacao => System.IO.Path.GetTempPath(); // mutante: fora da pasta da app",
+    guarda: "uishots",
+    prova: "produção: a atualização escreve na pasta da app",
+  },
+  {
+    nome: "o Terminar por omissão deixa de fechar a app",
+    ficheiro: "src/OficinaDiag/MainWindow.xaml.cs",
+    de: "    internal static void TerminarDeProducao() => Application.Current.Shutdown();",
+    para: "    internal static void TerminarDeProducao() { } // mutante: não fecha",
+    guarda: "uishots",
+    prova: "produção: o TerminarDeProducao chama o Application.Shutdown",
+  },
+  {
+    nome: "o Baixar por omissão deixa de ser o de produção",
+    ficheiro: "src/OficinaDiag/MainWindow.xaml.cs",
+    de: "        BaixarDeProducao;",
+    para: "        (info, current) => BaixarPara(PastaDeInstalacao, info, current); // mutante: lambda",
+    guarda: "uishots",
+    prova: "produção: o Baixar por omissão é o BaixarDeProducao",
+  },
 ];
 
 const mundo = (cmd, args, opts = {}) => {

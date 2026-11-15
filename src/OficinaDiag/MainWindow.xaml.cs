@@ -366,10 +366,28 @@ public partial class MainWindow : Window
     /// omissão são exactamente os de produção — o handler em si não mudou.
     /// </summary>
     internal Func<Cloud.UpdateChecker.UpdateInfo, Version, Task<(bool ok, string message)>> Baixar =
-        (info, current) => Cloud.UpdateChecker.DownloadAndStageAsync(
-            info, AppContext.BaseDirectory, current);
+        BaixarDeProducao;
 
-    internal Action Terminar = () => Application.Current.Shutdown();
+    internal Action Terminar = TerminarDeProducao;
+
+    /// <summary>
+    /// Os defeitos por omissão em métodos com nome. Um campo com um lambda era
+    /// invisível: a prova substituía-o e mostrava que o aviso funciona, nunca
+    /// que o caminho de produção é este. Com nome, a prova compara o
+    /// `Method.Name` do delegate e chama o resto directamente.
+    /// </summary>
+    internal static string PastaDeInstalacao => AppContext.BaseDirectory;
+
+    internal static Task<(bool ok, string message)> BaixarDeProducao(
+        Cloud.UpdateChecker.UpdateInfo info, Version current) =>
+        BaixarPara(PastaDeInstalacao, info, current);
+
+    /// <summary>O mesmo com a pasta à escolha — é assim que a prova vê o argumento chegar.</summary>
+    internal static Task<(bool ok, string message)> BaixarPara(
+        string appDir, Cloud.UpdateChecker.UpdateInfo info, Version current) =>
+        Cloud.UpdateChecker.DownloadAndStageAsync(info, appDir, current);
+
+    internal static void TerminarDeProducao() => Application.Current.Shutdown();
 
     private async Task CheckForUpdateAsync()
     {

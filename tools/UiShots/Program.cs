@@ -296,6 +296,10 @@ internal static class Program
 
         VerificarUiSemExcecoes(logUi);
         Console.WriteLine($"capturas em {Path.GetFullPath(destino)}");
+
+        Marcar("os defeitos por omissão da atualização");
+        ProvarDefeitoDaAtualizacao(destino);
+
         if (_falhas > 0) Console.WriteLine($"FALHAS: {_falhas}");
         return _falhas == 0 ? 0 : 1;
     }
@@ -1023,6 +1027,135 @@ internal static class Program
                 (janela.FindName("Console") as TextBox)?.Text.Contains("encenado") == true);
         }
         finally { Fechar(janela); }
+    }
+
+    /// <summary>
+    /// O `Baixar` e o `Terminar` por omissão — o caminho que a prova do aviso
+    /// de reinício substitui e que, por isso, ninguém exercitava: trocar a
+    /// pasta da app ou emudecer o `Shutdown` deixava todos os `[OK]` verdes.
+    ///
+    /// Sem rede, sem `Shutdown` e sem matar nada: o delegado por omissão tem
+    /// de *ser* o método de produção (nome, não lambda anónimo), a pasta tem de
+    /// ser a da app, o argumento tem de chegar ao `DownloadAndStageAsync` (duas
+    /// recusas que acontecem antes de qualquer HTTP o provam) e o corpo dos
+    /// dois métodos é lido em IL — um `TerminarDeProducao` vazio ou a baixar
+    /// para outra pasta falha aqui sem nada correr.
+    /// </summary>
+    private static void ProvarDefeitoDaAtualizacao(string destino)
+    {
+        Console.WriteLine("== atualização: os defeitos por omissão do MainWindow ==");
+        var janela = new MainWindow();
+
+        // 1. O campo por omissão aponta para o método de produção. Com um
+        //    lambda, o nome seria gerado pelo compilador e isto falhava.
+        var baixar = Campo("Baixar", janela) as Delegate;
+        Verificar($"produção: o Baixar por omissão é o BaixarDeProducao (é «{baixar?.Method.Name}»)",
+            baixar?.Method.Name == "BaixarDeProducao");
+        var terminar = Campo("Terminar", janela) as Delegate;
+        Verificar($"produção: o Terminar por omissão é o TerminarDeProducao (é «{terminar?.Method.Name}»)",
+            terminar?.Method.Name == "TerminarDeProducao");
+
+        // 2. A pasta é a da app — é ela que `BaixarDeProducao` passa adiante.
+        var pasta = typeof(MainWindow)
+            .GetProperty("PastaDeInstalacao", BindingFlags.NonPublic | BindingFlags.Static)!
+            .GetValue(null) as string;
+        Verificar($"produção: a atualização escreve na pasta da app ({pasta})",
+            pasta == AppContext.BaseDirectory);
+
+        // 3. O corpo dos dois métodos, em IL: `BaixarDeProducao` tem de usar a
+        //    `PastaDeInstalacao` e passar por `BaixarPara`; `TerminarDeProducao`
+        //    tem de acabar em `Application.Shutdown`.
+        var chamadasDoBaixar = Chamadas("BaixarDeProducao");
+        Verificar($"produção: o BaixarDeProducao usa a pasta da app e o BaixarPara (chama: {Juntar(chamadasDoBaixar)})",
+            chamadasDoBaixar is not null
+            && chamadasDoBaixar.Contains("get_PastaDeInstalacao")
+            && chamadasDoBaixar.Contains("BaixarPara"));
+        var chamadasDoTerminar = Chamadas("TerminarDeProducao");
+        Verificar($"produção: o TerminarDeProducao chama o Application.Shutdown (chama: {Juntar(chamadasDoTerminar)})",
+            chamadasDoTerminar is not null
+            && chamadasDoTerminar.Contains("get_Current")
+            && chamadasDoTerminar.Contains("Shutdown"));
+
+        // 4. O argumento chega mesmo ao `DownloadAndStageAsync`: com uma pasta
+        //    que não existe, a recusa é a dele (e vem antes da rede).
+        const string tag = "v9.9.9";
+        var baseUrl = $"https://github.com/{UpdateChecker.TrustedOwner}/{UpdateChecker.TrustedRepo}" +
+                      $"/releases/download/{tag}/";
+        var confiavel = new UpdateChecker.UpdateInfo(new Version(9, 9, 9), tag,
+            baseUrl + "oficinaos-diag-win-x64.zip", baseUrl + "SHA256SUMS.txt",
+            baseUrl + "SHA256SUMS.sig");
+        var semPasta = Path.Combine(Path.GetFullPath(destino), "pasta-que-nao-existe", "app");
+        Verificar($"produção: «{semPasta}» não existe (senão este passo não prova nada)",
+            !Directory.Exists(semPasta));
+        var (okPasta, msgPasta) = BaixarParaProva(semPasta, confiavel, new Version(0, 1, 0));
+        Verificar($"produção: a pasta vai como argumento e é recusada («{msgPasta}»)",
+            !okPasta && msgPasta.Contains("sem permissão de escrita", StringComparison.Ordinal));
+
+        // 5. E o delegado por omissão chega ao `DownloadAndStageAsync`: a
+        //    recusa por origem é texto de lá, antes de qualquer HTTP.
+        var estranho = confiavel with
+        {
+            ZipUrl = "https://exemplo.invalid/releases/download/v9.9.9/oficinaos-diag-win-x64.zip",
+            ChecksumUrl = "https://exemplo.invalid/releases/download/v9.9.9/SHA256SUMS.txt",
+            SigUrl = "https://exemplo.invalid/releases/download/v9.9.9/SHA256SUMS.sig",
+        };
+        var (okOrigem, msgOrigem) = ((Task<(bool ok, string message)>)
+                baixar!.DynamicInvoke(estranho, new Version(0, 1, 0))!)
+            .GetAwaiter().GetResult();
+        Verificar($"produção: o Baixar por omissão chega ao DownloadAndStageAsync («{msgOrigem}»)",
+            !okOrigem && msgOrigem.Contains("Origem da atualização não reconhecida", StringComparison.Ordinal));
+    }
+
+    private static object? Campo(string nome, object alvo) =>
+        typeof(MainWindow).GetField(nome, BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(alvo);
+
+    private static (bool ok, string message) BaixarParaProva(
+        string appDir, UpdateChecker.UpdateInfo info, Version current)
+    {
+        var metodo = typeof(MainWindow).GetMethod("BaixarPara",
+            BindingFlags.NonPublic | BindingFlags.Static)!;
+        return ((Task<(bool ok, string message)>)metodo.Invoke(null, [appDir, info, current])!)
+            .GetAwaiter().GetResult();
+    }
+
+    private static string Juntar(List<string>? chamadas) =>
+        chamadas is null ? "corpo não reconhecido" : string.Join(", ", chamadas);
+
+    /// <summary>
+    /// As chamadas de um método do `MainWindow`, com os nomes resolvidos. Serve
+    /// para provar o corpo dos defeitos por omissão sem os correr: um
+    /// `TerminarDeProducao` vazio, ou um `BaixarDeProducao` a apontar para outra
+    /// pasta, muda as chamadas. Devolve `null` se o corpo tiver instruções que
+    /// este leitor mínimo não conhece — «mudou» também é motivo para reprovar.
+    /// </summary>
+    private static List<string>? Chamadas(string nomeDoMetodo)
+    {
+        var metodo = typeof(MainWindow).GetMethod(nomeDoMetodo,
+            BindingFlags.NonPublic | BindingFlags.Static)!;
+        var il = metodo.GetMethodBody()?.GetILAsByteArray();
+        if (il is null) return null;
+        var modulo = metodo.Module;
+        var chamadas = new List<string>();
+        for (var i = 0; i < il.Length;)
+        {
+            switch (il[i])
+            {
+                case 0x00: // nop
+                case 0x02: // ldarg.0
+                case 0x03: // ldarg.1
+                case 0x2A: // ret
+                    i++;
+                    continue;
+                case 0x28: // call
+                case 0x6F: // callvirt
+                    chamadas.Add(modulo.ResolveMethod(BitConverter.ToInt32(il, i + 1))?.Name ?? "?");
+                    i += 5;
+                    continue;
+                default:
+                    return null;
+            }
+        }
+        return chamadas;
     }
 
     /// <summary>
