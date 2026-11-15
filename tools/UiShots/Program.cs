@@ -312,90 +312,73 @@ internal static class Program
     /// Corre numa thread de fundo: o `MessageBox.Show` bloqueia a thread da UI
     /// com o diálogo aberto, logo ninguém a pode ler de lá.
     /// </summary>
-    private static Task<string?> ResponderMessageBox(string resposta, int timeoutMs = 10_000) => Task.Run(() =>
+    private static Task<string?> ResponderMessageBox(string resposta, int timeoutMs = 15_000) => Task.Run(() =>
     {
         var fim = Environment.TickCount64 + timeoutMs;
         while (Environment.TickCount64 < fim)
         {
-            AutomationElement? dialogo;
-            try
+            // FindWindow, não UIAutomation: a árvore de automação pode bloquear
+            // e, como a thread da UI está dentro do Show, quem fica preso é o
+            // run inteiro. Aqui encontrar é Win32 puro.
+            var hwnd = FindWindow("#32770", null);
+            if (hwnd == IntPtr.Zero)
             {
-                dialogo = AutomationElement.RootElement.FindFirst(TreeScope.Children,
-                    new PropertyCondition(AutomationElement.ClassNameProperty, "#32770"));
+                Thread.Sleep(100);
+                continue;
             }
-            catch
-            {
-                // Sem UIA não há texto a ler, mas a thread da UI não pode ficar
-                // presa no MessageBox: fecha-se pelo HWND.
-                var cru = FindWindow("#32770", null);
-                if (cru != IntPtr.Zero) PostMessage(cru, WmClose, IntPtr.Zero, IntPtr.Zero);
-                return null;
-            }
-            if (dialogo is not null)
-            {
-                var corpo = string.Join(" ", dialogo
-                    .FindAll(TreeScope.Descendants,
-                        new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Text))
-                    .Cast<AutomationElement>()
-                    .Select(e => e.Current.Name)
-                    .Where(n => !string.IsNullOrWhiteSpace(n)));
 
-                var etiquetas = resposta == "sim" ? new[] { "Sim", "Yes" } : new[] { "Não", "No" };
-                var botoes = dialogo
-                    .FindAll(TreeScope.Descendants,
-                        new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Button))
-                    .Cast<AutomationElement>()
-                    .ToArray();
-                var alvo = botoes.FirstOrDefault(b =>
-                        etiquetas.Contains(b.Current.Name.Trim(), StringComparer.OrdinalIgnoreCase))
-                    ?? botoes.FirstOrDefault();
-                var hwnd = new IntPtr(dialogo.Current.NativeWindowHandle);
+            // Ler o texto por UIA, mas com prazo: se a automação não responder,
+            // fecha-se na mesma e o teste diz que não leu o corpo.
+            var leitura = Task.Run(() => TextoDoDialogo(hwnd));
+            var corpo = leitura.Wait(4000) ? leitura.Result : null;
 
-                var respondeu = false;
-                try
-                {
-                    if (alvo?.GetCurrentPattern(InvokePattern.Pattern) is InvokePattern invocar)
-                    {
-                        invocar.Invoke();
-                        respondeu = true;
-                    }
-                }
-                catch { /* sem InvokePattern: cai no WM_COMMAND */ }
+            // WM_COMMAND com IDYES/IDNO é o caminho nativo do MessageBox.
+            PostMessage(hwnd, WmCommand,
+                new IntPtr(resposta == "sim" ? IdYes : IdNo), IntPtr.Zero);
+            if (!Sumiu(hwnd, 3000))
+                PostMessage(hwnd, WmClose, IntPtr.Zero, IntPtr.Zero);
 
-                // WM_COMMAND com o ID do botão é o caminho nativo do MessageBox.
-                // A thread da UI está bloqueada dentro do Show: se ninguém
-                // responder, o processo fica preso e o run pendura — por isso
-                // há sempre uma segunda tentativa e, no fim, um WM_CLOSE.
-                if (!respondeu && hwnd != IntPtr.Zero)
-                    PostMessage(hwnd, WmCommand,
-                        new IntPtr(resposta == "sim" ? IdYes : IdNo), IntPtr.Zero);
-                if (hwnd != IntPtr.Zero && !Sumiu(hwnd, 3000))
-                    PostMessage(hwnd, WmClose, IntPtr.Zero, IntPtr.Zero);
-
-                return corpo;
-            }
-            Thread.Sleep(100);
+            return corpo;
         }
         return null;
-    }).ContinueWith(t => t.Exception is null ? t.Result : FecharQualquerMessageBox());
+    });
 
-    /// <summary>Fecho de última instância: não deixar a thread da UI presa num diálogo.</summary>
-    private static string? FecharQualquerMessageBox()
+    /// <summary>
+    /// Rede de segurança contra um run pendurado: se o `Close()` ficar preso
+    /// dentro de um diálogo que ninguém respondeu, isto liberta-o. Cancela-se
+    /// quando a resposta normal chegou, para não fechar um diálogo alheio.
+    /// </summary>
+    private static Task VigiaDoMessageBox(CancellationToken token, int depoisDeMs = 20_000) => Task.Run(async () =>
+    {
+        try { await Task.Delay(depoisDeMs, token); }
+        catch (OperationCanceledException) { return; }
+        var fim = Environment.TickCount64 + 10_000;
+        while (Environment.TickCount64 < fim)
+        {
+            var hwnd = FindWindow("#32770", null);
+            if (hwnd == IntPtr.Zero) return;
+            PostMessage(hwnd, WmClose, IntPtr.Zero, IntPtr.Zero);
+            Thread.Sleep(250);
+        }
+    });
+
+    /// <summary>Texto do corpo do diálogo por UIAutomation (null se não der).</summary>
+    private static string? TextoDoDialogo(IntPtr hwnd)
     {
         try
         {
-            var dialogo = AutomationElement.RootElement.FindFirst(TreeScope.Children,
-                new PropertyCondition(AutomationElement.ClassNameProperty, "#32770"));
-            var hwnd = dialogo is null ? IntPtr.Zero : new IntPtr(dialogo.Current.NativeWindowHandle);
-            if (hwnd == IntPtr.Zero) hwnd = FindWindow("#32770", null);
-            if (hwnd != IntPtr.Zero) PostMessage(hwnd, WmClose, IntPtr.Zero, IntPtr.Zero);
+            var dialogo = AutomationElement.FromHandle(hwnd);
+            return string.Join(" ", dialogo
+                .FindAll(TreeScope.Descendants,
+                    new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Text))
+                .Cast<AutomationElement>()
+                .Select(e => e.Current.Name)
+                .Where(n => !string.IsNullOrWhiteSpace(n)));
         }
         catch
         {
-            var hwnd = FindWindow("#32770", null);
-            if (hwnd != IntPtr.Zero) PostMessage(hwnd, WmClose, IntPtr.Zero, IntPtr.Zero);
+            return null;
         }
-        return null;
     }
 
     /// <summary>O diálogo já desapareceu? (poling curto, sem sleep fixo)</summary>
@@ -438,9 +421,13 @@ internal static class Program
             Verificar("bancada: sessão arrancou (SCAN+ desativado)",
                 Esperar(() => !comecar.IsEnabled, 5000));
 
+            using var vigia = new CancellationTokenSource();
+            var rede = VigiaDoMessageBox(vigia.Token);
             var primeira = ResponderMessageBox("nao");
             janela.Close(); // bloqueia no MessageBox
             var corpo = primeira.GetAwaiter().GetResult();
+            vigia.Cancel();
+            rede.Wait(500);
 
             Verificar("bancada: o aviso apareceu", corpo is not null);
             var esperado = SemEspacos(L10n.T("bench.confirm.abort"));
@@ -448,9 +435,13 @@ internal static class Program
                 corpo is not null && SemEspacos(corpo).Contains(esperado[..30]));
             Verificar("bancada: responder Não mantém a janela aberta", janela.IsLoaded);
 
+            using var vigia2 = new CancellationTokenSource();
+            var rede2 = VigiaDoMessageBox(vigia2.Token);
             var segunda = ResponderMessageBox("sim");
             janela.Close();
             var corpo2 = segunda.GetAwaiter().GetResult();
+            vigia2.Cancel();
+            rede2.Wait(500);
             Verificar("bancada: responder Sim fecha a janela",
                 corpo2 is not null && Esperar(() => !janela.IsLoaded, 3000));
         }
