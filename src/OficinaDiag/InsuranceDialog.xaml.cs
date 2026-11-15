@@ -21,6 +21,9 @@ public partial class InsuranceDialog : Window
             var wa = SystemParameters.WorkArea;
             MaxWidth = Math.Min(MaxWidth, wa.Width);
             MaxHeight = Math.Min(MaxHeight, wa.Height);
+            // O piso nunca pode passar o limite, senão ganha-lhe (ver checklist).
+            MinWidth = Math.Min(MinWidth, MaxWidth);
+            MinHeight = Math.Min(MinHeight, MaxHeight);
         };
 
         Title = L10n.T("ins.title");

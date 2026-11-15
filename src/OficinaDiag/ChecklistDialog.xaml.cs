@@ -49,6 +49,11 @@ public sealed partial class ChecklistDialog : Window
             var wa = SystemParameters.WorkArea;
             MaxWidth = Math.Min(MaxWidth, wa.Width);
             MaxHeight = Math.Min(MaxHeight, wa.Height);
+            // MinHeight ganha ao MaxHeight no WPF: com a work area abaixo dos
+            // 480, a janela ficava em 480 e as ações saíam pelo ecrã (visto em
+            // checklist-*-400). O piso também tem de ceder ao limite.
+            MinWidth = Math.Min(MinWidth, MaxWidth);
+            MinHeight = Math.Min(MinHeight, MaxHeight);
             if (Width > wa.Width) Width = wa.Width;
             if (Height > wa.Height) Height = wa.Height;
         };
