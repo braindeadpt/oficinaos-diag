@@ -33,7 +33,7 @@ public sealed partial class ChecklistDialog : Window
         CancelBtn.Content = L10n.Btn("btn.cancel");
         NotesBox.MaxLength = Cloud.IntakeRules.NotesMaxLength;
         NotesBox.Text = _report.Notes ?? "";
-        SaleBox.Content = L10n.T("chk.sale");
+        SaleBox.Content = new TextBlock { Text = L10n.T("chk.sale"), TextWrapping = TextWrapping.Wrap };
         SaleBox.IsChecked = _report.Purpose == "sale";
 
         foreach (var item in Grader.ChecklistItems)

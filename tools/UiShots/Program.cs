@@ -55,7 +55,10 @@ internal static class Program
                 Path.Combine(destino, $"checklist-{tema}.png"), 560, 620);
             // tamanho por omissão do diálogo: é onde o utilizador o vê abrir
             Capturar(() => new ChecklistDialog(relatorio),
-                Path.Combine(destino, $"checklist-{tema}-default.png"), 560, 560);
+                Path.Combine(destino, $"checklist-{tema}-default.png"), 560, 620);
+            // janela apertada: os itens têm de rolar e os botões continuar visíveis
+            Capturar(() => new ChecklistDialog(relatorio),
+                Path.Combine(destino, $"checklist-{tema}-baixa.png"), 560, 420);
             // ecrã curto: força o scroll das Opções (o que o SizeToContent escondia)
             Capturar(() => new SettingsDialog(DiagConfig.Load()),
                 Path.Combine(destino, $"opcoes-{tema}-curta.png"), 420, 560, LimitarScroll);
