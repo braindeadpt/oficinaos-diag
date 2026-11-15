@@ -417,7 +417,10 @@ internal static class Program
 
         var marcou = false;
         var desmarcou = false;
-        janela.Loaded += (_, _) =>
+        // BeginInvoke, não o corpo do Loaded: o `DialogResult` só é aceite depois
+        // de a janela estar de facto a correr como diálogo, e no evento Loaded
+        // ainda não está (InvalidOperationException visto no CI).
+        janela.Loaded += (_, _) => janela.Dispatcher.BeginInvoke(new Action(() =>
         {
             // Ordem dos botões: por item, [ok, defeito, n/t].
             var botoes = Descendentes<Button>(janela).ToArray();
@@ -433,7 +436,7 @@ internal static class Program
             if (janela.FindName("ApplyBtn") is Button aplicar)
                 aplicar.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
             else janela.Close(); // nunca deixar o modal aberto
-        };
+        }));
 
         var fechou = janela.ShowDialog() == true;
 
