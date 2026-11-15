@@ -126,11 +126,27 @@ internal static class Program
         // handler é o mesmo, o log vai para o artefacto e o run falha no fim.
         var logUi = Path.Combine(destino, "diag.log");
         AppLog.RedirectTo(logUi);
+
+        // As três vias por onde o `App` engole uma exceção, uma a uma: o
+        // dispatcher (UI), a tarefa cujo resultado ninguém observa (background)
+        // e a thread que morre (fatal). Só a primeira estava ligada.
         app.DispatcherUnhandledException += (_, e) =>
         {
-            AppLog.Exception("UI", e.Exception);
-            Console.WriteLine($"  ! UI: {e.Exception.GetType().Name}: {e.Exception.Message}");
+            Anotar("UI", e.Exception);
             e.Handled = true; // registar e continuar: um clique não pode matar o run
+        };
+        TaskScheduler.UnobservedTaskException += (_, e) =>
+        {
+            Anotar("background", e.Exception);
+            e.SetObserved();
+        };
+        AppDomain.CurrentDomain.UnhandledException += (_, e) =>
+        {
+            if (e.ExceptionObject is Exception ex) Anotar("fatal", ex);
+            // Nesta via o processo morre logo a seguir: a verificação tem de
+            // correr aqui, senão um `! fatal:` nunca chegava a ser avaliado.
+            VerificarUiSemExcecoes(logUi);
+            Console.Out.Flush();
         };
         // Um clique real chega dentro de uma operação do dispatcher, onde o
         // SynchronizationContext é o do WPF. Este `Main` corre fora do loop, e
@@ -575,9 +591,24 @@ internal static class Program
         try { janela.Close(); } catch { }
     }
 
+    /// <summary>As três vias do `App` que transformam uma exceção numa linha de log.</summary>
+    private static readonly string[] ViasEngolidas = ["! UI:", "! background:", "! fatal:"];
+
     /// <summary>
-    /// O log da UI deste run tem alguma linha «! UI:»? Uma só já reprova: foi
-    /// uma destas que escondeu o checklist morto durante dois lotes.
+    /// Escreve a linha da via, como o `App` faz — e na consola, que é o que o CI
+    /// mostra sem precisar do artefacto.
+    /// </summary>
+    private static void Anotar(string onde, Exception ex)
+    {
+        AppLog.Exception(onde, ex);
+        Console.WriteLine($"  ! {onde}: {ex.GetType().Name}: {ex.Message}");
+    }
+
+    /// <summary>
+    /// O log deste run tem alguma linha de exceção engolida, por qualquer das
+    /// três vias? Uma só já reprova — foi uma destas que escondeu o checklist
+    /// morto durante dois lotes. A contagem vai por via, para o relatório dizer
+    /// qual delas disparou.
     /// </summary>
     private static void VerificarUiSemExcecoes(string log)
     {
@@ -585,7 +616,7 @@ internal static class Program
         try
         {
             linhas = File.Exists(log)
-                ? File.ReadAllLines(log).Where(l => l.Contains("! UI:")).ToArray()
+                ? File.ReadAllLines(log).Where(l => ViasEngolidas.Any(l.Contains)).ToArray()
                 : [];
         }
         catch (Exception ex)
@@ -594,7 +625,9 @@ internal static class Program
             linhas = [$"(ilegível) {ex.Message}"];
         }
         foreach (var linha in linhas.Take(10)) Console.WriteLine($"    {linha}");
-        Verificar($"log da UI sem exceções engolidas ({linhas.Length} linhas «! UI:»)",
+        var porVia = string.Join(", ", ViasEngolidas.Select(v =>
+            $"{v.Replace("! ", "").TrimEnd(':')} {linhas.Count(l => l.Contains(v))}"));
+        Verificar($"log sem exceções engolidas ({linhas.Length} linha(s); {porVia})",
             linhas.Length == 0);
     }
 
