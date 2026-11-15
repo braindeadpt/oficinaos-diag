@@ -344,6 +344,19 @@ public partial class MainWindow : Window
 
     private Cloud.UpdateChecker.UpdateInfo? _update;
 
+    /// <summary>
+    /// Os dois passos de uma atualização que uma prova de UI tem de substituir:
+    /// descarregar a release a sério gasta 100 MB de rede, e o
+    /// `Application.Current.Shutdown()` mata o processo do harness a meio. Foi
+    /// por isso que o aviso de reinício nunca teve prova. Os valores por
+    /// omissão são exactamente os de produção — o handler em si não mudou.
+    /// </summary>
+    internal Func<Cloud.UpdateChecker.UpdateInfo, Version, Task<(bool ok, string message)>> Baixar =
+        (info, current) => Cloud.UpdateChecker.DownloadAndStageAsync(
+            info, AppContext.BaseDirectory, current);
+
+    internal Action Terminar = () => Application.Current.Shutdown();
+
     private async Task CheckForUpdateAsync()
     {
         var current = System.Reflection.Assembly.GetExecutingAssembly().GetName().Version
@@ -364,8 +377,7 @@ public partial class MainWindow : Window
         Log(L10n.F("log.update.dl", _update.Tag));
         var current = System.Reflection.Assembly.GetExecutingAssembly().GetName().Version
             ?? new Version(0, 0, 0);
-        var (ok, msg) = await Cloud.UpdateChecker.DownloadAndStageAsync(
-            _update, AppContext.BaseDirectory, current);
+        var (ok, msg) = await Baixar(_update, current);
         Log(ok ? $"> {msg}" : L10n.F("log.update.fail", msg));
         if (ok)
         {
@@ -373,7 +385,7 @@ public partial class MainWindow : Window
             // de bancada parecia uma falha da app.
             MessageBox.Show(this, L10n.T("log.update.ready"), Title,
                 MessageBoxButton.OK, MessageBoxImage.Information);
-            Application.Current.Shutdown();
+            Terminar();
         }
         else
             UpdateButton.IsEnabled = true;

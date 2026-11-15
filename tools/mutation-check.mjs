@@ -76,6 +76,14 @@ const mutantes = [
     prova: "seletor: o 2º aparelho não rouba a bancada",
   },
   {
+    nome: "o aviso de reinício mostra outra mensagem",
+    ficheiro: "src/OficinaDiag/MainWindow.xaml.cs",
+    de: 'MessageBox.Show(this, L10n.T("log.update.ready"), Title,',
+    para: 'MessageBox.Show(this, L10n.T("log.update.dl"), Title, // mutante: texto trocado',
+    guarda: "uishots",
+    prova: "atualização: o aviso de reinício é o do L10n",
+  },
+  {
     nome: "a falha repetida não desliga o botão",
     ficheiro: "src/OficinaDiag/MainWindow.xaml.cs",
     de: "        if (FindName(acao) is UIElement alvo) alvo.IsEnabled = false;",
@@ -155,7 +163,9 @@ for (const m of alvo) {
   const caminho = join(raiz, m.ficheiro);
   const original = readFileSync(caminho, "utf8");
 
-  if (!gitLimpo(m.ficheiro)) {
+  // `--seco` não escreve nada, por isso não precisa da árvore limpa — e é
+  // precisamente antes de commitar que apetece correr isto.
+  if (!seco && !gitLimpo(m.ficheiro)) {
     resultados.push({ m, estado: "saltado", motivo: "ficheiro com alterações por commitar" });
     problemas++;
     continue;
@@ -204,7 +214,7 @@ for (const m of saltados) {
 if (seco) {
   console.log(problemas === 0
     ? `\n✓ os ${alvo.length} mutantes aplicam (não foi corrida nenhuma suite)`
-    : `\n✗ ${problemas} mutante(s) já não aplicam — o código mudou e o mutante ficou órfão`);
+    : `\n✗ ${problemas} mutante(s) órfão(s) — o código mudou e o mutante procura um texto que já não existe`);
   process.exit(problemas === 0 ? 0 : 1);
 }
 

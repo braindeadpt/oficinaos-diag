@@ -273,6 +273,8 @@ internal static class Program
         ProvarCliques();
         Marcar("commits dos diálogos");
         ProvarCommits();
+        Marcar("aviso de reinício da atualização");
+        ProvarAvisoDeAtualizacao();
         Marcar("dois telemóveis no seletor");
         ProvarDoisTelemoveis();
         Marcar("falha repetida na mesma ação");
@@ -882,6 +884,71 @@ internal static class Program
         Verificar("commit: o código e o contacto leram-se",
             envio.ShopCode == "ABC123" && envio.CustomerName == "Ana Silva");
     }
+
+    /// <summary>
+    /// O aviso de reinício depois de a atualização ficar encenada. O caminho
+    /// real descarrega 100 MB e acaba em `Shutdown()`, que mataria o harness a
+    /// meio: os dois passos entram por injecção (`Baixar`, `Terminar`) e o
+    /// resto é o handler a sério — o `MessageBox` com o texto do `L10n`,
+    /// lido por UIAutomation e respondido por `WM_COMMAND`.
+    /// </summary>
+    private static void ProvarAvisoDeAtualizacao()
+    {
+        Console.WriteLine("== aviso de reinício depois da atualização ==");
+        ThemeManager.Apply(ThemeManager.Terminal);
+        L10n.Set("pt");
+
+        var janela = new MainWindow();
+        Abrir(janela);
+        try
+        {
+            if (janela.FindName("UpdateButton") is not Button botao)
+            {
+                Verificar("atualização: o botão existe", false);
+                return;
+            }
+
+            var tag = "v9.9.9";
+            var baseUrl = $"https://github.com/{UpdateChecker.TrustedOwner}/{UpdateChecker.TrustedRepo}" +
+                          $"/releases/download/{tag}/";
+            Definir(janela, "_update", new UpdateChecker.UpdateInfo(new Version(9, 9, 9), tag,
+                baseUrl + "oficinaos-diag-win-x64.zip", baseUrl + "SHA256SUMS.txt",
+                baseUrl + "SHA256SUMS.sig"));
+            Definir(janela, "Baixar",
+                new Func<UpdateChecker.UpdateInfo, Version, Task<(bool ok, string message)>>(
+                    (_, _) => Task.FromResult((true, "encenado: os 100 MB ficaram em casa"))));
+            var terminou = 0;
+            Definir(janela, "Terminar", new Action(() => terminou++));
+
+            // O botão só aparece quando um `CheckAsync` encontra release nova;
+            // aqui a release é a encenada, por isso mostra-se à mão.
+            botao.Visibility = Visibility.Visible;
+            botao.IsEnabled = true;
+
+            using var vigia = new CancellationTokenSource();
+            var rede = VigiaDoMessageBox(vigia.Token);
+            var resposta = ResponderMessageBox("ok");
+            var clicou = Clicar(botao); // fica dentro do MessageBox até alguém responder
+            var corpo = resposta.GetAwaiter().GetResult();
+            vigia.Cancel();
+            rede.Wait(500);
+
+            Verificar("atualização: o handler correu sem exceção", clicou);
+            Verificar("atualização: o aviso de reinício é o do L10n",
+                TextoDoAviso(corpo, "log.update.ready"));
+            Verificar($"atualização: o aviso vem antes do fecho ({terminou} fecho(s))", terminou == 1);
+            Verificar("atualização: o aviso já não está aberto",
+                Esperar(() => DialogoDaApp() == IntPtr.Zero, 2000));
+            Verificar("atualização: a consola diz que a atualização está encenada",
+                (janela.FindName("Console") as TextBox)?.Text.Contains("encenado") == true);
+        }
+        finally { Fechar(janela); }
+    }
+
+    /// <summary>Põe um campo (privado ou interno) — a mesma via do resto do harness.</summary>
+    private static void Definir(object alvo, string campo, object? valor) =>
+        alvo.GetType().GetField(campo, BindingFlags.NonPublic | BindingFlags.Instance)!
+            .SetValue(alvo, valor);
 
     /// <summary>As três vias do `App` que transformam uma exceção numa linha de log.</summary>
     private static readonly string[] ViasEngolidas = ["! UI:", "! background:", "! fatal:"];
