@@ -383,7 +383,7 @@ public partial class MainWindow : Window
         {
             // Antes a janela desaparecia sem explicação — a meio de uma sessão
             // de bancada parecia uma falha da app.
-            MessageBox.Show(this, L10n.T("log.update.dl"), Title, // SONDA (a remover)
+            MessageBox.Show(this, L10n.T("log.update.ready"), Title,
                 MessageBoxButton.OK, MessageBoxImage.Information);
             Terminar();
         }
