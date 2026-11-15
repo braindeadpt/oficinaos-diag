@@ -1261,17 +1261,56 @@ internal static class Program
             Verificar("setas: o polegar existe",
                 Descendentes<Thumb>(barra).Any(t => t.IsVisible && t.ActualHeight > 1));
 
-            var (w, h) = Gravar(barra, Path.Combine(destino, "scrollbar-win95.png"));
+            // A captura é da janela inteira e não da barra isolada: o
+            // `RenderTargetBitmap` de um elemento só da barra saiu cinzento
+            // (os filhos não foram pintados) e uma «prova visual» vazia é pior
+            // que nenhuma. E mede-se: o glifo é escuro e tem de estar no PNG.
+            var raiz = (FrameworkElement)VisualTreeHelper.GetChild(janela, 0);
+            janela.UpdateLayout();
+            Respirar();
+            var png = Path.Combine(destino, "scrollbar-win95.png");
+            var (w, h) = Gravar(raiz, png);
             Console.WriteLine($"  scrollbar-win95.png {w}x{h}");
-            // 16 DIP de estilo + arredondamento do `RenderTargetBitmap` (17).
-            Verificar($"setas: a captura é a tira da barra ({w}x{h})",
-                w is >= 16 and <= 20 && h >= 150);
+            var area = barra.TransformToAncestor(raiz).TransformBounds(
+                new Rect(0, 0, barra.ActualWidth, barra.ActualHeight));
+            var escuros = ContarEscuros(png, new Int32Rect(
+                (int)Math.Floor(area.X), (int)Math.Floor(area.Y),
+                (int)Math.Ceiling(area.Width), (int)Math.Ceiling(area.Height)));
+            Verificar($"setas: a captura mostra os glifos ({escuros} px escuros na barra)",
+                escuros >= 20);
         }
         finally
         {
             Fechar(janela);
             ThemeManager.Apply(ThemeManager.Terminal);
         }
+    }
+
+    /// <summary>
+    /// Quantos pixels do PNG são escuros dentro do retângulo indicado. Serve
+    /// para a captura ser prova e não decoração: um glifo preto num fundo
+    /// `#C0C0C0` conta, um render vazio conta zero.
+    /// </summary>
+    private static int ContarEscuros(string png, Int32Rect area, int limite = 96)
+    {
+        using var fs = File.OpenRead(png);
+        var decodificador = new PngBitmapDecoder(fs,
+            BitmapCreateOptions.PreservePixelFormat, BitmapCacheOption.OnLoad);
+        var bgra = new FormatConvertedBitmap(decodificador.Frames[0], PixelFormats.Bgra32, null, 0);
+        var stride = bgra.PixelWidth * 4;
+        var pixels = new byte[stride * bgra.PixelHeight];
+        bgra.CopyPixels(pixels, stride, 0);
+
+        var escuros = 0;
+        var fimY = Math.Min(bgra.PixelHeight, area.Y + area.Height);
+        var fimX = Math.Min(bgra.PixelWidth, area.X + area.Width);
+        for (var y = Math.Max(0, area.Y); y < fimY; y++)
+        for (var x = Math.Max(0, area.X); x < fimX; x++)
+        {
+            var i = y * stride + x * 4;
+            if (pixels[i] + pixels[i + 1] + pixels[i + 2] < limite * 3) escuros++;
+        }
+        return escuros;
     }
 
     /// <summary>As três vias do `App` que transformam uma exceção numa linha de log.</summary>
