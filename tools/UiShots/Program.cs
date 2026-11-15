@@ -52,6 +52,13 @@ internal static class Program
         Directory.CreateDirectory(destino);
 
         var app = new Application { ShutdownMode = ShutdownMode.OnExplicitShutdown };
+        // Um clique real chega dentro de uma operação do dispatcher, onde o
+        // SynchronizationContext é o do WPF. Este `Main` corre fora do loop, e
+        // sem isto as continuações dos handlers async caíam no thread pool:
+        // o `Start_Click` da bancada escrevia num TextBlock de outra thread e
+        // rebentava o processo — bug que só existia no harness.
+        SynchronizationContext.SetSynchronizationContext(
+            new DispatcherSynchronizationContext(Dispatcher.CurrentDispatcher));
         L10n.Set("pt");
 
         var relatorio = RelatorioAtual();
