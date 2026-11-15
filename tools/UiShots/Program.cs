@@ -4,6 +4,7 @@ using System.Net.Sockets;
 using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Windows;
+using System.Windows.Automation;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Input;
@@ -130,6 +131,7 @@ internal static class Program
         ThemeManager.Apply(ThemeManager.Terminal);
         ProvarPensDoScope(destino);
         ProvarFechoAPairar();
+        ProvarAvisoDaBancada();
 
         ThemeManager.Apply(ThemeManager.Terminal);
         Console.WriteLine("== diálogos (tema terminal) ==");
@@ -252,13 +254,19 @@ internal static class Program
             Verificar("pairing: o pedido chegou ao servidor falso",
                 Esperar(() => servidor.Pedidos > 0, 5000));
 
+            Verificar("pairing: o pedido está a meio (_saving ligado)",
+                SavingDaJanela(janela) == true);
+
             janela.Close(); // a meio do pedido
             Verificar("pairing: a janela fechou a meio do pedido",
                 Esperar(() => !janela.IsLoaded, 2000));
 
-            // Bombear para o await retomar (cancelamento) — se rebentar, o
-            // processo morre e o job fica vermelho.
-            Pausa(1200);
+            // Espera pelo estado, não por um sleep: o `finally` do handler só
+            // corre quando o await retoma (cancelamento). Se nunca retomar, o
+            // teste falha — que é o que se quer saber. E se o await rebentar,
+            // o processo morre e o job fica vermelho.
+            Verificar("pairing: o await retomou e saiu do finally",
+                Esperar(() => SavingDaJanela(janela) == false, 5000));
 
             Verificar("pairing: fechar a meio não grava a URL", config.CloudUrl == urlAntes);
             Verificar("pairing: fechar a meio não grava token",
@@ -268,6 +276,107 @@ internal static class Program
         {
             try { janela.Close(); } catch { }
             servidor.Dispose();
+        }
+    }
+
+    /// <summary>O `_saving` do `SettingsDialog` — prova que o pedido está a meio / já saiu.</summary>
+    private static bool? SavingDaJanela(Window janela) =>
+        typeof(SettingsDialog).GetField("_saving", BindingFlags.NonPublic | BindingFlags.Instance)
+            ?.GetValue(janela) as bool?;
+
+    /// <summary>Texto sem espaços, para comparar com o que a MessageBox parte em linhas.</summary>
+    private static string SemEspacos(string s) => new(s.Where(c => !char.IsWhiteSpace(c)).ToArray());
+
+    /// <summary>
+    /// Encontra o `MessageBox` da app por UIAutomation, lê o corpo e responde.
+    /// Corre numa thread de fundo: o `MessageBox.Show` bloqueia a thread da UI
+    /// com o diálogo aberto, logo ninguém a pode ler de lá.
+    /// </summary>
+    private static Task<string?> ResponderMessageBox(string resposta, int timeoutMs = 10_000) => Task.Run(() =>
+    {
+        var fim = Environment.TickCount64 + timeoutMs;
+        while (Environment.TickCount64 < fim)
+        {
+            var dialogo = AutomationElement.RootElement.FindFirst(TreeScope.Children,
+                new PropertyCondition(AutomationElement.ClassNameProperty, "#32770"));
+            if (dialogo is not null)
+            {
+                var corpo = string.Join(" ", dialogo
+                    .FindAll(TreeScope.Descendants,
+                        new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Text))
+                    .Cast<AutomationElement>()
+                    .Select(e => e.Current.Name)
+                    .Where(n => !string.IsNullOrWhiteSpace(n)));
+
+                var etiquetas = resposta == "sim" ? new[] { "Sim", "Yes" } : new[] { "Não", "No" };
+                var botoes = dialogo
+                    .FindAll(TreeScope.Descendants,
+                        new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Button))
+                    .Cast<AutomationElement>()
+                    .ToArray();
+                var alvo = botoes.FirstOrDefault(b =>
+                        etiquetas.Contains(b.Current.Name.Trim(), StringComparer.OrdinalIgnoreCase))
+                    ?? botoes.FirstOrDefault();
+
+                if (alvo?.GetCurrentPattern(InvokePattern.Pattern) is InvokePattern invocar)
+                {
+                    invocar.Invoke();
+                    return corpo;
+                }
+                return null;
+            }
+            Thread.Sleep(100);
+        }
+        return null;
+    });
+
+    /// <summary>
+    /// O aviso de perda de trabalho da bancada: o `MessageBox` é janela nativa,
+    /// não entra no `RenderTargetBitmap`. Lido e respondido por UIAutomation, e
+    /// as duas respostas são verificadas — «Não» mantém a janela, «Sim» fecha.
+    /// </summary>
+    private static void ProvarAvisoDaBancada()
+    {
+        Console.WriteLine("== aviso ao fechar a bancada a meio da sessão ==");
+        ThemeManager.Apply(ThemeManager.Terminal);
+
+        var janela = new BenchWindow("Pixel 8 · android", () => Task.FromResult<LiveTelemetry?>(null))
+        {
+            WindowStartupLocation = WindowStartupLocation.Manual,
+            Left = -20_000,
+            Top = -20_000,
+            ShowInTaskbar = false,
+            Width = 920,
+            Height = 620,
+        };
+        janela.Show();
+        Respirar();
+        try
+        {
+            var comecar = janela.FindName("StartBtn") as Button;
+            comecar!.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            Verificar("bancada: sessão arrancou (SCAN+ desativado)",
+                Esperar(() => !comecar.IsEnabled, 5000));
+
+            var primeira = ResponderMessageBox("nao");
+            janela.Close(); // bloqueia no MessageBox
+            var corpo = primeira.GetAwaiter().GetResult();
+
+            Verificar("bancada: o aviso apareceu", corpo is not null);
+            var esperado = SemEspacos(L10n.T("bench.confirm.abort"));
+            Verificar($"bancada: o texto é o do L10n ('{corpo}')",
+                corpo is not null && SemEspacos(corpo).Contains(esperado[..30]));
+            Verificar("bancada: responder Não mantém a janela aberta", janela.IsLoaded);
+
+            var segunda = ResponderMessageBox("sim");
+            janela.Close();
+            var corpo2 = segunda.GetAwaiter().GetResult();
+            Verificar("bancada: responder Sim fecha a janela",
+                corpo2 is not null && Esperar(() => !janela.IsLoaded, 3000));
+        }
+        finally
+        {
+            try { janela.Close(); } catch { }
         }
     }
 
