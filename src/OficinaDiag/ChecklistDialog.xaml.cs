@@ -33,12 +33,23 @@ public sealed partial class ChecklistDialog : Window
         CancelBtn.Content = L10n.Btn("btn.cancel");
         NotesBox.MaxLength = Cloud.IntakeRules.NotesMaxLength;
         NotesBox.Text = _report.Notes ?? "";
-        SaleBox.Content = L10n.T("chk.sale");
+        SaleBox.Content = new TextBlock { Text = L10n.T("chk.sale"), TextWrapping = TextWrapping.Wrap };
         SaleBox.IsChecked = _report.Purpose == "sale";
 
         foreach (var item in Grader.ChecklistItems)
             ItemsPanel.Children.Add(BuildRow(item));
         RefreshPhotoCount();
+
+        // Nunca maior que o ecrã: a 620 DIP num portátil 1366×768 a 125% (614
+        // DIP úteis) a janela excedia a work area e voltava a cortar as ações.
+        Loaded += (_, _) =>
+        {
+            var wa = SystemParameters.WorkArea;
+            MaxWidth = wa.Width;
+            MaxHeight = wa.Height;
+            if (Width > wa.Width) Width = wa.Width;
+            if (Height > wa.Height) Height = wa.Height;
+        };
     }
 
     private Grid BuildRow(ChecklistItem item)
@@ -58,7 +69,7 @@ public sealed partial class ChecklistDialog : Window
         grid.Children.Add(label);
 
         var buttons = new StackPanel { Orientation = Orientation.Horizontal };
-        var ok = MkButton("ok");
+        var ok = MkButton(L10n.T("chk.ok"));
         var fail = MkButton(L10n.T("chk.fail"));
         var na = MkButton(L10n.T("chk.na"));
         ok.Click += (_, _) => SetState(item.Key, 1);

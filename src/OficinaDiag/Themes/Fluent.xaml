@@ -10,7 +10,9 @@
     <SolidColorBrush x:Key="FaintBrush" Color="#8A8886"/>
     <SolidColorBrush x:Key="LineBrush" Color="#E1DFDD"/>
     <SolidColorBrush x:Key="HoverBrush" Color="#E6EDFF"/>
-    <SolidColorBrush x:Key="DisabledBrush" Color="#A19F9D"/>
+    <!-- #A19F9D sobre branco dava 2,8:1 e o botão desativado desaparecia;
+         #5F5D5B fica em ~6:1 e continua a ler-se como secundário. -->
+    <SolidColorBrush x:Key="DisabledBrush" Color="#5F5D5B"/>
     <SolidColorBrush x:Key="AccentBrush" Color="#1D4ED8"/>
     <SolidColorBrush x:Key="WarnBrush" Color="#986F0B"/>
     <SolidColorBrush x:Key="FailBrush" Color="#C42B1C"/>
@@ -32,6 +34,7 @@
         <Setter Property="Padding" Value="14,7"/>
         <Setter Property="Cursor" Value="Hand"/>
         <Setter Property="Margin" Value="0,0,8,4"/>
+        <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="Button">
@@ -49,9 +52,15 @@
                         <Trigger Property="IsPressed" Value="True">
                             <Setter TargetName="bd" Property="Background" Value="#D9EAE8"/>
                         </Trigger>
+                        <!-- só a cor: subir a espessura empurrava o conteúdo 1px
+                             a cada tabulação. -->
+                        <Trigger Property="IsKeyboardFocused" Value="True">
+                            <Setter TargetName="bd" Property="BorderBrush" Value="{DynamicResource AccentBrush}"/>
+                        </Trigger>
                         <Trigger Property="IsEnabled" Value="False">
                             <Setter Property="Foreground" Value="{DynamicResource DisabledBrush}"/>
                             <Setter Property="BorderBrush" Value="{DynamicResource LineBrush}"/>
+                            <Setter TargetName="bd" Property="Background" Value="#F0F0F0"/>
                         </Trigger>
                     </ControlTemplate.Triggers>
                 </ControlTemplate>

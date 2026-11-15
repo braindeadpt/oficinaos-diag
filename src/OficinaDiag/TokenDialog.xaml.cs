@@ -29,7 +29,14 @@ public partial class TokenDialog : Window
 
     private void Ok_Click(object sender, RoutedEventArgs e)
     {
-        if (Token.Length == 0) return;
+        // Antes saía calado: o botão parecia avariado para quem não escreveu nada.
+        if (Token.Length == 0)
+        {
+            MessageBox.Show(this, L10n.T("dlg.ai.token.empty"), Title,
+                MessageBoxButton.OK, MessageBoxImage.Warning);
+            TokenBox.Focus();
+            return;
+        }
         DialogResult = true;
     }
 }
