@@ -44,7 +44,10 @@ internal static class Program
             ThemeManager.Apply(tema);
             Console.WriteLine($"== tema {tema} ==");
 
-            Capturar(() => new MainWindow(), Path.Combine(destino, $"main-{tema}.png"), 1400, 900);
+            // 1000x740 cabe na work area do runner (1024x768): o MainWindow
+            // encolhe-se à work area no OnLoaded, e forçar depois do Show não
+            // refazia o layout — só recortava a imagem.
+            Capturar(() => new MainWindow(), Path.Combine(destino, $"main-{tema}.png"), 1000, 740);
             // 700x480 é o MinWidth/MinHeight: é onde o header estoura, se estourar.
             Capturar(() => new MainWindow(), Path.Combine(destino, $"main-{tema}-min.png"), 700, 480);
             Capturar(() => ComRelatorio(new MainWindow(), relatorio),
@@ -183,19 +186,11 @@ internal static class Program
             }
 
             if (janela.Content is not FrameworkElement raiz) return;
-            // O OnLoaded encolhe a janela à work area do runner (1024x768):
-            // sem isto a captura de 1400x900 saía a 1008.
-            janela.MaxWidth = double.PositiveInfinity;
-            janela.MaxHeight = double.PositiveInfinity;
-            janela.Width = largura;
-            janela.Height = altura;
-            if (!mostrou)
-            {
-                raiz.Measure(new Size(largura, altura));
-                raiz.Arrange(new Rect(0, 0, largura, altura));
-            }
+            // Nada de redimensionar depois do Show: o WPF só refaz o layout
+            // quando processa o WM_SIZE, por isso o conteúdo ficava arrumado
+            // para o tamanho antigo e a imagem saía cortada em baixo (foi o
+            // que fez o APLICAR parecer quebrado duas vezes).
             ajustar?.Invoke(janela);
-            Respirar();
             raiz.UpdateLayout();
             Respirar();
 
