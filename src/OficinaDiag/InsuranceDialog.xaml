@@ -19,10 +19,18 @@
         </Style>
         <Style TargetType="Button" BasedOn="{StaticResource TermButton}"/>
     </Window.Resources>
-    <!-- Sem MaxHeight fixo: a janela limita-se à work area no code-behind (e
-         com SizeToContent só rola quando não cabe). -->
-    <ScrollViewer VerticalScrollBarVisibility="Auto">
-        <StackPanel Margin="20">
+    <!-- Ações fora do scroll, ancoradas em baixo (como no checklist): a
+         janela limita-se à work area no code-behind, e assim um ecrã baixo
+         faz rolar os campos — nunca meio botão. -->
+    <DockPanel>
+        <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal"
+                    HorizontalAlignment="Right" Margin="20,10,20,16">
+            <Button x:Name="GenerateBtn" IsDefault="True" Click="Generate_Click"/>
+            <Button x:Name="CancelBtn" IsCancel="True" Margin="10,0,0,0"/>
+        </StackPanel>
+
+        <ScrollViewer VerticalScrollBarVisibility="Auto">
+        <StackPanel Margin="20,20,20,0">
             <TextBlock x:Name="HeaderText" FontSize="14" Foreground="{DynamicResource FgBrush}"
                        Margin="0,0,0,4"/>
             <TextBlock x:Name="DescText" TextWrapping="Wrap" Margin="0,0,0,4"/>
@@ -63,10 +71,7 @@
             <TextBlock x:Name="ShopAddrLabel"/>
             <TextBox x:Name="ShopAddressBox" MaxLength="300"/>
 
-            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,16,0,0">
-                <Button x:Name="GenerateBtn" IsDefault="True" Click="Generate_Click"/>
-                <Button x:Name="CancelBtn" IsCancel="True" Margin="10,0,0,0"/>
-            </StackPanel>
         </StackPanel>
-    </ScrollViewer>
+        </ScrollViewer>
+    </DockPanel>
 </Window>
