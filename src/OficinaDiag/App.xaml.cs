@@ -18,9 +18,12 @@ public partial class App : Application
 
         DispatcherUnhandledException += (_, args) =>
         {
-            Log.AppLog.Exception("UI", args.Exception);
-            // Estamos na thread da UI — mostra na consola, não só no ficheiro.
-            (Current.MainWindow as MainWindow)?.LogError("UI", args.Exception);
+            // O `MainWindow` sabe qual foi o botão do clique (o handler global
+            // não recebe o remetente): à terceira falha na mesma ação avisa o
+            // técnico e desliga o botão, em vez de deixar um botão que não faz
+            // nada. Fora de uma ação dele, fica só no log.
+            if (Current.MainWindow is MainWindow janela) janela.RegistarFalha(args.Exception);
+            else Log.AppLog.Exception("UI", args.Exception);
             args.Handled = true; // regista e deixa a app viva — o utilizador vê o erro na consola
         };
         AppDomain.CurrentDomain.UnhandledException += (_, args) =>

@@ -280,6 +280,8 @@ internal static class Program
         ProvarCommits();
         Marcar("dois telemóveis no seletor");
         ProvarDoisTelemoveis();
+        Marcar("falha repetida na mesma ação");
+        ProvarFalhaRepetida(destino);
         Marcar("diálogos e capturas finais");
 
         ThemeManager.Apply(ThemeManager.Terminal);
@@ -753,6 +755,78 @@ internal static class Program
         }
         finally { Fechar(janela); }
     }
+
+    /// <summary>
+    /// Três falhas na mesma ação: a app avisa o técnico e desliga o botão, e o
+    /// log para de crescer. É a rede de quem está na bancada — a do CI não o
+    /// protege. O log desta prova vai para um ficheiro à parte: as linhas
+    /// «! UI:» são intencionais e a rede do harness reprova qualquer uma.
+    /// </summary>
+    private static void ProvarFalhaRepetida(string destino)
+    {
+        Console.WriteLine("== falha repetida na mesma ação ==");
+        ThemeManager.Apply(ThemeManager.Terminal);
+        L10n.Set("pt");
+
+        var logProva = Path.Combine(destino, "diag-falhas.log");
+        try { File.Delete(logProva); } catch { }
+        var anterior = AppLog.RedirectTo(logProva);
+
+        var janela = new MainWindow();
+        Abrir(janela);
+        try
+        {
+            if (janela.FindName("ScanButton") is not Button botao)
+            {
+                Verificar("falha repetida: o botão existe", false);
+                return;
+            }
+            var falhou = typeof(MainWindow).GetMethod("Falhou",
+                BindingFlags.NonPublic | BindingFlags.Instance)!;
+
+            falhou.Invoke(janela, ["ScanButton", new InvalidOperationException("falha 1")]);
+            falhou.Invoke(janela, ["ScanButton", new InvalidOperationException("falha 2")]);
+            Verificar("falha repetida: duas falhas ainda não desligam o botão", botao.IsEnabled);
+            Verificar($"falha repetida: duas falhas escrevem duas linhas ({LinhasUi(logProva)})",
+                LinhasUi(logProva) == 2);
+
+            using var vigia = new CancellationTokenSource();
+            var rede = VigiaDoMessageBox(vigia.Token);
+            var resposta = ResponderMessageBox("ok");
+            falhou.Invoke(janela, ["ScanButton", new InvalidOperationException("falha 3")]);
+            var corpo = resposta.GetAwaiter().GetResult();
+            vigia.Cancel();
+            rede.Wait(500);
+
+            Verificar("falha repetida: à terceira aparece o aviso", corpo is not null);
+            var texto = SemEspacos(L10n.F("err.repeated", "SCAN"));
+            Verificar("falha repetida: o aviso é o do L10n",
+                corpo is not null && SemEspacos(corpo).Contains(texto[(texto.Length / 3)..]));
+            Verificar("falha repetida: o botão ficou desligado", !botao.IsEnabled);
+
+            var consola = SemEspacos((janela.FindName("Console") as TextBox)?.Text ?? "");
+            var avisoLog = SemEspacos(L10n.F("log.err.disabled", "SCAN"));
+            Verificar("falha repetida: a consola diz que o botão foi desligado",
+                consola.Contains(avisoLog[(avisoLog.Length / 3)..]));
+
+            var log3 = LinhasUi(logProva);
+            falhou.Invoke(janela, ["ScanButton", new InvalidOperationException("falha 4")]);
+            Pausa(300);
+            Verificar($"falha repetida: a 3.ª falha escreve a 3.ª linha ({log3})", log3 == 3);
+            Verificar($"falha repetida: a 4.ª não escreve mais nada (dedupe: {LinhasUi(logProva)})",
+                LinhasUi(logProva) == log3);
+            Verificar("falha repetida: a 4.ª não abre outro aviso", DialogoDaApp() == IntPtr.Zero);
+        }
+        finally
+        {
+            Fechar(janela);
+            AppLog.RedirectTo(anterior);
+        }
+    }
+
+    /// <summary>Linhas de exceção engolida no log de uma prova.</summary>
+    private static int LinhasUi(string log) =>
+        File.Exists(log) ? File.ReadAllLines(log).Count(l => l.Contains("! UI:")) : 0;
 
     /// <summary>Chama um método privado do `MainWindow` (o caminho que o detetor usa).</summary>
     private static void ChamarMainWindow(MainWindow janela, string metodo, object? arg) =>

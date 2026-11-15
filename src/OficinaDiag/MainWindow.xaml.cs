@@ -5,7 +5,9 @@ using System.Text.Json;
 using System.Collections.ObjectModel;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
 using System.Windows.Data;
+using System.Windows.Input;
 using System.Windows.Media;
 using Microsoft.Win32;
 using OficinaDiag.Devices;
@@ -68,6 +70,10 @@ public partial class MainWindow : Window
     // Ticker do header — leitura ambiente da bateria enquanto há dispositivo.
     private CancellationTokenSource? _telemetryCts;
     private bool _busy;
+    // Falhas seguidas por ação: à terceira o botão desliga e o técnico é avisado.
+    private readonly Log.FailureGuard _falhas = new();
+    private string? _acaoEmCurso;
+    private long _acaoQuando;
 
     public MainWindow()
     {
@@ -78,6 +84,46 @@ public partial class MainWindow : Window
         // RGPD: a retenção vive no DiagConfig e aplica-se logo no arranque.
         _history.RetentionDays = _config.HistoryRetentionDays;
         Loaded += OnLoaded;
+
+        // Quem rebentou: o handler global não recebe o remetente do clique, e
+        // sem isto três falhas não podiam ser atribuídas a um botão. O preview
+        // chega antes do handler do botão; o `Click` que volta a subir sem
+        // exceção limpa a contagem daquela ação.
+        AddHandler(PreviewMouseLeftButtonDownEvent,
+            new MouseButtonEventHandler((_, e) => LembrarAcao(e.OriginalSource)), true);
+        AddHandler(PreviewKeyDownEvent,
+            new KeyEventHandler((_, e) =>
+            {
+                if (e.Key is Key.Enter or Key.Space) LembrarAcao(Keyboard.FocusedElement);
+            }), true);
+        AddHandler(ButtonBase.ClickEvent,
+            new RoutedEventHandler((_, e) =>
+            {
+                if (e.OriginalSource is ButtonBase { Name.Length: > 0 } botao)
+                    _falhas.Sucesso(botao.Name);
+            }), true);
+    }
+
+    /// <summary>Guarda qual foi o botão do gesto (o handler global não o recebe).</summary>
+    private void LembrarAcao(object? origem)
+    {
+        if (BotaoDe(origem) is { Name.Length: > 0 } botao)
+        {
+            _acaoEmCurso = botao.Name;
+            _acaoQuando = Environment.TickCount64;
+        }
+    }
+
+    /// <summary>O botão de um elemento da árvore (o alvo do clique).</summary>
+    private static ButtonBase? BotaoDe(object? origem)
+    {
+        for (var atual = origem as DependencyObject; atual is not null;)
+        {
+            if (atual is ButtonBase botao) return botao;
+            try { atual = VisualTreeHelper.GetParent(atual); }
+            catch { atual = LogicalTreeHelper.GetParent(atual); }
+        }
+        return null;
     }
 
     private void OnLoaded(object sender, RoutedEventArgs e)
@@ -367,6 +413,43 @@ public partial class MainWindow : Window
         Console.AppendText(line + Environment.NewLine);
         Console.ScrollToEnd();
         OficinaDiag.Log.AppLog.Write(line);
+    }
+
+    /// <summary>
+    /// Uma exceção chegou pelo handler global. Se foi durante um clique recente
+    /// neste ecrã, conta para aquele botão; fora disso (um diálogo, uma
+    /// continuação tardia) fica só no log, como antes — atribuir ao último botão
+    /// desligava um botão que não tem culpa.
+    /// </summary>
+    internal void RegistarFalha(Exception ex)
+    {
+        var acao = OficinaDiag.Log.FailureGuard.AcaoReconhecida(_acaoEmCurso,
+            Environment.TickCount64 - _acaoQuando);
+        if (acao is not null) Falhou(acao, ex);
+        else OficinaDiag.Log.AppLog.Exception("UI", ex);
+    }
+
+    /// <summary>
+    /// Conta a falha, escreve no log até ao limite e, à terceira, avisa o técnico
+    /// e desliga o botão. O log para de crescer daí em diante: a mesma exceção a
+    /// cada clique enterrava a causa.
+    /// </summary>
+    internal void Falhou(string acao, Exception ex)
+    {
+        var r = _falhas.Registar(acao);
+        if (!r.EscreverLog) return;
+
+        OficinaDiag.Log.AppLog.Exception("UI", ex);
+        // Consola da app: o erro tem de ser visível sem abrir o diag.log.
+        Console.AppendText($"! UI: {ex.GetType().Name}: {ex.Message}{Environment.NewLine}");
+        Console.ScrollToEnd();
+        if (!r.Avisar) return;
+
+        var rotulo = (FindName(acao) as ContentControl)?.Content?.ToString() ?? acao;
+        Log(L10n.F("log.err.disabled", rotulo));
+        if (FindName(acao) is UIElement alvo) alvo.IsEnabled = false;
+        MessageBox.Show(this, L10n.F("err.repeated", rotulo), L10n.T("err.repeated.title"),
+            MessageBoxButton.OK, MessageBoxImage.Warning);
     }
 
     /// <summary>Erros vindos do handler global (App) — visíveis na consola da app.</summary>
