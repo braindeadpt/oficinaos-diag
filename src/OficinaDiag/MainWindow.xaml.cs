@@ -197,8 +197,7 @@ public partial class MainWindow : Window
         else _devices.Add(d);
         SyncSelector();
         // Um segundo telemóvel ligado não rouba a bancada de quem lá está.
-        // SONDA (a remover): o 2.º aparelho rouba a bancada
-        SelectDevice(d, announce: false);
+        if (_current is null) SelectDevice(d, announce: false);
     }
 
     private void DetachDevice(Devices.DetectedDevice d)
