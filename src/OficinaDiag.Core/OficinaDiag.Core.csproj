@@ -31,6 +31,8 @@
   <ItemGroup>
     <InternalsVisibleTo Include="OficinaDiag" />
     <InternalsVisibleTo Include="OficinaDiag.Tests" />
+    <!-- harness de capturas: redireciona o AppLog para não sujar o log da máquina -->
+    <InternalsVisibleTo Include="UiShots" />
   </ItemGroup>
 
   <!-- partilhados com a app e com os testes: a página real e a tabela de modelos -->

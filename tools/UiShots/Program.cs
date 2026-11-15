@@ -15,6 +15,7 @@ using System.Windows.Threading;
 using OficinaDiag;
 using OficinaDiag.Cloud;
 using OficinaDiag.Devices;
+using OficinaDiag.Log;
 using QRCoder;
 
 namespace UiShots;
@@ -57,6 +58,7 @@ internal static class Program
     private const uint WmClose = 0x0010;
     private const int IdYes = 6;
     private const int IdNo = 7;
+    private const int IdOk = 1;
 
     [STAThread]
     private static int Main(string[] args)
@@ -65,6 +67,19 @@ internal static class Program
         Directory.CreateDirectory(destino);
 
         var app = new Application { ShutdownMode = ShutdownMode.OnExplicitShutdown };
+        // A rede que faltava. O `App` real apanha as exceções da UI, escreve
+        // «! UI: …» no `diag.log` e segue — foi assim que o checklist morto
+        // passou despercebido. O harness criava uma `Application` sem handler,
+        // por isso a mesma exceção matava o processo sem deixar rasto. Agora o
+        // handler é o mesmo, o log vai para o artefacto e o run falha no fim.
+        var logUi = Path.Combine(destino, "diag.log");
+        AppLog.RedirectTo(logUi);
+        app.DispatcherUnhandledException += (_, e) =>
+        {
+            AppLog.Exception("UI", e.Exception);
+            Console.WriteLine($"  ! UI: {e.Exception.GetType().Name}: {e.Exception.Message}");
+            e.Handled = true; // registar e continuar: um clique não pode matar o run
+        };
         // Um clique real chega dentro de uma operação do dispatcher, onde o
         // SynchronizationContext é o do WPF. Este `Main` corre fora do loop, e
         // sem isto as continuações dos handlers async caíam no thread pool:
@@ -153,6 +168,7 @@ internal static class Program
         ProvarFechoAPairar();
         ProvarAvisoDaBancada();
         ProvarChecklist();
+        ProvarCliques();
 
         ThemeManager.Apply(ThemeManager.Terminal);
         Console.WriteLine("== diálogos (tema terminal) ==");
@@ -171,6 +187,7 @@ internal static class Program
             Capturar(() => new QrWindow(qr), Path.Combine(destino, "qr.png"), 340, 420);
         }
 
+        VerificarUiSemExcecoes(logUi);
         app.Shutdown();
         Console.WriteLine($"capturas em {Path.GetFullPath(destino)}");
         if (_falhas > 0) Console.WriteLine($"FALHAS: {_falhas}");
@@ -335,7 +352,8 @@ internal static class Program
 
             // WM_COMMAND com IDYES/IDNO é o caminho nativo do MessageBox.
             PostMessage(hwnd, WmCommand,
-                new IntPtr(resposta == "sim" ? IdYes : IdNo), IntPtr.Zero);
+                new IntPtr(resposta switch { "sim" => IdYes, "ok" => IdOk, _ => IdNo }),
+                IntPtr.Zero);
             if (!Sumiu(hwnd, 3000))
                 PostMessage(hwnd, WmClose, IntPtr.Zero, IntPtr.Zero);
 
@@ -432,16 +450,16 @@ internal static class Program
             Verificar("checklist: os botões dos itens existem", botoes.Length >= 6);
             if (botoes.Length < 6) return;
 
-            botoes[0].RaiseEvent(new RoutedEventArgs(Button.ClickEvent)); // 1ª marca: o caso que rebentava
+            Clicar(botoes[0]); // 1ª marca: o caso que rebentava
             Verificar("checklist: a marca pegou (botão a negrito)",
                 botoes[0].FontWeight == FontWeights.Bold);
 
-            botoes[0].RaiseEvent(new RoutedEventArgs(Button.ClickEvent)); // premir de novo desmarca
+            Clicar(botoes[0]); // premir de novo desmarca
             Verificar("checklist: premir outra vez desmarca",
                 botoes[0].FontWeight == FontWeights.Normal);
 
-            botoes[0].RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
-            botoes[5].RaiseEvent(new RoutedEventArgs(Button.ClickEvent)); // 2º item em n/t
+            Clicar(botoes[0]);
+            Clicar(botoes[5]); // 2º item em n/t
             Verificar("checklist: marcar outro item não desmarca o primeiro",
                 botoes[0].FontWeight == FontWeights.Bold && botoes[5].FontWeight == FontWeights.Bold);
         }
@@ -449,6 +467,187 @@ internal static class Program
         {
             try { janela.Close(); } catch { }
         }
+    }
+
+    /// <summary>
+    /// Clica um botão a sério e, se o handler rebentar, regista a mesma linha
+    /// «! UI: …» que o `App` real escreve — em vez de deixar a exceção matar o
+    /// processo sem dizer qual foi. Devolve `false` quando houve exceção.
+    /// </summary>
+    private static bool Clicar(ButtonBase botao)
+    {
+        try
+        {
+            botao.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
+            return true;
+        }
+        catch (Exception ex)
+        {
+            AppLog.Exception("UI", ex);
+            Console.WriteLine($"  ! UI: {ex.GetType().Name}: {ex.Message}");
+            return false;
+        }
+    }
+
+    /// <summary>Abre um diálogo fora do ecrã, como as capturas.</summary>
+    private static void Abrir(Window janela)
+    {
+        janela.WindowStartupLocation = WindowStartupLocation.Manual;
+        janela.Left = -20_000;
+        janela.Top = -20_000;
+        janela.ShowInTaskbar = false;
+        janela.Show();
+        Respirar();
+    }
+
+    private static void Fechar(Window janela)
+    {
+        try { janela.Close(); } catch { }
+    }
+
+    /// <summary>
+    /// O log da UI deste run tem alguma linha «! UI:»? Uma só já reprova: foi
+    /// uma destas que escondeu o checklist morto durante dois lotes.
+    /// </summary>
+    private static void VerificarUiSemExcecoes(string log)
+    {
+        string[] linhas;
+        try
+        {
+            linhas = File.Exists(log)
+                ? File.ReadAllLines(log).Where(l => l.Contains("! UI:")).ToArray()
+                : [];
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"  log da UI ilegível: {ex.GetType().Name}");
+            linhas = [$"(ilegível) {ex.Message}"];
+        }
+        foreach (var linha in linhas.Take(10)) Console.WriteLine($"    {linha}");
+        Verificar($"log da UI sem exceções engolidas ({linhas.Length} linhas «! UI:»)",
+            linhas.Length == 0);
+    }
+
+    /// <summary>O aviso mostra o texto que o `L10n` manda para esta chave?</summary>
+    private static bool TextoDoAviso(string? corpo, string chave)
+    {
+        var esperado = SemEspacos(L10n.T(chave));
+        if (esperado.Length == 0) return false;
+        return SemEspacos(corpo ?? "").Contains(esperado[..Math.Min(20, esperado.Length)]);
+    }
+
+    /// <summary>
+    /// Os botões dos cinco diálogos, clicados a sério. Foi um handler que
+    /// escondeu o checklist morto: a exceção ficava na linha «! UI:» do log e a
+    /// app seguia, com a marca por pôr. Todos os cliques passam por `Clicar`, e
+    /// uma exceção em qualquer um deles reprova o run no fim.
+    ///
+    /// Os botões que fecham a janela (`DialogResult`) ou abrem um diálogo
+    /// nativo ficam de fora: aqui não há modal nem ninguém para os responder —
+    /// clicá-los provava o harness, não a app.
+    /// </summary>
+    private static void ProvarCliques()
+    {
+        Console.WriteLine("== cliques nos botões dos cinco diálogos ==");
+        ThemeManager.Apply(ThemeManager.Terminal);
+        L10n.Set("pt");
+
+        // 1. Checklist: os três botões de uma linha, por esta ordem.
+        var relatorio = RelatorioAtual();
+        var checklist = new ChecklistDialog(relatorio);
+        Abrir(checklist);
+        try
+        {
+            var itens = checklist.FindName("ItemsPanel") as DependencyObject;
+            var marcas = itens is null
+                ? Array.Empty<Button>()
+                : Descendentes<Button>(itens).Take(3).ToArray();
+            if (marcas.Length < 3)
+            {
+                Verificar("clique: o checklist tem ok/defeito/n/t", false);
+            }
+            else
+            {
+                Verificar("clique: checklist 'ok' marca o item",
+                    Clicar(marcas[0]) && marcas[0].FontWeight == FontWeights.Bold);
+                Verificar("clique: checklist 'defeito' troca a marca",
+                    Clicar(marcas[1]) && marcas[1].FontWeight == FontWeights.Bold
+                    && marcas[0].FontWeight == FontWeights.Normal);
+                Verificar("clique: checklist 'n/t' troca a marca",
+                    Clicar(marcas[2]) && marcas[2].FontWeight == FontWeights.Bold
+                    && marcas[1].FontWeight == FontWeights.Normal);
+            }
+        }
+        finally { Fechar(checklist); }
+
+        // 2. Opções: idioma e tema aplicam-se em preview assim que se escolhe.
+        var opcoes = new SettingsDialog(DiagConfig.Load());
+        Abrir(opcoes);
+        try
+        {
+            var cabecalho = opcoes.FindName("HeaderText") as TextBlock;
+            var antes = cabecalho?.Text;
+            if (opcoes.FindName("LangEn") is RadioButton ingles)
+                Verificar("clique: opções 'English' muda o idioma",
+                    Clicar(ingles) && L10n.Current == "en" && cabecalho?.Text != antes);
+            else Verificar("clique: opções tem o botão 'English'", false);
+
+            if (opcoes.FindName("LangPt") is RadioButton portugues)
+                Verificar("clique: opções 'Português' volta ao PT",
+                    Clicar(portugues) && L10n.Current == "pt");
+            else Verificar("clique: opções tem o botão 'Português'", false);
+
+            if (opcoes.FindName("ThemeFluent") is RadioButton fluente)
+                Verificar("clique: opções muda o tema a quente",
+                    Clicar(fluente) && ThemeManager.Current == ThemeManager.Fluent);
+            else Verificar("clique: opções tem o botão do tema Fluent", false);
+        }
+        finally
+        {
+            Fechar(opcoes);
+            L10n.Set("pt");
+            ThemeManager.Apply(ThemeManager.Terminal);
+        }
+
+        // 3–5. Os três que validam campos: o botão abre um aviso (MessageBox
+        // nativo) e o diálogo fica aberto. O aviso prova que o handler correu
+        // até ao fim sem exceção; o `Clicar` é que garante que a exceção, se
+        // houver, aparece como «! UI:».
+        var validacoes = new (string Nome, Func<Window> Criar, string Botao, string Chave)[]
+        {
+            ("seguro", () => new InsuranceDialog(DiagConfig.Load()), "GenerateBtn", "ins.err.insured"),
+            ("envio", () => new SendDialog(), "SendBtn", "send.err.code"),
+            ("token", () => new TokenDialog(), "OkBtn", "dlg.ai.token.empty"),
+        };
+        foreach (var (nome, criar, botao, chave) in validacoes)
+        {
+            var dialogo = criar();
+            Abrir(dialogo);
+            try
+            {
+                if (dialogo.FindName(botao) is not Button alvo)
+                {
+                    Verificar($"clique: {nome} tem o botão {botao}", false);
+                    continue;
+                }
+
+                using var vigia = new CancellationTokenSource();
+                var rede = VigiaDoMessageBox(vigia.Token);
+                var resposta = ResponderMessageBox("ok");
+                var clicou = Clicar(alvo); // fica dentro do MessageBox até alguém responder
+                var corpo = resposta.GetAwaiter().GetResult();
+                vigia.Cancel();
+                rede.Wait(500);
+
+                Verificar($"clique: {nome} correu o handler sem exceção", clicou);
+                Verificar($"clique: {nome} avisou «{chave}» em vez de seguir",
+                    TextoDoAviso(corpo, chave));
+                Verificar($"clique: {nome} continua aberto depois do aviso", dialogo.IsLoaded);
+            }
+            finally { Fechar(dialogo); }
+        }
+
+        ThemeManager.Apply(ThemeManager.Terminal);
     }
 
     /// <summary>
