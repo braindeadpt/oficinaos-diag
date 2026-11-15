@@ -234,11 +234,6 @@ internal static class Program
         Marcar("cliques nos diálogos");
         ProvarCliques();
         Marcar("diálogos e capturas finais");
-        // SONDA (a remover): exceção no dispatcher, como a que escondeu o
-        // checklist. Nenhuma verificação a apanha — só o log «! UI:».
-        Dispatcher.CurrentDispatcher.BeginInvoke(new Action(() =>
-            throw new InvalidOperationException("sonda de rede")));
-        Respirar();
 
         ThemeManager.Apply(ThemeManager.Terminal);
         Console.WriteLine("== diálogos (tema terminal) ==");
