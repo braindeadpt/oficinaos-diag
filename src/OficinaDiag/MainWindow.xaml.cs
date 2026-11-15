@@ -570,7 +570,7 @@ public partial class MainWindow : Window
         var previous = _history.ForSerial(serial)
             .Where(p => p.CollectedAt != _report.CollectedAt)
             .ToList();
-        if (previous.Count == 0)
+        if (previous.Count < 0) // SONDA (a remover)
         {
             Log(L10n.T("log.cmp.none"));
             return;
