@@ -118,6 +118,10 @@ internal static class Program
         var destino = args.Length > 0 ? args[0] : "out-store/ui-shots";
         Directory.CreateDirectory(destino);
 
+        // O config do harness vive na pasta de saída: o GUARDAR das Opções
+        // grava-o, e o config de quem corre isto não pode ser o alvo.
+        DiagConfig.RedirectTo(Path.Combine(destino, "config"));
+
         var app = new Application { ShutdownMode = ShutdownMode.OnExplicitShutdown };
         // A rede que faltava. O `App` real apanha as exceções da UI, escreve
         // «! UI: …» no `diag.log` e segue — foi assim que o checklist morto
@@ -162,7 +166,30 @@ internal static class Program
             Console.Out.Flush();
             Environment.Exit(4);
         }) { IsBackground = true }.Start();
+        // `Application.Run` e não um `Main` a empurrar frames: é o modelo em
+        // que a app real corre e o que faz uma janela contar como diálogo.
+        // Sem loop, o `DialogResult` do APLICAR/GUARDAR/OK rebentava, e por isso
+        // o lado que escreve dados nunca tinha prova nenhuma.
+        var codigo = 1;
+        app.Startup += (_, _) => app.Dispatcher.BeginInvoke(DispatcherPriority.Background,
+            new Action(() =>
+            {
+                try { codigo = Corpo(destino, logUi); }
+                catch (Exception ex) { Anotar("UI", ex); codigo = 1; }
+                finally { app.Shutdown(); }
+            }));
+        app.Run();
+        return codigo;
+    }
+
+    /// <summary>
+    /// O corpo do harness — capturas e provas — já dentro do loop do
+    /// `Application.Run`, para os modais poderem ser dirigidos de dentro.
+    /// </summary>
+    private static int Corpo(string destino, string logUi)
+    {
         L10n.Set("pt");
+
 
         var relatorio = RelatorioAtual();
         var anterior = RelatorioAnterior();
@@ -249,6 +276,8 @@ internal static class Program
         ProvarChecklist();
         Marcar("cliques nos diálogos");
         ProvarCliques();
+        Marcar("commits dos diálogos");
+        ProvarCommits();
         Marcar("diálogos e capturas finais");
 
         ThemeManager.Apply(ThemeManager.Terminal);
@@ -269,7 +298,6 @@ internal static class Program
         }
 
         VerificarUiSemExcecoes(logUi);
-        app.Shutdown();
         Console.WriteLine($"capturas em {Path.GetFullPath(destino)}");
         if (_falhas > 0) Console.WriteLine($"FALHAS: {_falhas}");
         return _falhas == 0 ? 0 : 1;
@@ -589,6 +617,159 @@ internal static class Program
     private static void Fechar(Window janela)
     {
         try { janela.Close(); } catch { }
+    }
+
+    /// <summary>
+    /// Abre o diálogo **como modal** — o único sítio onde `DialogResult` é
+    /// aceite — e interage lá dentro por um `DispatcherTimer` de disparo único,
+    /// que corre no loop do `ShowDialog`. Interagir no `Loaded` não servia:
+    /// nesse momento a janela ainda não conta como diálogo, e foi por isso que
+    /// o APLICAR/GUARDAR ficaram dois lotes sem prova nenhuma.
+    /// </summary>
+    private static bool? AbrirModal(Window janela, Action<Window> interagir, string rotulo,
+        int timeoutMs = 15_000)
+    {
+        janela.WindowStartupLocation = WindowStartupLocation.Manual;
+        janela.Left = -20_000;
+        janela.Top = -20_000;
+        janela.ShowInTaskbar = false;
+
+        var interagiu = false;
+        var estourou = false;
+        var acao = new DispatcherTimer(DispatcherPriority.Background, janela.Dispatcher)
+        {
+            Interval = TimeSpan.FromMilliseconds(250),
+        };
+        acao.Tick += (_, _) =>
+        {
+            acao.Stop();
+            interagiu = true;
+            try { interagir(janela); }
+            catch (Exception ex) { Anotar("UI", ex); }
+        };
+        // Sem prazo, uma validação inesperada deixa o `ShowDialog` a bloquear e
+        // o run só acaba no vigia de 180 s, sem dizer qual diálogo foi.
+        var prazo = new DispatcherTimer(DispatcherPriority.Background, janela.Dispatcher)
+        {
+            Interval = TimeSpan.FromMilliseconds(timeoutMs),
+        };
+        prazo.Tick += (_, _) =>
+        {
+            prazo.Stop();
+            estourou = true;
+            if (janela.IsLoaded) janela.Close();
+        };
+
+        acao.Start();
+        prazo.Start();
+        var resultado = janela.ShowDialog();
+        prazo.Stop();
+
+        Verificar($"{rotulo}: a interação correu dentro do modal", interagiu);
+        Verificar($"{rotulo}: fechou em menos de {timeoutMs / 1000} s", !estourou);
+        return resultado;
+    }
+
+    /// <summary>
+    /// O lado que escreve: APLICAR, GUARDAR, OK, GERAR e ENVIAR a sério, com
+    /// dados válidos, dentro do modal. Antes disto nenhum commit de diálogo
+    /// alguma vez tinha corrido — a rede só via cliques que não gravam nada.
+    /// </summary>
+    private static void ProvarCommits()
+    {
+        Console.WriteLine("== commits dos diálogos (dentro do modal) ==");
+        ThemeManager.Apply(ThemeManager.Terminal);
+        L10n.Set("pt");
+
+        // 1. Checklist: marcar e APLICAR grava no relatório.
+        var relatorio = RelatorioAtual();
+        var checklist = new ChecklistDialog(relatorio);
+        var aplicou = AbrirModal(checklist, janela =>
+        {
+            var itens = janela.FindName("ItemsPanel") as DependencyObject;
+            var marcas = itens is null ? Array.Empty<Button>() : Descendentes<Button>(itens).ToArray();
+            if (marcas.Length < 6) return;
+            Clicar(marcas[0]); // moldura: ok
+            Clicar(marcas[5]); // vidro traseiro: n/t
+            if (janela.FindName("ApplyBtn") is Button aplicar) Clicar(aplicar);
+        }, "commit: checklist APLICAR");
+        Verificar("commit: checklist APLICAR devolveu OK", aplicou == true);
+        Verificar("commit: o relatório ficou com `pass` na moldura",
+            relatorio.Results.TryGetValue("checklist.frame", out var pass) && pass.Status == "pass");
+        Verificar("commit: o relatório ficou com `skipped` no vidro traseiro",
+            relatorio.Results.TryGetValue("checklist.backglass", out var pulou) && pulou.Status == "skipped");
+        Verificar("commit: só os itens marcados foram gravados",
+            !relatorio.Results.ContainsKey("checklist.buttons"));
+
+        // 2. Opções GUARDAR: o preview passa a estado gravado.
+        var config = DiagConfig.Load();
+        var opcoes = new SettingsDialog(config);
+        var guardou = AbrirModal(opcoes, janela =>
+        {
+            if (janela.FindName("LangEn") is RadioButton ingles) Clicar(ingles);
+            if (janela.FindName("SaveBtn") is Button salvar) Clicar(salvar);
+        }, "commit: opções GUARDAR");
+        Verificar("commit: opções GUARDAR devolveu OK", guardou == true);
+        Verificar("commit: o config ficou com o idioma do preview", config.Language == "en");
+        Verificar("commit: o config ficou com o tema actual", config.Theme == ThemeManager.Current);
+        Verificar("commit: a retenção foi lida do combo (90 por omissão)",
+            config.HistoryRetentionDays == 90);
+        L10n.Set("pt");
+        ThemeManager.Apply(ThemeManager.Terminal);
+
+        // 3. Fechar sem guardar: o preview volta atrás e o config não muda.
+        var config2 = DiagConfig.Load();
+        var idiomaAntes = config2.Language;
+        var opcoes2 = new SettingsDialog(config2);
+        var fechou = AbrirModal(opcoes2, janela =>
+        {
+            if (janela.FindName("LangEn") is RadioButton ingles) Clicar(ingles);
+            janela.Close(); // Esc/X: fecha sem guardar
+        }, "commit: opções fechar sem guardar");
+        Verificar("commit: fechar sem guardar não devolve OK", fechou != true);
+        Verificar("commit: fechar sem guardar repõe o idioma de antes", L10n.Current == "pt");
+        Verificar("commit: fechar sem guardar não escreve no config", config2.Language == idiomaAntes);
+
+        // 4. Token OK: o código escrito é o que o diálogo devolve.
+        var token = new TokenDialog();
+        var leuToken = AbrirModal(token, janela =>
+        {
+            if (janela.FindName("TokenBox") is PasswordBox caixa) caixa.Password = "ABCD-1234";
+            if (janela.FindName("OkBtn") is Button ok) Clicar(ok);
+        }, "commit: token OK");
+        Verificar("commit: token OK devolveu OK", leuToken == true);
+        Verificar("commit: o token devolvido é o que foi escrito", token.Token == "ABCD-1234");
+        Verificar("commit: «lembrar» ficou desligado por omissão", !token.Remember);
+
+        // 5. Seguro GERAR: com os três campos obrigatórios, produz formulário.
+        var seguro = new InsuranceDialog(DiagConfig.Load());
+        var gerou = AbrirModal(seguro, janela =>
+        {
+            (janela.FindName("InsuredNameBox") as TextBox)!.Text = "Ana Silva";
+            (janela.FindName("DamageBox") as TextBox)!.Text = "Ecrã partido no canto inferior";
+            (janela.FindName("ShopNameBox") as TextBox)!.Text = "Oficina Teste";
+            if (janela.FindName("GenerateBtn") is Button gerar) Clicar(gerar);
+        }, "commit: seguro GERAR");
+        Verificar("commit: seguro GERAR devolveu OK", gerou == true);
+        Verificar("commit: o formulário saiu com os dados escritos",
+            seguro.Form is { InsuredName: "Ana Silva" } form
+            && form.DamageDescription.Length > 5 && form.ShopName == "Oficina Teste");
+
+        // 6. Envio ENVIAR: valida e devolve os dados do cliente.
+        var envio = new SendDialog();
+        var enviou = AbrirModal(envio, janela =>
+        {
+            (janela.FindName("ShopCodeBox") as TextBox)!.Text = "ABC123";
+            (janela.FindName("NameBox") as TextBox)!.Text = "Ana Silva";
+            (janela.FindName("PhoneBox") as TextBox)!.Text = "912345678";
+            if (janela.FindName("SendBtn") is Button enviar) Clicar(enviar);
+        }, "commit: envio ENVIAR");
+        Verificar("commit: envio ENVIAR devolveu OK", enviou == true);
+        Verificar("commit: o código e o contacto leram-se",
+            envio.ShopCode == "ABC123" && envio.CustomerName == "Ana Silva");
+
+        ThemeManager.Apply(ThemeManager.Terminal);
+        L10n.Set("pt");
     }
 
     /// <summary>As três vias do `App` que transformam uma exceção numa linha de log.</summary>
