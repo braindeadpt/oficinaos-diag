@@ -30,6 +30,9 @@
         </Style>
         <Style TargetType="Button" BasedOn="{StaticResource TermButton}"/>
     </Window.Resources>
+    <!-- SizeToContent+NoResize sem scroll deixava Guardar/Cancelar fora do
+         ecrã em 1366×768 a 125%; o MaxHeight obriga a aparecer a barra. -->
+    <ScrollViewer VerticalScrollBarVisibility="Auto" MaxHeight="640">
     <StackPanel Margin="20">
         <TextBlock x:Name="HeaderText" FontSize="14" Foreground="{DynamicResource FgBrush}"
                    Margin="0,0,0,4"/>
@@ -64,4 +67,5 @@
             <Button x:Name="CancelBtn" IsCancel="True"/>
         </StackPanel>
     </StackPanel>
+    </ScrollViewer>
 </Window>

@@ -322,7 +322,13 @@ public partial class MainWindow : Window
             _update, AppContext.BaseDirectory, current);
         Log(ok ? $"> {msg}" : L10n.F("log.update.fail", msg));
         if (ok)
+        {
+            // Antes a janela desaparecia sem explicação — a meio de uma sessão
+            // de bancada parecia uma falha da app.
+            MessageBox.Show(this, L10n.T("log.update.ready"), Title,
+                MessageBoxButton.OK, MessageBoxImage.Information);
             Application.Current.Shutdown();
+        }
         else
             UpdateButton.IsEnabled = true;
     }

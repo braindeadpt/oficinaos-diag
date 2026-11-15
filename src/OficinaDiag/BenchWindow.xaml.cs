@@ -1,3 +1,4 @@
+using System.ComponentModel;
 using System.Diagnostics;
 using System.Windows;
 using OficinaDiag.Devices;
@@ -20,6 +21,9 @@ public sealed partial class BenchWindow : Window
     private readonly Func<Task>? _loadOn;
     private readonly Func<Task>? _loadOff;
     private CancellationTokenSource? _cts;
+    // Sessão a decorrer: fechar a meio pede confirmação em vez de deitar
+    // fora 60 s de medições com um clique no X.
+    private bool _sessaoACorrer;
 
     /// <summary>Preenchido quando a sessão termina com dados suficientes.</summary>
     public PowerSessionResult? Result { get; private set; }
@@ -55,6 +59,7 @@ public sealed partial class BenchWindow : Window
     private async void Start_Click(object sender, RoutedEventArgs e)
     {
         StartBtn.IsEnabled = false;
+        _sessaoACorrer = true;
         _cts = new CancellationTokenSource();
         var samples = new List<PowerSample>();
         var sw = Stopwatch.StartNew();
@@ -103,6 +108,7 @@ public sealed partial class BenchWindow : Window
             }
             else StartBtn.IsEnabled = true;
         }
+        finally { _sessaoACorrer = false; }
     }
 
     private async Task RunPhase(List<PowerSample> samples, int phase, Stopwatch sw, TimeSpan end)
@@ -148,6 +154,18 @@ public sealed partial class BenchWindow : Window
     {
         DialogResult = false;
         Close();
+    }
+
+    protected override void OnClosing(CancelEventArgs e)
+    {
+        // Só pergunta se há dados a perder; fechar no fim da sessão é direto.
+        if (_sessaoACorrer && MessageBox.Show(this, L10n.T("bench.confirm.abort"), Title,
+                MessageBoxButton.YesNo, MessageBoxImage.Warning) != MessageBoxResult.Yes)
+        {
+            e.Cancel = true;
+            return;
+        }
+        base.OnClosing(e);
     }
 
     protected override void OnClosed(EventArgs e)

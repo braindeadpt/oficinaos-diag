@@ -58,7 +58,7 @@ public sealed partial class ChecklistDialog : Window
         grid.Children.Add(label);
 
         var buttons = new StackPanel { Orientation = Orientation.Horizontal };
-        var ok = MkButton("ok");
+        var ok = MkButton(L10n.T("chk.ok"));
         var fail = MkButton(L10n.T("chk.fail"));
         var na = MkButton(L10n.T("chk.na"));
         ok.Click += (_, _) => SetState(item.Key, 1);

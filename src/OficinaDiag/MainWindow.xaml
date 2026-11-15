@@ -44,7 +44,7 @@
                     <ComboBox x:Name="DeviceSelector" VerticalAlignment="Center"
                               Margin="16,0,0,0" Visibility="Collapsed"
                               Style="{DynamicResource TermCombo}"
-                              ToolTip="{Binding Label, RelativeSource={RelativeSource Self}}"
+                              ToolTip="{Binding SelectedItem.Label, RelativeSource={RelativeSource Self}}"
                               SelectionChanged="DeviceSelector_Changed">
                         <!-- rótulo longo não estica o header: corta com reticências -->
                         <ComboBox.ItemTemplate>
@@ -89,7 +89,8 @@
                                 <DataTemplate>
                                     <Grid Margin="0,2">
                                         <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="62"/>
+                                            <!-- 78 = cabe `[skipped]` (9 caracteres a 12px mono); 62 cortava o `]` -->
+                                            <ColumnDefinition Width="78"/>
                                             <ColumnDefinition Width="*"/>
                                         </Grid.ColumnDefinitions>
                                         <TextBlock Text="{Binding Status, Converter={StaticResource StatusTag}}"

@@ -35,6 +35,7 @@
         <Setter Property="Padding" Value="14,5"/>
         <Setter Property="Cursor" Value="Hand"/>
         <Setter Property="Margin" Value="0,0,8,4"/>
+        <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="Button">
@@ -49,6 +50,11 @@
                         <Trigger Property="IsPressed" Value="True">
                             <Setter TargetName="face" Property="BorderBrush" Value="#808080"/>
                             <Setter TargetName="shadow" Property="BorderBrush" Value="#FFFFFF"/>
+                        </Trigger>
+                        <!-- foco: contorno navy no bevel — o 95 não tinha halo, mas
+                             sem isto tabular às cegas era o que havia. -->
+                        <Trigger Property="IsKeyboardFocused" Value="True">
+                            <Setter TargetName="shadow" Property="BorderBrush" Value="{DynamicResource AccentBrush}"/>
                         </Trigger>
                         <Trigger Property="IsEnabled" Value="False">
                             <Setter Property="Foreground" Value="{DynamicResource DisabledBrush}"/>
