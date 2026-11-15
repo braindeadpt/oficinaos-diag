@@ -1263,7 +1263,9 @@ internal static class Program
 
             var (w, h) = Gravar(barra, Path.Combine(destino, "scrollbar-win95.png"));
             Console.WriteLine($"  scrollbar-win95.png {w}x{h}");
-            Verificar($"setas: a captura é a largura da barra ({w})", w == 16);
+            // 16 DIP de estilo + arredondamento do `RenderTargetBitmap` (17).
+            Verificar($"setas: a captura é a tira da barra ({w}x{h})",
+                w is >= 16 and <= 20 && h >= 150);
         }
         finally
         {
