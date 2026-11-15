@@ -377,22 +377,28 @@ internal static class Program
 
             var foco = mostrou ? TentarFoco(janela) : "não";
             var (w, h) = Gravar(raiz, ficheiro);
-            // Diagnóstico: se o fundo dos descendentes passar da altura do
-            // conteúdo, é a app que arruma fora da janela; se ficar dentro, o
-            // corte é da captura.
-            double fundo = 0;
+            // Diagnóstico: se o fundo de um descendente passar da altura do
+            // conteúdo *e ele não estiver dentro de uma área rolável*, é a app
+            // que arruma fora da janela — defeito. O que fica atrás de um
+            // ScrollViewer com scroll não conta: chega-se lá a rolar.
+            double fundo = 0, fora = 0;
+            var rolavel = 0;
             foreach (var e in Descendentes<FrameworkElement>(raiz))
             {
                 try
                 {
                     var p = e.TransformToAncestor(raiz).Transform(new Point(0, e.ActualHeight));
                     fundo = Math.Max(fundo, p.Y);
+                    if (p.Y <= raiz.ActualHeight + 1) continue;
+                    if (DentroDeAreaRolavel(e, raiz)) rolavel++;
+                    else fora = Math.Max(fora, p.Y);
                 }
                 catch { /* ainda não ligado à árvore */ }
             }
+            var onde = fora > raiz.ActualHeight + 1 ? "FORA DA JANELA"
+                     : rolavel > 0 ? "resto rolável" : "";
             Console.WriteLine($"  {Path.GetFileName(ficheiro),-26} {w}x{h}  " +
-                              $"janela {janela.ActualHeight:0} foco: {foco}  fundo {fundo:0} " +
-                              (fundo > raiz.ActualHeight + 1 ? "FORA DA JANELA" : ""));
+                              $"janela {janela.ActualHeight:0} foco: {foco}  fundo {fundo:0} {onde}");
         }
         catch (Exception ex)
         {
@@ -403,6 +409,17 @@ internal static class Program
         {
             try { janela?.Close(); } catch { }
         }
+    }
+
+    /// <summary>O elemento está dentro de um ScrollViewer que efetivamente rola?</summary>
+    private static bool DentroDeAreaRolavel(DependencyObject elemento, FrameworkElement raiz)
+    {
+        for (var atual = VisualTreeHelper.GetParent(elemento); atual is not null && atual != raiz;
+             atual = VisualTreeHelper.GetParent(atual))
+        {
+            if (atual is ScrollViewer { ScrollableHeight: > 0.5 }) return true;
+        }
+        return false;
     }
 
     /// <summary>Retângulo opaco com o fundo do tema atual.</summary>
