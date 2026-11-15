@@ -251,6 +251,20 @@ internal static class Program
         ProvarCliques();
         Marcar("diálogos e capturas finais");
 
+        // SONDA (a remover): as três vias, uma a uma.
+        Dispatcher.CurrentDispatcher.BeginInvoke(new Action(() =>
+            throw new InvalidOperationException("sonda UI")));
+        Respirar();
+        _ = Task.Run(() => throw new InvalidOperationException("sonda background"));
+        GC.Collect();
+        GC.WaitForPendingFinalizers();
+        GC.Collect();
+        Pausa(500);
+        var sondaBg = File.ReadAllText(logUi).Contains("sonda background");
+        Console.WriteLine($"  sonda background no log: {sondaBg}");
+        new Thread(() => throw new InvalidOperationException("sonda fatal")).Start();
+        Pausa(3000); // o processo morre aqui
+
         ThemeManager.Apply(ThemeManager.Terminal);
         Console.WriteLine("== diálogos (tema terminal) ==");
         // envio/token/seguro são capturados dentro do ciclo dos temas.
