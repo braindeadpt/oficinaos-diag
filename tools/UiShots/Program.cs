@@ -53,6 +53,12 @@ internal static class Program
                 Path.Combine(destino, $"opcoes-{tema}.png"), 420, 640);
             Capturar(() => new ChecklistDialog(relatorio),
                 Path.Combine(destino, $"checklist-{tema}.png"), 560, 620);
+            // tamanho por omissão do diálogo: é onde o utilizador o vê abrir
+            Capturar(() => new ChecklistDialog(relatorio),
+                Path.Combine(destino, $"checklist-{tema}-default.png"), 560, 560);
+            // ecrã curto: força o scroll das Opções (o que o SizeToContent escondia)
+            Capturar(() => new SettingsDialog(DiagConfig.Load()),
+                Path.Combine(destino, $"opcoes-{tema}-curta.png"), 420, 560, LimitarScroll);
             Capturar(() => new BenchWindow("Pixel 8 · android",
                     () => Task.FromResult<LiveTelemetry?>(null)),
                 Path.Combine(destino, $"bench-{tema}.png"), 920, 620);
@@ -145,7 +151,14 @@ internal static class Program
     /// `Show()` é best-effort: serve para os templates assentarem e para tentar
     /// o foco; se o ambiente não o permitir, mede-se o conteúdo à mão.
     /// </summary>
-    private static void Capturar(Func<Window> criar, string ficheiro, double largura, double altura)
+    /// <summary>Encolhe o ScrollViewer para provar que a barra aparece.</summary>
+    private static void LimitarScroll(Window janela)
+    {
+        if (Primeiro<ScrollViewer>(janela) is { } sv) sv.MaxHeight = 360;
+    }
+
+    private static void Capturar(Func<Window> criar, string ficheiro, double largura, double altura,
+        Action<Window>? ajustar = null)
     {
         Window? janela = null;
         try
@@ -167,20 +180,30 @@ internal static class Program
             }
 
             if (janela.Content is not FrameworkElement raiz) return;
-            // A janela pode ter sido encolhida à work area no OnLoaded.
+            // O OnLoaded encolhe a janela à work area do runner (1024x768):
+            // sem isto a captura de 1400x900 saía a 1008.
+            janela.MaxWidth = double.PositiveInfinity;
+            janela.MaxHeight = double.PositiveInfinity;
             janela.Width = largura;
             janela.Height = altura;
-            raiz.Measure(new Size(largura, altura));
-            raiz.Arrange(new Rect(0, 0, largura, altura));
+            if (!mostrou)
+            {
+                raiz.Measure(new Size(largura, altura));
+                raiz.Arrange(new Rect(0, 0, largura, altura));
+            }
+            ajustar?.Invoke(janela);
             Respirar();
             raiz.UpdateLayout();
             Respirar();
 
             var foco = mostrou ? TentarFoco(janela) : "não";
-            var bmp = new RenderTargetBitmap(
-                Math.Max(1, (int)Math.Ceiling(raiz.ActualWidth)),
-                Math.Max(1, (int)Math.Ceiling(raiz.ActualHeight)),
-                96, 96, PixelFormats.Pbgra32);
+            var w = Math.Max(1, (int)Math.Ceiling(raiz.ActualWidth));
+            var h = Math.Max(1, (int)Math.Ceiling(raiz.ActualHeight));
+            var bmp = new RenderTargetBitmap(w, h, 96, 96, PixelFormats.Pbgra32);
+            // Fundo opaco do tema primeiro: sem ele o PNG fica com alpha e cada
+            // visualizador mostra a cor que quer — foi o "branco" do painel
+            // de resultados vazio.
+            bmp.Render(Fundo(w, h));
             bmp.Render(raiz);
 
             var enc = new PngBitmapEncoder();
@@ -197,6 +220,17 @@ internal static class Program
         {
             try { janela?.Close(); } catch { }
         }
+    }
+
+    /// <summary>Retângulo opaco com o fundo do tema atual.</summary>
+    private static DrawingVisual Fundo(int w, int h)
+    {
+        var visual = new DrawingVisual();
+        using (var dc = visual.RenderOpen())
+            dc.DrawRectangle(
+                Application.Current.TryFindResource("BgBrush") as Brush ?? Brushes.Black,
+                null, new Rect(0, 0, w, h));
+        return visual;
     }
 
     /// <summary>Põe o foco no primeiro botão e diz se ele ficou com foco de teclado.</summary>
