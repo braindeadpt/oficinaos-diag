@@ -89,7 +89,10 @@ for (const c of provados) {
 
 // --- 3. placar do STATUS.md bate com a realidade --------------------------
 const status = readFileSync(join("plan-nota10", "STATUS.md"), "utf8");
-const placar = /Placar: \*\*(\d+) provados, (\d+) pendentes\*\*/.exec(status);
+// Singular também conta: com um único `[ ]` o placar diz «1 pendente», e a
+// regex antiga só aceitava o plural — sem match na linha do placar, o script
+// agarrava o primeiro placar histórico do handoff e reprovava o plano.
+const placar = /Placar: \*\*(\d+) provados?, (\d+) pendentes?\*\*/.exec(status);
 if (!placar) {
   erros.push("STATUS.md sem «Placar: **N provados, M pendentes**»");
 } else {
@@ -109,6 +112,7 @@ if (erros.length) {
   process.exit(1);
 }
 console.log(
-  `✓ plano coerente: ${provados.length} provados, ${pendentes.length} pendentes ` +
+  `✓ plano coerente: ${provados.length} provados, ${pendentes.length} ` +
+  `${pendentes.length === 1 ? "pendente" : "pendentes"} ` +
     `em ${tickets.length} tickets, todos com prova ou motivo`,
 );
