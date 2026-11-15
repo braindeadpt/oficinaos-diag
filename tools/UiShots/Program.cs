@@ -802,13 +802,15 @@ internal static class Program
             var rotulo = botao.Content?.ToString() ?? "SCAN";
 
             // O gesto: o handler global não recebe o remetente, por isso a
-            // janela guarda a ação no preview — o mesmo evento que um rato a
-            // sério dispara, e não uma chamada direta ao `Falhou`.
-            botao.RaiseEvent(new MouseButtonEventArgs(Mouse.PrimaryDevice, 0, MouseButton.Left)
-            {
-                RoutedEvent = UIElement.PreviewMouseLeftButtonDownEvent,
-                Source = botao,
-            });
+            // janela guarda a ação no preview. Um rato sintético não entrega
+            // `OriginalSource` num runner sem desktop — levantar o evento dava
+            // três linhas de log e nenhum botão desligado —, por isso chama-se
+            // a atribuição (que é a mesma), não o `Falhou`.
+            LembrarGesto(janela, botao);
+            Verificar("produção: o gesto ficou atribuído ao botão",
+                typeof(MainWindow).GetField("_acaoEmCurso",
+                    BindingFlags.NonPublic | BindingFlags.Instance)?.GetValue(janela) as string
+                == "ScanButton");
 
             using var vigia = new CancellationTokenSource();
             var rede = VigiaDoMessageBox(vigia.Token);
@@ -827,7 +829,7 @@ internal static class Program
             // À terceira, o `Falhou` abre um `MessageBox` que prende esta
             // thread: a resposta vem de trás e a bombagem deixa os envois correr.
             string? corpo = null;
-            for (var i = 0; i < 300 && corpo is null; i++)
+            for (var i = 0; i < 150 && corpo is null; i++)
             {
                 Pausa(100);
                 if (resposta.IsCompleted) corpo = resposta.Result;
@@ -1185,6 +1187,11 @@ internal static class Program
         public string? Agora;
         public string? SemAntes;
     }
+
+    /// <summary>O gesto que atribui a falha ao botão (o preview do rato não chega).</summary>
+    private static void LembrarGesto(MainWindow janela, object alvo) =>
+        typeof(MainWindow).GetMethod("LembrarAcao", BindingFlags.NonPublic | BindingFlags.Instance)!
+            .Invoke(janela, [alvo]);
 
     /// <summary>Uma `MainWindow` com um histórico emprestado (construtor interno).</summary>
     private static MainWindow ComHistorico(ScanHistory historico) =>

@@ -113,8 +113,13 @@ public partial class MainWindow : Window
             }), true);
     }
 
-    /// <summary>Guarda qual foi o botão do gesto (o handler global não o recebe).</summary>
-    private void LembrarAcao(object? origem)
+    /// <summary>
+    /// Guarda qual foi o botão do gesto (o handler global não o recebe).
+    /// `internal` para a prova de produção do harness: um rato sintético não
+    /// entrega `OriginalSource` num runner sem desktop, mas a atribuição em si
+    /// — achar o botão pelo alvo e carimbar o instante — é esta.
+    /// </summary>
+    internal void LembrarAcao(object? origem)
     {
         if (BotaoDe(origem) is { Name.Length: > 0 } botao)
         {
