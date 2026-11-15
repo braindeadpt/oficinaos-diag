@@ -278,6 +278,8 @@ internal static class Program
         ProvarCliques();
         Marcar("commits dos diálogos");
         ProvarCommits();
+        Marcar("dois telemóveis no seletor");
+        ProvarDoisTelemoveis();
         Marcar("diálogos e capturas finais");
 
         ThemeManager.Apply(ThemeManager.Terminal);
@@ -669,6 +671,98 @@ internal static class Program
         Verificar($"{rotulo}: fechou em menos de {timeoutMs / 1000} s", !estourou);
         return resultado;
     }
+
+    /// <summary>
+    /// Dois telemóveis no seletor, **sem hardware**: `AttachDevice` e
+    /// `DetachDevice` são exactamente o que o `DeviceDetector` chama quando um
+    /// aparelho liga ou desliga — chamá-los daqui é a mesma ronda, com os mesmos
+    /// dados e os mesmos handlers. Prova o que o `T-09` pedia: o seletor só
+    /// aparece com mais de um, o segundo não rouba a bancada, escolher troca o
+    /// activo, desligar o activo passa para o outro e um estado sem OS completo
+    /// desliga as ações.
+    /// </summary>
+    private static void ProvarDoisTelemoveis()
+    {
+        Console.WriteLine("== dois telemóveis no seletor (sem hardware) ==");
+        ThemeManager.Apply(ThemeManager.Terminal);
+        L10n.Set("pt");
+
+        var primeiro = new DetectedDevice(DeviceKind.Android, "AAA111", "Pixel 8 · android", "ready");
+        var segundo = new DetectedDevice(DeviceKind.Android, "BBB222", "Galaxy S23 · android", "ready");
+        var porAutorizar = new DetectedDevice(DeviceKind.Ios, "CCC333", "iPhone 14 · ios", "unauthorized");
+
+        var janela = new MainWindow();
+        Abrir(janela);
+        try
+        {
+            var seletor = janela.FindName("DeviceSelector") as ComboBox;
+            var scan = janela.FindName("ScanButton") as Button;
+            var teste = janela.FindName("TestButton") as Button;
+            var bancada = janela.FindName("BenchButton") as Button;
+            var estado = janela.FindName("StatusText") as TextBlock;
+            var consola = janela.FindName("Console") as TextBox;
+            if (seletor is null || scan is null || teste is null || bancada is null || estado is null)
+            {
+                Verificar("seletor: os controlos existem", false);
+                return;
+            }
+
+            ChamarMainWindow(janela, "AttachDevice", primeiro);
+            Verificar("seletor: um aparelho — escondido",
+                seletor.Visibility == Visibility.Collapsed && Ativo(janela)?.Id == primeiro.Id);
+
+            ChamarMainWindow(janela, "AttachDevice", segundo);
+            Verificar("seletor: dois aparelhos — aparece",
+                seletor.Visibility == Visibility.Visible && seletor.Items.Count == 2);
+            Verificar("seletor: o 2º aparelho não rouba a bancada", Ativo(janela)?.Id == primeiro.Id);
+            Verificar("seletor: mostra o aparelho ativo",
+                (seletor.SelectedItem as DetectedDevice)?.Id == primeiro.Id);
+
+            // Escolher no seletor é o gesto do utilizador: o caminho passa a ser
+            // o handler `DeviceSelector_Changed`, não a chamada direta.
+            seletor.SelectedItem = seletor.Items.OfType<DetectedDevice>().First(x => x.Id == segundo.Id);
+            Respirar();
+            Verificar("seletor: escolher troca o aparelho ativo", Ativo(janela)?.Id == segundo.Id);
+            Verificar("seletor: a troca vai para a consola",
+                consola is not null && consola.Text.Contains(L10n.F("log.devswitch", segundo.Label)));
+
+            // Desligar o ativo não pode deixar a bancada morta.
+            ChamarMainWindow(janela, "DetachDevice", segundo);
+            Verificar("seletor: desligar o ativo passa para o outro",
+                Ativo(janela)?.Id == primeiro.Id && seletor.Items.Count == 1);
+            Verificar("seletor: volta a esconder com um só",
+                seletor.Visibility == Visibility.Collapsed && scan.IsEnabled);
+
+            // Estado sem OS completo: entra na lista mas desliga as ações.
+            ChamarMainWindow(janela, "AttachDevice", porAutorizar);
+            seletor.SelectedItem = seletor.Items.OfType<DetectedDevice>().First(x => x.Id == porAutorizar.Id);
+            Respirar();
+            Verificar("seletor: o aparelho por autorizar fica ativo", Ativo(janela)?.Id == porAutorizar.Id);
+            Verificar("seletor: sem OS completo as ações desligam",
+                !scan.IsEnabled && !teste.IsEnabled && !bancada.IsEnabled);
+            Verificar("seletor: o estado diz o que fazer",
+                estado.Text == L10n.F("status.unauthorized", porAutorizar.Label));
+
+            ChamarMainWindow(janela, "DetachDevice", porAutorizar);
+            Verificar("seletor: tirar o por autorizar devolve a bancada ao outro",
+                Ativo(janela)?.Id == primeiro.Id && scan.IsEnabled && teste.IsEnabled);
+
+            ChamarMainWindow(janela, "DetachDevice", primeiro);
+            Verificar("seletor: sem aparelhos volta a «a vigiar»",
+                Ativo(janela) is null && estado.Text == L10n.T("status.watching") && scan.IsEnabled);
+        }
+        finally { Fechar(janela); }
+    }
+
+    /// <summary>Chama um método privado do `MainWindow` (o caminho que o detetor usa).</summary>
+    private static void ChamarMainWindow(MainWindow janela, string metodo, object? arg) =>
+        typeof(MainWindow).GetMethod(metodo, BindingFlags.NonPublic | BindingFlags.Instance)!
+            .Invoke(janela, [arg]);
+
+    /// <summary>O `_current` do `MainWindow`: quem manda na bancada agora.</summary>
+    private static DetectedDevice? Ativo(MainWindow janela) =>
+        typeof(MainWindow).GetField("_current", BindingFlags.NonPublic | BindingFlags.Instance)!
+            .GetValue(janela) as DetectedDevice;
 
     /// <summary>
     /// O lado que escreve: APLICAR, GUARDAR, OK, GERAR e ENVIAR a sério, com
