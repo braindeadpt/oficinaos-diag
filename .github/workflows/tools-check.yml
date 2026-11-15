@@ -1,0 +1,51 @@
+name: tools-check
+
+# `fetch-tools.ps1` só corre em Windows e nunca tinha sido executado: baixa o
+# platform-tools (URL `-latest-`, muda sem aviso, por isso a assinatura Google é
+# a verificação) e valida os 50 SHA-256 do iMobileDevice-net contra o cache
+# NuGet. É rede + binários de terceiros, portanto não entra no `ci.yml` de cada
+# push: corre a pedido e uma vez por semana, para apanhar um `-latest-` que mude
+# debaixo dos pés.
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 5 * * 1"
+
+jobs:
+  fetch-tools:
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: "8.0.x"
+
+      # O script lança se a versão do csproj não tiver pin, se um hash não bater
+      # ou se faltar no pacote um binário que a tabela espera — um `throw` num
+      # script invocado termina o passo com falha.
+      - name: fetch-tools.ps1 (assinatura Google + 50 SHA-256)
+        shell: pwsh
+        run: |
+          $saida = & ./tools/fetch-tools.ps1
+          $saida | ForEach-Object { Write-Host $_ }
+          if (-not ($saida -match 'OK: imobiledevice-net 1\.3\.17')) {
+            throw "o script não validou a versão 1.3.17 do iMobileDevice-net"
+          }
+          if (-not ($saida -match 'OK: platform-tools')) {
+            throw "o script não confirmou a assinatura do platform-tools"
+          }
+
+      # Os hashes são o que o script prova; esta contagem prova que a tabela de
+      # pins e o pacote têm o mesmo tamanho — 50, não «alguns».
+      - name: Conferir os 50 binários e o adb
+        shell: pwsh
+        run: |
+          $native = Join-Path $env:USERPROFILE ".nuget\packages\imobiledevice-net\1.3.17\runtimes\win-x64\native"
+          $n = (Get-ChildItem $native -Include *.exe,*.dll -Recurse | Measure-Object).Count
+          Write-Host "binários em $native : $n"
+          if ($n -ne 50) { throw "esperados 50 binários, vieram $n" }
+          if (-not (Test-Path "tools/platform-tools/adb.exe")) {
+            throw "adb.exe não ficou em tools/platform-tools"
+          }
+          Write-Host "OK: 50 binários verificados e adb.exe no sítio"

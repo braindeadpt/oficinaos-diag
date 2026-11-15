@@ -1,4 +1,6 @@
 using System.IO;
+using System.Net;
+using System.Net.Sockets;
 using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Windows;
@@ -126,6 +128,10 @@ internal static class Program
         ProvarTrocaTema(destino, relatorio);
 
         ThemeManager.Apply(ThemeManager.Terminal);
+        ProvarPensDoScope(destino);
+        ProvarFechoAPairar();
+
+        ThemeManager.Apply(ThemeManager.Terminal);
         Console.WriteLine("== diálogos (tema terminal) ==");
         // envio/token/seguro são capturados dentro do ciclo dos temas.
         Capturar(() => new InsuranceDialog(DiagConfig.Load()),
@@ -146,6 +152,170 @@ internal static class Program
         Console.WriteLine($"capturas em {Path.GetFullPath(destino)}");
         if (_falhas > 0) Console.WriteLine($"FALHAS: {_falhas}");
         return _falhas == 0 ? 0 : 1;
+    }
+
+    /// <summary>
+    /// `ScopeView` guarda as quatro `Pen` em cache por tema: entre frames do
+    /// mesmo tema não pode alocar nenhuma. Mede-se a diferença entre um frame
+    /// redesenhado e um frame sem `InvalidateVisual` (o que isola o custo do
+    /// `OnRender` do custo do `RenderTargetBitmap`) e compara-se com o custo
+    /// real de uma `Pen` medido no próprio runtime — sem limiar mágico.
+    /// </summary>
+    private static void ProvarPensDoScope(string destino)
+    {
+        Console.WriteLine("== ScopeView: nenhuma Pen por frame ==");
+        ThemeManager.Apply(ThemeManager.Terminal);
+
+        var scope = new ScopeView();
+        for (var i = 0; i < 40; i++)
+            scope.AddSample(new PowerSample(i * 0.5, 1, 500 + i * 7, 4.0 + i * 0.01, 31.5, 80, true, null));
+        scope.Width = 400;
+        scope.Height = 200;
+        scope.Measure(new Size(400, 200));
+        scope.Arrange(new Rect(0, 0, 400, 200));
+
+        Gravar(scope, Path.Combine(destino, "scope.png"));
+        Console.WriteLine("  scope.png");
+
+        var bmp = new RenderTargetBitmap(400, 200, 96, 96, PixelFormats.Pbgra32);
+        bmp.Render(scope); // aquece: OnRender corre e preenche a cache
+
+        var antes = PensDoScope();
+        Verificar("ScopeView: as quatro Pen ficaram em cache", antes.All(p => p is not null));
+
+        scope.InvalidateVisual();
+        bmp.Render(scope);
+        var depois = PensDoScope();
+        Verificar("ScopeView: o frame seguinte reutiliza as mesmas Pen",
+            antes.Length == depois.Length && antes.Zip(depois).All(p => ReferenceEquals(p.First, p.Second)));
+
+        // Calibração: quanto custa UMA Pen congelada neste runtime.
+        var c0 = GC.GetAllocatedBytesForCurrentThread();
+        var calibra = new Pen(Brushes.Gray, 1);
+        var custoPen = GC.GetAllocatedBytesForCurrentThread() - c0;
+        GC.KeepAlive(calibra);
+
+        var a1 = GC.GetAllocatedBytesForCurrentThread();
+        bmp.Render(scope); // sem InvalidateVisual: o OnRender não corre
+        var semRedesenho = GC.GetAllocatedBytesForCurrentThread() - a1;
+
+        scope.InvalidateVisual();
+        var a2 = GC.GetAllocatedBytesForCurrentThread();
+        bmp.Render(scope); // com redesenho: inclui o OnRender
+        var comRedesenho = GC.GetAllocatedBytesForCurrentThread() - a2;
+
+        var onRender = comRedesenho - semRedesenho;
+        Verificar($"ScopeView: OnRender aloca {onRender} B por frame (uma Pen custa {custoPen} B)",
+            onRender < custoPen);
+    }
+
+    /// <summary>As quatro Pen em cache no `ScopeView` (campos estáticos privados).</summary>
+    private static Pen?[] PensDoScope()
+    {
+        var flags = BindingFlags.NonPublic | BindingFlags.Static;
+        return new[] { "_gridPen", "_ampPen", "_voltPen", "_tempPen" }
+            .Select(n => typeof(ScopeView).GetField(n, flags)?.GetValue(null) as Pen)
+            .ToArray();
+    }
+
+    /// <summary>
+    /// Fechar as Opções a meio de um pedido de emparelhamento: o `await` tem de
+    /// retomar sem rebentar (o handler é `async void` — uma exceção não apanhada
+    /// derrubava a app) e sem tocar em `_config`. O servidor é falso e nunca
+    /// responde, que é a única forma de o pedido estar mesmo a meio.
+    /// </summary>
+    private static void ProvarFechoAPairar()
+    {
+        Console.WriteLine("== fechar as Opções a meio do pairing ==");
+        ThemeManager.Apply(ThemeManager.Terminal);
+
+        var servidor = new ServidorPendurado();
+        var config = DiagConfig.Load();
+        var urlAntes = config.CloudUrl;
+        var tokenAntes = config.ShopTokenProtected;
+
+        var janela = new SettingsDialog(config)
+        {
+            WindowStartupLocation = WindowStartupLocation.Manual,
+            Left = -20_000,
+            Top = -20_000,
+            ShowInTaskbar = false,
+        };
+        janela.Show();
+        Respirar();
+        try
+        {
+            (janela.FindName("CloudBox") as TextBox)!.Text = servidor.Url;
+            (janela.FindName("TokenBox") as PasswordBox)!.Password = "ABCD-1234";
+            (janela.FindName("SaveBtn") as Button)!.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+
+            Verificar("pairing: o pedido chegou ao servidor falso",
+                Esperar(() => servidor.Pedidos > 0, 5000));
+
+            janela.Close(); // a meio do pedido
+            Verificar("pairing: a janela fechou a meio do pedido",
+                Esperar(() => !janela.IsLoaded, 2000));
+
+            // Bombear para o await retomar (cancelamento) — se rebentar, o
+            // processo morre e o job fica vermelho.
+            Pausa(1200);
+
+            Verificar("pairing: fechar a meio não grava a URL", config.CloudUrl == urlAntes);
+            Verificar("pairing: fechar a meio não grava token",
+                config.ShopTokenProtected == tokenAntes);
+        }
+        finally
+        {
+            try { janela.Close(); } catch { }
+            servidor.Dispose();
+        }
+    }
+
+    /// <summary>Servidor TCP que aceita ligações e nunca responde — prende o pedido a meio.</summary>
+    private sealed class ServidorPendurado : IDisposable
+    {
+        private readonly TcpListener _escutador = new(IPAddress.Loopback, 0);
+        private readonly CancellationTokenSource _cts = new();
+        private readonly List<TcpClient> _clientes = new();
+        private int _pedidos;
+
+        public ServidorPendurado()
+        {
+            _escutador.Start();
+            Url = $"http://127.0.0.1:{((IPEndPoint)_escutador.LocalEndpoint).Port}";
+            _ = Task.Run(async () =>
+            {
+                while (!_cts.IsCancellationRequested)
+                {
+                    try
+                    {
+                        var cliente = await _escutador.AcceptTcpClientAsync(_cts.Token);
+                        lock (_clientes) _clientes.Add(cliente);
+                        Interlocked.Increment(ref _pedidos);
+                    }
+                    catch { break; }
+                }
+            });
+        }
+
+        public string Url { get; }
+
+        public int Pedidos => Volatile.Read(ref _pedidos);
+
+        public void Dispose()
+        {
+            _cts.Cancel();
+            _escutador.Stop();
+            lock (_clientes)
+            {
+                foreach (var c in _clientes)
+                {
+                    try { c.Dispose(); } catch { }
+                }
+                _clientes.Clear();
+            }
+            _cts.Dispose();
+        }
     }
 
     /// <summary>Cor sólida de um brush (null se for gradiente ou nulo).</summary>
