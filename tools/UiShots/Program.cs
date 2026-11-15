@@ -3,6 +3,7 @@ using System.Net;
 using System.Net.Sockets;
 using System.Reflection;
 using System.Runtime.InteropServices;
+using System.Text;
 using System.Windows;
 using System.Windows.Automation;
 using System.Windows.Controls;
@@ -60,8 +61,45 @@ internal static class Program
     [DllImport("user32.dll")]
     private static extern bool IsWindow(IntPtr hWnd);
 
+    [DllImport("user32.dll")]
+    private static extern bool EnumWindows(EnumWindowsProc lpEnumFunc, IntPtr lParam);
+
+    [DllImport("user32.dll")]
+    private static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint processId);
+
     [DllImport("user32.dll", CharSet = CharSet.Unicode)]
-    private static extern IntPtr FindWindow(string? lpClassName, string? lpWindowName);
+    private static extern int GetClassName(IntPtr hWnd, StringBuilder nome, int max);
+
+    [DllImport("user32.dll")]
+    private static extern bool IsWindowVisible(IntPtr hWnd);
+
+    private delegate bool EnumWindowsProc(IntPtr hWnd, IntPtr lParam);
+
+    private static readonly uint MeuPid = (uint)Environment.ProcessId;
+
+    /// <summary>
+    /// O `#32770` do **nosso** processo. Um `FindWindow("#32770", null)` apanha
+    /// o primeiro diálogo do sistema que apareça no runner — aconteceu com um
+    /// «Windows created a temporary paging file…»: o responder respondeu a esse
+    /// e o `MessageBox` da app ficou aberto a bloquear a thread da UI até ao
+    /// vigia. Filtrar pelo PID é o que torna isto determinístico.
+    /// </summary>
+    private static IntPtr DialogoDaApp()
+    {
+        var encontrado = IntPtr.Zero;
+        EnumWindows((hwnd, _) =>
+        {
+            if (!IsWindowVisible(hwnd)) return true;
+            var nome = new StringBuilder(16);
+            GetClassName(hwnd, nome, nome.Capacity);
+            if (nome.ToString() != "#32770") return true;
+            GetWindowThreadProcessId(hwnd, out var pid);
+            if (pid != MeuPid) return true;
+            encontrado = hwnd;
+            return false;
+        }, IntPtr.Zero);
+        return encontrado;
+    }
 
     private const uint KeyUp = 0x0002;
     private const byte VkMenu = 0x12; // Alt
@@ -362,7 +400,7 @@ internal static class Program
             // FindWindow, não UIAutomation: a árvore de automação pode bloquear
             // e, como a thread da UI está dentro do Show, quem fica preso é o
             // run inteiro. Aqui encontrar é Win32 puro.
-            var hwnd = FindWindow("#32770", null);
+            var hwnd = DialogoDaApp();
             if (hwnd == IntPtr.Zero)
             {
                 Thread.Sleep(100);
@@ -398,7 +436,7 @@ internal static class Program
         var fim = Environment.TickCount64 + 10_000;
         while (Environment.TickCount64 < fim)
         {
-            var hwnd = FindWindow("#32770", null);
+            var hwnd = DialogoDaApp();
             if (hwnd == IntPtr.Zero) return;
             PostMessage(hwnd, WmClose, IntPtr.Zero, IntPtr.Zero);
             Thread.Sleep(250);
