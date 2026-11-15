@@ -152,6 +152,7 @@ internal static class Program
         ProvarPensDoScope(destino);
         ProvarFechoAPairar();
         ProvarAvisoDaBancada();
+        ProvarChecklist();
 
         ThemeManager.Apply(ThemeManager.Terminal);
         Console.WriteLine("== diálogos (tema terminal) ==");
@@ -391,6 +392,60 @@ internal static class Program
             Thread.Sleep(50);
         }
         return !IsWindow(hwnd);
+    }
+
+    /// <summary>
+    /// O checklist a funcionar num relatório novo: marcar o primeiro item (era
+    /// aqui que rebentava com `KeyNotFoundException` e a marca nunca pegava),
+    /// premir de novo para desmarcar, marcar outro item como n/t e confirmar
+    /// que o APPLY deixa linhas no relatório. Os botões são os reais e o
+    /// diálogo abre como modal, para o `DialogResult` valer.
+    /// </summary>
+    private static void ProvarChecklist()
+    {
+        Console.WriteLine("== checklist: marcar itens de um relatório novo ==");
+        ThemeManager.Apply(ThemeManager.Terminal);
+
+        var relatorio = RelatorioAtual();
+        var janela = new ChecklistDialog(relatorio)
+        {
+            WindowStartupLocation = WindowStartupLocation.Manual,
+            Left = -20_000,
+            Top = -20_000,
+            ShowInTaskbar = false,
+        };
+
+        var marcou = false;
+        var desmarcou = false;
+        janela.Loaded += (_, _) =>
+        {
+            // Ordem dos botões: por item, [ok, defeito, n/t].
+            var botoes = Descendentes<Button>(janela).ToArray();
+            if (botoes.Length < 6) { janela.Close(); return; }
+
+            botoes[0].RaiseEvent(new RoutedEventArgs(Button.ClickEvent)); // 1ª marca: o caso que rebentava
+            marcou = botoes[0].FontWeight == FontWeights.Bold;
+            botoes[0].RaiseEvent(new RoutedEventArgs(Button.ClickEvent)); // premir de novo desmarca
+            desmarcou = botoes[0].FontWeight == FontWeights.Normal;
+            botoes[0].RaiseEvent(new RoutedEventArgs(Button.ClickEvent)); // volta a marcar (pass)
+            botoes[5].RaiseEvent(new RoutedEventArgs(Button.ClickEvent)); // 2º item em n/t (skipped)
+
+            if (janela.FindName("ApplyBtn") is Button aplicar)
+                aplicar.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            else janela.Close(); // nunca deixar o modal aberto
+        };
+
+        var fechou = janela.ShowDialog() == true;
+
+        Verificar("checklist: a marca pegou (botão a negrito)", marcou);
+        Verificar("checklist: premir outra vez desmarca", desmarcou);
+        Verificar("checklist: o APPLY fechou o diálogo", fechou);
+        Verificar("checklist: o relatório ficou com `pass` no 1º item",
+            relatorio.Results.TryGetValue("checklist.frame", out var primeiro)
+            && primeiro.Status == "pass");
+        Verificar("checklist: o relatório ficou com `skipped` no 2º item",
+            relatorio.Results.TryGetValue("checklist.backglass", out var segundo)
+            && segundo.Status == "skipped");
     }
 
     /// <summary>

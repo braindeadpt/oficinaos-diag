@@ -111,7 +111,10 @@ public sealed partial class ChecklistDialog : Window
 
     private void SetState(string key, int s)
     {
-        _state[key] = _state[key] == s ? 0 : s; // tocar de novo desmarca
+        // Toggle lê com TryGetValue: num relatório novo o item ainda não tem
+        // marca, e o indexer direto que aqui estava rebentava com
+        // KeyNotFoundException dentro do handler (a marca nunca pegava).
+        ChecklistMarks.Toggle(_state, key, s); // tocar de novo desmarca
         Paint(key);
     }
 
@@ -158,7 +161,7 @@ public sealed partial class ChecklistDialog : Window
             if (s == 0) continue;
             var label = L10n.Current == "en" ? item.LabelEn : item.LabelPt;
             _report.Set(item.Key,
-                s == 1 ? "pass" : s == 2 ? "fail" : "skipped",
+                ChecklistMarks.Status(s),
                 s == 1 ? "ok" : s == 2 ? "defeito" : "não testado",
                 label);
         }
