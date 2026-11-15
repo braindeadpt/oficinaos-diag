@@ -91,6 +91,30 @@ const mutantes = [
     guarda: "uishots",
     prova: "falha repetida: o botão ficou desligado",
   },
+  {
+    nome: "COMPARAR abre sem scan anterior",
+    ficheiro: "src/OficinaDiag/MainWindow.xaml.cs",
+    de: "        if (previous.Count == 0)",
+    para: "        if (previous.Count < 0) // mutante: nunca diz que não há anterior",
+    guarda: "uishots",
+    prova: "botões: COMPARAR sem scan anterior diz que não há nenhum",
+  },
+  {
+    nome: "a etiqueta perde o serial",
+    ficheiro: "src/OficinaDiag/Reports/LabelPrinter.cs",
+    de: '        var serial = r.Device.Serial ?? "?";',
+    para: '        var serial = "?"; // mutante: sem o serial do relatório',
+    guarda: "uishots",
+    prova: "botões: a etiqueta leva o serial do relatório",
+  },
+  {
+    nome: "o App deixa de delegar no MainWindow",
+    ficheiro: "src/OficinaDiag/App.xaml.cs",
+    de: "            if (Current.MainWindow is MainWindow janela) janela.RegistarFalha(args.Exception);",
+    para: "            if (false && Current.MainWindow is MainWindow janela) janela.RegistarFalha(args.Exception); // mutante: regista e não avisa",
+    guarda: "uishots",
+    prova: "produção: o handler do App avisou à terceira",
+  },
 ];
 
 const mundo = (cmd, args, opts = {}) => {
