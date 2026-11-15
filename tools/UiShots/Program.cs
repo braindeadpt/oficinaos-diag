@@ -38,6 +38,9 @@ internal static class Program
 {
     private static int _falhas;
 
+    private static readonly MethodInfo OnClickDeBotao =
+        typeof(ButtonBase).GetMethod("OnClick", BindingFlags.NonPublic | BindingFlags.Instance)!;
+
     // Onde está o harness agora. Um run pendurado não diz nada no log — com um
     // vigia, o vigia diz exatamente onde e fecha o processo, em vez de deixar o
     // job a arder até ao limite do GitHub.
@@ -540,7 +543,12 @@ internal static class Program
     {
         try
         {
-            botao.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
+            // `OnClick` e não `RaiseEvent(ClickEvent)`: num RadioButton é o
+            // `OnClick` que alterna o `IsChecked` (e só depois dispara o Click).
+            // Com RaiseEvent o rádio nunca ficava marcado e o handler de
+            // idioma/tema não corria — duas verificações a vermelho por um
+            // clique que não era um clique.
+            OnClickDeBotao.Invoke(botao, null);
             return true;
         }
         catch (Exception ex)
