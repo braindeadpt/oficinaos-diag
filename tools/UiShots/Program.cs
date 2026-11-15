@@ -1,7 +1,11 @@
 using System.IO;
 using System.Reflection;
+using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
+using System.Windows.Input;
+using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Windows.Threading;
@@ -27,6 +31,11 @@ namespace UiShots;
 /// </summary>
 internal static class Program
 {
+    private static int _falhas;
+
+    [DllImport("user32.dll")]
+    private static extern bool SetForegroundWindow(IntPtr hWnd);
+
     [STAThread]
     private static int Main(string[] args)
     {
@@ -70,6 +79,15 @@ internal static class Program
                 Path.Combine(destino, $"bench-{tema}.png"), 920, 620);
         }
 
+        // O dropdown é um Popup — outra janela, fora do visual tree — por isso
+        // nunca apareceu nas capturas. Aqui abre-se e dirige-se por teclado.
+        foreach (var tema in new[] { ThemeManager.Terminal, ThemeManager.Win95 })
+        {
+            ThemeManager.Apply(tema);
+            Console.WriteLine($"== combo por teclado ({tema}) ==");
+            ProvarCombo(destino, tema);
+        }
+
         ThemeManager.Apply(ThemeManager.Terminal);
         Console.WriteLine("== diálogos (tema terminal) ==");
         Capturar(() => new SendDialog(), Path.Combine(destino, "envio.png"), 420, 560);
@@ -86,7 +104,108 @@ internal static class Program
 
         app.Shutdown();
         Console.WriteLine($"capturas em {Path.GetFullPath(destino)}");
-        return 0;
+        if (_falhas > 0) Console.WriteLine($"FALHAS: {_falhas}");
+        return _falhas == 0 ? 0 : 1;
+    }
+
+    /// <summary>
+    /// Abre o ComboBox com F4, navega com Down, confirma com Enter e fecha com
+    /// Esc — as teclas que a caixa promete — e grava o popup em PNG.
+    /// </summary>
+    private static void ProvarCombo(string destino, string tema)
+    {
+        var janela = new SettingsDialog(DiagConfig.Load())
+        {
+            WindowStartupLocation = WindowStartupLocation.Manual,
+            Left = -20_000,
+            Top = -20_000,
+            ShowInTaskbar = false,
+        };
+        janela.Show();
+        Respirar();
+        try
+        {
+            // Sem activação a janela não recebe foco de teclado e as teclas
+            // não chegam ao combo.
+            SetForegroundWindow(new WindowInteropHelper(janela).Handle);
+            janela.Activate();
+            Respirar();
+
+            if (Primeiro<ComboBox>(janela) is not { } combo)
+            {
+                Verificar($"{tema}: combo encontrado", false);
+                return;
+            }
+
+            combo.Focus();
+            Keyboard.Focus(combo);
+            Respirar();
+            Console.WriteLine($"  combo foco: {(combo.IsKeyboardFocused ? "sim" : "não")}");
+
+            Verificar($"{tema}: começa fechado", !combo.IsDropDownOpen);
+
+            Tecla(Key.F4);
+            Respirar();
+            Verificar($"{tema}: F4 abre o dropdown", combo.IsDropDownOpen);
+
+            if (combo.IsDropDownOpen
+                && combo.Template.FindName("PART_Popup", combo) is Popup { Child: FrameworkElement painel })
+            {
+                painel.UpdateLayout();
+                Gravar(painel, Path.Combine(destino, $"combo-{tema}-aberto.png"));
+            }
+            else Verificar($"{tema}: popup encontrado", false);
+
+            var antes = combo.SelectedIndex;
+            Tecla(Key.Down);
+            Respirar();
+            Tecla(Key.Enter);
+            Respirar();
+            Verificar($"{tema}: Enter fecha", !combo.IsDropDownOpen);
+            Verificar($"{tema}: Down+Enter muda a seleção ({antes} → {combo.SelectedIndex})",
+                combo.SelectedIndex != antes);
+
+            var depois = combo.SelectedIndex;
+            Tecla(Key.F4);
+            Respirar();
+            Verificar($"{tema}: F4 abre outra vez", combo.IsDropDownOpen);
+            Tecla(Key.Escape);
+            Respirar();
+            Verificar($"{tema}: Esc fecha", !combo.IsDropDownOpen);
+            Verificar($"{tema}: Esc não muda a seleção", combo.SelectedIndex == depois);
+        }
+        finally { janela.Close(); }
+    }
+
+    /// <summary>Tecla real pela pipeline de input do WPF (preview + down).</summary>
+    private static void Tecla(Key tecla)
+    {
+        if (Keyboard.FocusedElement is not Visual alvo) { Verificar("foco para tecla", false); return; }
+        if (PresentationSource.FromVisual(alvo) is not { } source) { Verificar("presentation source", false); return; }
+        InputManager.Current.ProcessInput(new KeyEventArgs(Keyboard.PrimaryDevice, source,
+            Environment.TickCount, tecla) { RoutedEvent = Keyboard.PreviewKeyDownEvent });
+        InputManager.Current.ProcessInput(new KeyEventArgs(Keyboard.PrimaryDevice, source,
+            Environment.TickCount, tecla) { RoutedEvent = Keyboard.KeyDownEvent });
+    }
+
+    private static void Verificar(string nome, bool ok)
+    {
+        Console.WriteLine($"  [{(ok ? "OK" : "FALHA")}] {nome}");
+        if (!ok) _falhas++;
+    }
+
+    private static void Gravar(FrameworkElement raiz, string ficheiro)
+    {
+        var w = Math.Max(1, (int)Math.Ceiling(raiz.ActualWidth));
+        var h = Math.Max(1, (int)Math.Ceiling(raiz.ActualHeight));
+        var bmp = new RenderTargetBitmap(w, h, 96, 96, PixelFormats.Pbgra32);
+        bmp.Render(Fundo(w, h));
+        bmp.Render(raiz);
+        var enc = new PngBitmapEncoder();
+        enc.Frames.Add(BitmapFrame.Create(bmp));
+        using var fs = File.Create(ficheiro);
+        enc.Save(fs);
+        Console.WriteLine($"  {Path.GetFileName(ficheiro),-26} {bmp.PixelWidth}x{bmp.PixelHeight}");
     }
 
     /// <summary>
