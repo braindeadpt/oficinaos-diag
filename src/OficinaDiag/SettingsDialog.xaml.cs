@@ -181,8 +181,7 @@ public partial class SettingsDialog : Window
 
         // Tudo validado e resolvido: gravar de uma vez, sem await pelo meio.
         if (validatedUrl is not null) _config.CloudUrl = validatedUrl;
-        // SONDA (a remover): não grava o idioma escolhido
-        // _config.Language = L10n.Current;
+        _config.Language = L10n.Current;
         _config.Theme = ThemeManager.Current;
         _config.HistoryRetentionDays = SelectedRetention();
         if (token is not null) _config.SetShopToken(token, "diag");
