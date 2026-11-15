@@ -37,6 +37,17 @@ internal static class Program
 {
     private static int _falhas;
 
+    // Onde está o harness agora. Um run pendurado não diz nada no log — com um
+    // vigia, o vigia diz exatamente onde e fecha o processo, em vez de deixar o
+    // job a arder até ao limite do GitHub.
+    private static volatile string _marcador = "(arranque)";
+
+    private static void Marcar(string onde)
+    {
+        _marcador = onde;
+        Console.WriteLine($"  · {onde}");
+    }
+
     [DllImport("user32.dll")]
     private static extern bool SetForegroundWindow(IntPtr hWnd);
 
@@ -87,6 +98,13 @@ internal static class Program
         // rebentava o processo — bug que só existia no harness.
         SynchronizationContext.SetSynchronizationContext(
             new DispatcherSynchronizationContext(Dispatcher.CurrentDispatcher));
+        new Thread(() =>
+        {
+            Thread.Sleep(TimeSpan.FromSeconds(180));
+            Console.WriteLine($"[FALHA] harness pendurado em: {_marcador}");
+            Console.Out.Flush();
+            Environment.Exit(4);
+        }) { IsBackground = true }.Start();
         L10n.Set("pt");
 
         var relatorio = RelatorioAtual();
@@ -164,11 +182,17 @@ internal static class Program
         ProvarTrocaTema(destino, relatorio);
 
         ThemeManager.Apply(ThemeManager.Terminal);
+        Marcar("ScopeView sem Pen por frame");
         ProvarPensDoScope(destino);
+        Marcar("fecho a meio do pairing");
         ProvarFechoAPairar();
+        Marcar("aviso da bancada");
         ProvarAvisoDaBancada();
+        Marcar("checklist a marcar");
         ProvarChecklist();
+        Marcar("cliques nos diálogos");
         ProvarCliques();
+        Marcar("diálogos e capturas finais");
 
         ThemeManager.Apply(ThemeManager.Terminal);
         Console.WriteLine("== diálogos (tema terminal) ==");
@@ -553,6 +577,7 @@ internal static class Program
         L10n.Set("pt");
 
         // 1. Checklist: os três botões de uma linha, por esta ordem.
+        Marcar("clique: checklist");
         var relatorio = RelatorioAtual();
         var checklist = new ChecklistDialog(relatorio);
         Abrir(checklist);
@@ -581,6 +606,7 @@ internal static class Program
         finally { Fechar(checklist); }
 
         // 2. Opções: idioma e tema aplicam-se em preview assim que se escolhe.
+        Marcar("clique: opções");
         var opcoes = new SettingsDialog(DiagConfig.Load());
         Abrir(opcoes);
         try
@@ -621,6 +647,7 @@ internal static class Program
         };
         foreach (var (nome, criar, botao, chave) in validacoes)
         {
+            Marcar($"clique: {nome} (abrir)");
             var dialogo = criar();
             Abrir(dialogo);
             try
@@ -634,6 +661,7 @@ internal static class Program
                 using var vigia = new CancellationTokenSource();
                 var rede = VigiaDoMessageBox(vigia.Token);
                 var resposta = ResponderMessageBox("ok");
+                Marcar($"clique: {nome} ({botao})");
                 var clicou = Clicar(alvo); // fica dentro do MessageBox até alguém responder
                 var corpo = resposta.GetAwaiter().GetResult();
                 vigia.Cancel();
