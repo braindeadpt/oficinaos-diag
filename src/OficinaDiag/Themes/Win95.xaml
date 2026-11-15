@@ -163,7 +163,7 @@
          setas nos lados — e nenhum `x:Key` novo (os três temas têm de expor o
          mesmo conjunto). -->
     <Style TargetType="ScrollBar">
-        <Setter Property="Background" Value="#C0C0C0"/>
+        <Setter Property="Background" Value="#DFDFDF"/>
         <Setter Property="Width" Value="16"/>
         <Style.Triggers>
             <Trigger Property="Orientation" Value="Vertical">
@@ -181,7 +181,7 @@
                                         <ControlTemplate TargetType="RepeatButton">
                                             <Border Background="#C0C0C0" BorderBrush="#808080" BorderThickness="0,0,1,1">
                                                 <Border BorderBrush="#FFFFFF" BorderThickness="1,1,0,0">
-                                                    <Path Fill="#000000" Data="M 0 4 L 8 4 L 4 0 Z"
+                                                    <Path Fill="#000000" Data="M 0 0 L 0 0 Z"
                                                           HorizontalAlignment="Center" VerticalAlignment="Center"/>
                                                 </Border>
                                             </Border>
