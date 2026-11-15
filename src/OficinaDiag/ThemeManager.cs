@@ -24,7 +24,10 @@ public static class ThemeManager
     public static void Apply(string name)
     {
         if (!All.Contains(name)) name = Terminal;
-        var uri = $"pack://application:,,,/Themes/{name}.xaml";
+        // Assembly-qualified: um pack URI sem `;component` resolve contra o
+        // assembly de entrada, o que só por acaso é a app (o tools/UiShots
+        // hospeda as janelas noutro processo para tirar capturas).
+        var uri = $"pack://application:,,,/OficinaDiag;component/Themes/{name}.xaml";
         var previous = Current;
         var merged = Application.Current.Resources.MergedDictionaries;
         for (var i = merged.Count - 1; i >= 0; i--)
