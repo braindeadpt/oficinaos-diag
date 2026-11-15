@@ -16,6 +16,7 @@ using System.Windows.Threading;
 using OficinaDiag;
 using OficinaDiag.Cloud;
 using OficinaDiag.Devices;
+using OficinaDiag.History;
 using OficinaDiag.Log;
 using QRCoder;
 
@@ -275,6 +276,8 @@ internal static class Program
         ProvarCommits();
         Marcar("aviso de reinício da atualização");
         ProvarAvisoDeAtualizacao();
+        Marcar("botões da barra de acções");
+        ProvarBotoes(destino);
         Marcar("dois telemóveis no seletor");
         ProvarDoisTelemoveis();
         Marcar("falha repetida na mesma ação");
@@ -944,6 +947,154 @@ internal static class Program
         }
         finally { Fechar(janela); }
     }
+
+    /// <summary>
+    /// Os botões do `MainWindow` que não abrem diálogo nativo nem vão à rede —
+    /// SCAN, SCAN+ (BANCADA), COMPARAR e a etiqueta. Eram o resto da barra sem
+    /// rede nenhuma: sabia-se que outros clicavam sem rebentar, não que faziam
+    /// o que dizem com os dados que têm. A comparação corre com um histórico
+    /// emprestado (`MainWindow(ScanHistory)`), senão escrevia no de quem corre
+    /// isto e a retenção podava-o.
+    /// </summary>
+    private static void ProvarBotoes(string destino)
+    {
+        Console.WriteLine("== botões do MainWindow (sem diálogo nativo nem rede) ==");
+        ThemeManager.Apply(ThemeManager.Terminal);
+        L10n.Set("pt");
+
+        var janela = new MainWindow();
+        Abrir(janela);
+        try
+        {
+            var consola = (TextBox)janela.FindName("Console")!;
+            var scan = (Button)janela.FindName("ScanButton")!;
+            var bancada = (Button)janela.FindName("BenchButton")!;
+            var comparar = (Button)janela.FindName("CompareButton")!;
+
+            // 1. SCAN sem aparelho: avisa, devolve o botão ao serviço e a app
+            // não fica «ocupada» (o `_busy` prende o ticker do header).
+            consola.Clear();
+            Verificar("botões: SCAN sem aparelho correu", Clicar(scan));
+            Verificar("botões: SCAN sem aparelho diz que não há aparelho",
+                consola.Text.Contains(L10n.T("log.nodev")));
+            Verificar("botões: SCAN devolve o botão ao serviço", scan.IsEnabled);
+            Verificar("botões: SCAN não deixa a app ocupada",
+                typeof(MainWindow).GetField("_busy", BindingFlags.NonPublic | BindingFlags.Instance)!
+                    .GetValue(janela) is false);
+
+            // 2. BANCADA (SCAN+) sem aparelho: nasce desligado, mas o handler
+            // tem de dizer o que fazer e não prender a janela.
+            bancada.IsEnabled = true;
+            consola.Clear();
+            Verificar("botões: BANCADA sem aparelho correu", Clicar(bancada));
+            Verificar("botões: BANCADA sem aparelho manda ligar por USB",
+                consola.Text.Contains(L10n.T("log.nodev.usb")));
+
+            // 3. COMPARAR sem serial: não há como casar scans de aparelhos.
+            Definir(janela, "_report", new DeviceReport { Platform = "android" });
+            comparar.IsEnabled = true;
+            consola.Clear();
+            Verificar("botões: COMPARAR sem serial correu", Clicar(comparar));
+            Verificar("botões: COMPARAR sem serial diz porquê",
+                consola.Text.Contains(L10n.T("log.cmp.noserial")));
+        }
+        finally { Fechar(janela); }
+
+        // 4. COMPARAR com serial mas sem scan anterior do mesmo aparelho.
+        var vazio = ComHistorico(new ScanHistory(
+            Path.Combine(destino, $"historico-vazio-{Environment.ProcessId}.jsonl")));
+        Abrir(vazio);
+        try
+        {
+            Definir(vazio, "_report", RelatorioAtual());
+            var botao = (Button)vazio.FindName("CompareButton")!;
+            var consola = (TextBox)vazio.FindName("Console")!;
+            botao.IsEnabled = true;
+            consola.Clear();
+            Clicar(botao);
+            Verificar("botões: COMPARAR sem scan anterior diz que não há nenhum",
+                consola.Text.Contains(L10n.T("log.cmp.none")));
+        }
+        finally { Fechar(vazio); }
+
+        // 5. COMPARAR com um scan anterior: abre a janela e o diff tem de
+        // contar a história certa (78% warn → 94% pass, e o que só existe agora).
+        var caminho = Path.Combine(destino, $"historico-{Environment.ProcessId}.jsonl");
+        try { File.Delete(caminho); } catch { }
+        var historico = new ScanHistory(caminho);
+        historico.Add(RelatorioAnterior());
+
+        var comHistorico = ComHistorico(historico);
+        Abrir(comHistorico);
+        try
+        {
+            Definir(comHistorico, "_report", RelatorioAtual());
+            var botao = (Button)comHistorico.FindName("CompareButton")!;
+            botao.IsEnabled = true;
+
+            // A janela é modal: abre dentro do clique e tem de ser lida e
+            // fechada de dentro do dispatcher, como as capturas.
+            var achou = false;
+            var scans = -1;
+            var linhas = -1;
+            string? antes = null, agora = null, semAnterior = null;
+            var relogio = new DispatcherTimer(DispatcherPriority.Background, comHistorico.Dispatcher)
+            {
+                Interval = TimeSpan.FromMilliseconds(100),
+            };
+            relogio.Tick += (_, _) =>
+            {
+                if (Application.Current.Windows.OfType<CompareWindow>().FirstOrDefault() is not { } cmp)
+                    return;
+                relogio.Stop();
+                achou = true;
+                cmp.UpdateLayout();
+                scans = ((ListBox)cmp.FindName("ScanList")).Items.Count;
+                var lista = (((ItemsControl)cmp.FindName("DiffList")).ItemsSource
+                    as IEnumerable<DiffRow>)?.ToList() ?? [];
+                linhas = lista.Count;
+                antes = lista.FirstOrDefault(r => r.Key == "battery.health")?.Before;
+                agora = lista.FirstOrDefault(r => r.Key == "battery.health")?.Now;
+                semAnterior = lista.FirstOrDefault(r => r.Key == "screen.deadpixels")?.Before;
+                Fechar(cmp);
+            };
+            relogio.Start();
+            var clicou = Clicar(botao);
+            for (var i = 0; i < 40 && !achou; i++) Pausa(50);
+            relogio.Stop();
+
+            Verificar($"botões: COMPARAR abriu a janela com o scan anterior ({scans} scan(s))",
+                clicou && achou && scans == 1);
+            Verificar($"botões: COMPARAR lista as seis chaves do diff ({linhas})", linhas == 6);
+            Verificar($"botões: COMPARAR mostra 78% [warn] → 94% [pass] ('{antes}' → '{agora}')",
+                antes == "78% [warn]" && agora == "94% [pass]");
+            Verificar($"botões: COMPARAR marca o que não existia antes ('{semAnterior}')",
+                semAnterior == "—");
+        }
+        finally { Fechar(comHistorico); }
+
+        // 6. ETIQUETA: o clique abre o `PrintDialog` (nativo), mas o que a
+        // etiqueta leva — modelo e serial — constrói-se sem impressora.
+        var etiqueta = OficinaDiag.Reports.LabelPrinter.BuildVisual(RelatorioAtual());
+        var moldura = ForaDoEcra(new Window { Content = etiqueta, Width = 320, Height = 200 });
+        moldura.Show();
+        try
+        {
+            moldura.UpdateLayout();
+            Respirar();
+            var textos = Descendentes<TextBlock>(etiqueta).Select(t => t.Text).ToList();
+            Verificar($"botões: a etiqueta leva o serial do relatório ({textos.Count} texto(s))",
+                textos.Any(t => t.Contains("3B1F0A2C9D")));
+            Verificar("botões: a etiqueta leva o modelo",
+                textos.Any(t => t.Contains("Pixel 8")));
+        }
+        finally { Fechar(moldura); }
+    }
+
+    /// <summary>Uma `MainWindow` com um histórico emprestado (construtor interno).</summary>
+    private static MainWindow ComHistorico(ScanHistory historico) =>
+        (MainWindow)Activator.CreateInstance(typeof(MainWindow),
+            BindingFlags.Instance | BindingFlags.NonPublic, null, [historico], null)!;
 
     /// <summary>Põe um campo (privado ou interno) — a mesma via do resto do harness.</summary>
     private static void Definir(object alvo, string campo, object? valor) =>

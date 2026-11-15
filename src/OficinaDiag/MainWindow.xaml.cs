@@ -57,7 +57,7 @@ public partial class MainWindow : Window
     // Túnel `adb reverse` ativo (serial, porta) — removido sempre no fim.
     private readonly Devices.AdbTunnel _tunnel;
     private Tests.TestServer? _testServer;
-    private readonly ScanHistory _history = new();
+    private readonly ScanHistory _history;
     /// <summary>Dispositivos ligados agora — alimenta o seletor do header.</summary>
     private readonly ObservableCollection<Devices.DetectedDevice> _devices = new();
     private readonly Cloud.DiagConfig _config = Cloud.DiagConfig.Load();
@@ -75,8 +75,17 @@ public partial class MainWindow : Window
     private string? _acaoEmCurso;
     private long _acaoQuando;
 
-    public MainWindow()
+    public MainWindow() : this(null) { }
+
+    /// <summary>
+    /// O histórico entra por parâmetro para o harness poder comparar dois
+    /// scans sem escrever no histórico de quem corre o CI — e para o histórico
+    /// dele não ser podado pela retenção. A app usa o construtor sem
+    /// argumentos, que fica com o histórico do utilizador.
+    /// </summary>
+    internal MainWindow(ScanHistory? historico)
     {
+        _history = historico ?? new ScanHistory();
         _cloud = new Cloud.CloudClient(_config);
         _tunnel = new Devices.AdbTunnel(RunAdbAsync, WarnTunnelLeft);
         InitializeComponent();
