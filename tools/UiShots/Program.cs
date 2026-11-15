@@ -123,36 +123,25 @@ internal static class Program
         // grava-o, e o config de quem corre isto não pode ser o alvo.
         DiagConfig.RedirectTo(Path.Combine(destino, "config"));
 
-        var app = new Application { ShutdownMode = ShutdownMode.OnExplicitShutdown };
-        // A rede que faltava. O `App` real apanha as exceções da UI, escreve
-        // «! UI: …» no `diag.log` e segue — foi assim que o checklist morto
-        // passou despercebido. O harness criava uma `Application` sem handler,
-        // por isso a mesma exceção matava o processo sem deixar rasto. Agora o
-        // handler é o mesmo, o log vai para o artefacto e o run falha no fim.
+        // O log da rede vai para o artefacto antes de o `App` escrever a
+        // primeira linha («> oficinaos-diag arrancou», no `OnStartup`).
         var logUi = Path.Combine(destino, "diag.log");
         AppLog.RedirectTo(logUi);
 
-        // As três vias por onde o `App` engole uma exceção, uma a uma: o
-        // dispatcher (UI), a tarefa cujo resultado ninguém observa (background)
-        // e a thread que morre (fatal). Só a primeira estava ligada.
-        app.DispatcherUnhandledException += (_, e) =>
-        {
-            Anotar("UI", e.Exception);
-            e.Handled = true; // registar e continuar: um clique não pode matar o run
-        };
-        TaskScheduler.UnobservedTaskException += (_, e) =>
-        {
-            Anotar("background", e.Exception);
-            e.SetObserved();
-        };
-        AppDomain.CurrentDomain.UnhandledException += (_, e) =>
-        {
-            if (e.ExceptionObject is Exception ex) Anotar("fatal", ex);
-            // Nesta via o processo morre logo a seguir: a verificação tem de
-            // correr aqui, senão um `! fatal:` nunca chegava a ser avaliado.
-            VerificarUiSemExcecoes(logUi);
-            Console.Out.Flush();
-        };
+        // O `App` a sério, e não uma `Application` paralela. O handler global
+        // (`DispatcherUnhandledException` → `RegistarFalha` → `Falhou`) é o
+        // caminho que escondeu o checklist morto durante dois lotes; com uma
+        // `Application` própria, o harness provava o efeito do `Falhou` mas
+        // nunca quem lá chega. As três vias (UI, background, fatal) passam a
+        // ser as do `App`, e o `MainWindow` que ele abre no `OnStartup` é a
+        // janela onde o handler cai — é nela que corre a prova de produção.
+        // O `App.xaml` não traz recursos nem `StartupUri` (os temas entram pelo
+        // `ThemeManager`), por isso basta instanciá-lo: o `OnStartup` dele é que
+        // faz o resto, incluindo abrir a `MainWindow`.
+        var app = new OficinaDiag.App();
+        // O `App` deixa o WPF fechar quando a última janela sai; aqui há janelas
+        // a abrir e a fechar todo o tempo e o fim é explícito.
+        app.ShutdownMode = ShutdownMode.OnExplicitShutdown;
         // Um clique real chega dentro de uma operação do dispatcher, onde o
         // SynchronizationContext é o do WPF. Este `Main` corre fora do loop, e
         // sem isto as continuações dos handlers async caíam no thread pool:
@@ -282,6 +271,8 @@ internal static class Program
         ProvarDoisTelemoveis();
         Marcar("falha repetida na mesma ação");
         ProvarFalhaRepetida(destino);
+        Marcar("falha repetida pelo handler do App");
+        ProvarFalhaPeloHandlerDeProducao(destino);
         Marcar("diálogos e capturas finais");
 
         ThemeManager.Apply(ThemeManager.Terminal);
@@ -773,6 +764,88 @@ internal static class Program
             Fechar(janela);
             AppLog.RedirectTo(anterior);
         }
+    }
+
+    /// <summary>
+    /// A mesma falha repetida, mas pelo caminho de produção: a exceção sobe do
+    /// dispatcher, o `App` apanha-a no `DispatcherUnhandledException`, atribui-a
+    /// à ação em curso e só então o `Falhou` conta, desliga e avisa. Era este
+    /// percurso que escondia o checklist morto; o harness chamava o `Falhou`
+    /// diretamente e provava o efeito, não quem lá chega.
+    ///
+    /// A janela é a do próprio `App` (`Application.Current.MainWindow`), porque
+    /// é nela que o handler do `App` cai — não nas que o harness abre.
+    /// </summary>
+    private static void ProvarFalhaPeloHandlerDeProducao(string destino)
+    {
+        Console.WriteLine("== falha repetida pelo handler do App ==");
+        ThemeManager.Apply(ThemeManager.Terminal);
+        L10n.Set("pt");
+
+        if (Application.Current.MainWindow is not MainWindow janela)
+        {
+            Verificar("produção: o App arrancou a janela principal", false);
+            return;
+        }
+        Verificar("produção: o App arrancou a janela principal", true);
+
+        var log = Path.Combine(destino, "diag-producao.log");
+        try { File.Delete(log); } catch { }
+        var anterior = AppLog.RedirectTo(log);
+        try
+        {
+            if (janela.FindName("ScanButton") is not Button botao)
+            {
+                Verificar("produção: o botão existe", false);
+                return;
+            }
+            var rotulo = botao.Content?.ToString() ?? "SCAN";
+
+            // O gesto: o handler global não recebe o remetente, por isso a
+            // janela guarda a ação no preview — o mesmo evento que um rato a
+            // sério dispara, e não uma chamada direta ao `Falhou`.
+            botao.RaiseEvent(new MouseButtonEventArgs(Mouse.PrimaryDevice, 0, MouseButton.Left)
+            {
+                RoutedEvent = UIElement.PreviewMouseLeftButtonDownEvent,
+                Source = botao,
+            });
+
+            using var vigia = new CancellationTokenSource();
+            var rede = VigiaDoMessageBox(vigia.Token);
+            var resposta = ResponderMessageBox("ok");
+
+            // `BeginInvoke`, não `Invoke`: o `Invoke` devolve a exceção ao
+            // chamador e o dispatcher nunca a vê. Três, como um técnico a
+            // carregar no botão que não responde.
+            for (var i = 1; i <= 3; i++)
+            {
+                var n = i;
+                janela.Dispatcher.BeginInvoke(DispatcherPriority.Background,
+                    new Action(() => throw new InvalidOperationException($"falha de produção {n}")));
+            }
+
+            // À terceira, o `Falhou` abre um `MessageBox` que prende esta
+            // thread: a resposta vem de trás e a bombagem deixa os envois correr.
+            string? corpo = null;
+            for (var i = 0; i < 300 && corpo is null; i++)
+            {
+                Pausa(100);
+                if (resposta.IsCompleted) corpo = resposta.Result;
+            }
+            vigia.Cancel();
+            rede.Wait(500);
+
+            Verificar("produção: o handler do App avisou à terceira", corpo is not null);
+            var texto = SemEspacos(L10n.F("err.repeated", rotulo));
+            Verificar($"produção: o aviso é o do L10n ('{texto[..Math.Min(40, texto.Length)]}…')",
+                corpo is not null && SemEspacos(corpo).Contains(texto[(texto.Length / 3)..]));
+            Verificar("produção: o botão da janela do App ficou desligado", !botao.IsEnabled);
+            Verificar($"produção: as três falhas passaram pelo log ({LinhasUi(log)})",
+                LinhasUi(log) == 3);
+            Verificar("produção: a via «! UI:» aparece na consola da janela",
+                ((TextBox)janela.FindName("Console")!).Text.Contains("! UI:"));
+        }
+        finally { AppLog.RedirectTo(anterior); }
     }
 
     /// <summary>Linhas de exceção engolida no log de uma prova.</summary>
