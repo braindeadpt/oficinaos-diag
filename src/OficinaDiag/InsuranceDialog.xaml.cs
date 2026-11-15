@@ -12,6 +12,17 @@ public partial class InsuranceDialog : Window
     {
         _config = config;
         InitializeComponent();
+
+        // Mesmo limite do checklist: o MaxHeight fixo de 640 no ScrollViewer
+        // deixava a janela maior que a work area num 1366×768 a 125% (614 DIP
+        // úteis) e cortava o GERAR. Passa a ser a work area a decidir.
+        Loaded += (_, _) =>
+        {
+            var wa = SystemParameters.WorkArea;
+            MaxWidth = wa.Width;
+            MaxHeight = wa.Height;
+        };
+
         Title = L10n.T("ins.title");
         HeaderText.Text = L10n.T("ins.header");
         DescText.Text = L10n.T("ins.desc");
