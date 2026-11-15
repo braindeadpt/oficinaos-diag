@@ -423,8 +423,12 @@ internal static class Program
         Respirar();
         try
         {
-            // Ordem dos botões: por item, [ok, defeito, n/t].
-            var botoes = Descendentes<Button>(janela).ToArray();
+            // Só o painel dos itens: a árvore começa nas ações (GUARDAR/CANCELAR
+            // são declaradas antes, no DockPanel) e um clique em GUARDAR define
+            // `DialogResult`, que fora do ShowDialog rebenta. Ordem dentro do
+            // painel: por item, [ok, defeito, n/t].
+            var itens = janela.FindName("ItemsPanel") as DependencyObject;
+            var botoes = itens is null ? [] : Descendentes<Button>(itens).ToArray();
             Verificar("checklist: os botões dos itens existem", botoes.Length >= 6);
             if (botoes.Length < 6) return;
 
