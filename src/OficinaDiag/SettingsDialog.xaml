@@ -33,10 +33,17 @@
         </Style>
         <Style TargetType="Button" BasedOn="{StaticResource TermButton}"/>
     </Window.Resources>
-    <!-- SizeToContent+NoResize sem scroll deixava Guardar/Cancelar fora do
-         ecrã em 1366×768 a 125%; o MaxHeight obriga a aparecer a barra. -->
-    <ScrollViewer VerticalScrollBarVisibility="Auto" MaxHeight="640">
-    <StackPanel Margin="20">
+    <!-- Ações ancoradas em baixo, fora do scroll (padrão do checklist):
+         num 1366×768 a 125% os campos rolam e Guardar/Cancelar nunca sai. -->
+    <DockPanel>
+        <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal"
+                    HorizontalAlignment="Right" Margin="20,10,20,16">
+            <Button x:Name="SaveBtn" IsDefault="True" Click="Save_Click"/>
+            <Button x:Name="CancelBtn" IsCancel="True"/>
+        </StackPanel>
+
+        <ScrollViewer VerticalScrollBarVisibility="Auto">
+        <StackPanel Margin="20,20,20,0">
         <TextBlock x:Name="HeaderText" FontSize="14" Foreground="{DynamicResource FgBrush}"
                    Margin="0,0,0,4"/>
 
@@ -65,10 +72,7 @@
         <Button x:Name="ClearHistoryBtn" HorizontalAlignment="Left" Margin="0,10,0,0"
                 Click="ClearHistory_Click"/>
 
-        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,16,0,0">
-            <Button x:Name="SaveBtn" IsDefault="True" Click="Save_Click"/>
-            <Button x:Name="CancelBtn" IsCancel="True"/>
         </StackPanel>
-    </StackPanel>
-    </ScrollViewer>
+        </ScrollViewer>
+    </DockPanel>
 </Window>

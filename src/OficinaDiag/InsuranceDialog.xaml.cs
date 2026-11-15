@@ -19,8 +19,8 @@ public partial class InsuranceDialog : Window
         Loaded += (_, _) =>
         {
             var wa = SystemParameters.WorkArea;
-            MaxWidth = wa.Width;
-            MaxHeight = wa.Height;
+            MaxWidth = Math.Min(MaxWidth, wa.Width);
+            MaxHeight = Math.Min(MaxHeight, wa.Height);
         };
 
         Title = L10n.T("ins.title");

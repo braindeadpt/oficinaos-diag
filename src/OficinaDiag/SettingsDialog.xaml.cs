@@ -28,8 +28,11 @@ public partial class SettingsDialog : Window
         _origTheme = ThemeManager.Current;
         InitializeComponent();
         // SizeToContent pode exceder a work area em ecrãs baixos: o MaxHeight
-        // faz o ScrollViewer entrar em jogo em vez de a janela sair do ecrã.
-        MaxHeight = SystemParameters.WorkArea.Height;
+        // faz os campos rolar em vez de a janela sair do ecrã. Min(): um limite
+        // mais apertado já definido (pelo XAML ou por quem chamou) manda.
+        var wa = SystemParameters.WorkArea;
+        MaxWidth = Math.Min(MaxWidth, wa.Width);
+        MaxHeight = Math.Min(MaxHeight, wa.Height);
         ApplyStrings();
         ThemeManager.Changed += ApplyStrings;
 

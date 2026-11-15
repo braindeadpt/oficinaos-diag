@@ -77,6 +77,13 @@ internal static class Program
             // janela apertada: os itens têm de rolar e os botões continuar visíveis
             Capturar(() => new ChecklistDialog(relatorio),
                 Path.Combine(destino, $"checklist-{tema}-baixa.png"), 560, 480);
+            // 1366×768 a 125% = 614 DIP úteis: as ações têm de caber inteiras
+            Capturar(() => new ChecklistDialog(relatorio),
+                Path.Combine(destino, $"checklist-{tema}-614.png"), 560, 620,
+                workArea: 614, acoes: ["ApplyBtn", "CancelBtn", "PhotoBtn"]);
+            Capturar(() => new SettingsDialog(DiagConfig.Load()),
+                Path.Combine(destino, $"opcoes-{tema}-614.png"), 420, 640,
+                workArea: 614, acoes: ["SaveBtn", "CancelBtn"]);
             // ecrã curto: força o scroll das Opções (o que o SizeToContent escondia)
             Capturar(() => new SettingsDialog(DiagConfig.Load()),
                 Path.Combine(destino, $"opcoes-{tema}-curta.png"), 420, 560, LimitarScroll);
@@ -100,6 +107,9 @@ internal static class Program
         Capturar(() => new TokenDialog(), Path.Combine(destino, "token.png"), 380, 320);
         Capturar(() => new InsuranceDialog(DiagConfig.Load()),
             Path.Combine(destino, "seguradora.png"), 480, 640);
+        Capturar(() => new InsuranceDialog(DiagConfig.Load()),
+            Path.Combine(destino, "seguradora-614.png"), 480, 640,
+            workArea: 614, acoes: ["GenerateBtn", "CancelBtn"]);
         Capturar(() => new CompareWindow(relatorio, [anterior]),
             Path.Combine(destino, "comparar.png"), 780, 560);
         using (var gen = new QRCodeGenerator())
@@ -329,6 +339,40 @@ internal static class Program
     }
 
     /// <summary>
+    /// As ações nomeadas estão inteiras dentro do cliente? É o que prova que
+    /// num ecrã baixo os botões não ficam meio cortados.
+    /// </summary>
+    private static void VerificarAcoes(Window janela, FrameworkElement raiz, string rotulo,
+        double? workArea, string[] nomes)
+    {
+        if (workArea is { } limite)
+            Verificar($"{rotulo}: cabe em {limite:0} DIP (janela {janela.ActualHeight:0})",
+                janela.ActualHeight <= limite + 0.5);
+
+        foreach (var nome in nomes)
+        {
+            if (janela.FindName(nome) is not FrameworkElement botao)
+            {
+                Verificar($"{rotulo}: {nome} existe", false);
+                continue;
+            }
+            Rect r;
+            try
+            {
+                r = botao.TransformToAncestor(raiz).TransformBounds(
+                    new Rect(0, 0, botao.ActualWidth, botao.ActualHeight));
+            }
+            catch
+            {
+                Verificar($"{rotulo}: {nome} ligado à árvore", false);
+                continue;
+            }
+            Verificar($"{rotulo}: {nome} inteiro (topo {r.Top:0}, base {r.Bottom:0} de {raiz.ActualHeight:0})",
+                botao.IsVisible && r.Top >= -0.5 && r.Bottom <= raiz.ActualHeight + 0.5);
+        }
+    }
+
+    /// <summary>
     /// Mostra a janela fora do ecrã, mede/arranja o conteúdo e grava o PNG.
     /// `Show()` é best-effort: serve para os templates assentarem e para tentar
     /// o foco; se o ambiente não o permitir, mede-se o conteúdo à mão.
@@ -340,7 +384,7 @@ internal static class Program
     }
 
     private static void Capturar(Func<Window> criar, string ficheiro, double largura, double altura,
-        Action<Window>? ajustar = null)
+        Action<Window>? ajustar = null, double? workArea = null, string[]? acoes = null)
     {
         Window? janela = null;
         try
@@ -352,6 +396,11 @@ internal static class Program
             janela.Top = -20_000;
             janela.Width = largura;
             janela.Height = altura;
+            // Work area simulada *antes* do Show: a janela já nasce limitada.
+            // Depois do Show isto só recortava a imagem (o layout não refazia
+            // até chegar o WM_SIZE). O clamp da app é Min(), por isso respeita
+            // um limite mais apertado do que a work area real.
+            if (workArea is { } limite) janela.MaxHeight = limite;
 
             var mostrou = true;
             try { janela.Show(); }
@@ -374,6 +423,9 @@ internal static class Program
             ajustar?.Invoke(janela);
             raiz.UpdateLayout();
             Respirar();
+
+            if (acoes is { Length: > 0 })
+                VerificarAcoes(janela, raiz, Path.GetFileNameWithoutExtension(ficheiro), workArea, acoes);
 
             var foco = mostrou ? TentarFoco(janela) : "não";
             var (w, h) = Gravar(raiz, ficheiro);

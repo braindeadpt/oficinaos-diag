@@ -44,9 +44,11 @@ public sealed partial class ChecklistDialog : Window
         // DIP úteis) a janela excedia a work area e voltava a cortar as ações.
         Loaded += (_, _) =>
         {
+            // Min(): um limite mais apertado já definido manda — é assim que as
+            // capturas simulam um ecrã de 614 DIP sem tocar no código da app.
             var wa = SystemParameters.WorkArea;
-            MaxWidth = wa.Width;
-            MaxHeight = wa.Height;
+            MaxWidth = Math.Min(MaxWidth, wa.Width);
+            MaxHeight = Math.Min(MaxHeight, wa.Height);
             if (Width > wa.Width) Width = wa.Width;
             if (Height > wa.Height) Height = wa.Height;
         };
