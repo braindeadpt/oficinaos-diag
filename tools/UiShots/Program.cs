@@ -1007,13 +1007,15 @@ internal static class Program
         try
         {
             Definir(vazio, "_report", RelatorioAtual());
-            var botao = (Button)vazio.FindName("CompareButton")!;
             var consola = (TextBox)vazio.FindName("Console")!;
-            botao.IsEnabled = true;
+            ((Button)vazio.FindName("CompareButton")!).IsEnabled = true;
             consola.Clear();
-            Clicar(botao);
-            Verificar("botões: COMPARAR sem scan anterior diz que não há nenhum",
-                consola.Text.Contains(L10n.T("log.cmp.none")));
+            // Fechada também quando não devia abrir: se uma regressão a abrir
+            // com o histórico vazio, isto reprova em segundos em vez de deixar
+            // o `ShowDialog` pendurado até ao vigia de 3 minutos.
+            var semAnterior = Comparar(vazio);
+            Verificar($"botões: COMPARAR sem scan anterior diz que não há nenhum (abriu: {semAnterior.Abriu})",
+                consola.Text.Contains(L10n.T("log.cmp.none")) && !semAnterior.Abriu);
         }
         finally { Fechar(vazio); }
 
@@ -1029,47 +1031,16 @@ internal static class Program
         try
         {
             Definir(comHistorico, "_report", RelatorioAtual());
-            var botao = (Button)comHistorico.FindName("CompareButton")!;
-            botao.IsEnabled = true;
+            ((Button)comHistorico.FindName("CompareButton")!).IsEnabled = true;
 
-            // A janela é modal: abre dentro do clique e tem de ser lida e
-            // fechada de dentro do dispatcher, como as capturas.
-            var achou = false;
-            var scans = -1;
-            var linhas = -1;
-            string? antes = null, agora = null, semAnterior = null;
-            var relogio = new DispatcherTimer(DispatcherPriority.Background, comHistorico.Dispatcher)
-            {
-                Interval = TimeSpan.FromMilliseconds(100),
-            };
-            relogio.Tick += (_, _) =>
-            {
-                if (Application.Current.Windows.OfType<CompareWindow>().FirstOrDefault() is not { } cmp)
-                    return;
-                relogio.Stop();
-                achou = true;
-                cmp.UpdateLayout();
-                scans = ((ListBox)cmp.FindName("ScanList")).Items.Count;
-                var lista = (((ItemsControl)cmp.FindName("DiffList")).ItemsSource
-                    as IEnumerable<DiffRow>)?.ToList() ?? [];
-                linhas = lista.Count;
-                antes = lista.FirstOrDefault(r => r.Key == "battery.health")?.Before;
-                agora = lista.FirstOrDefault(r => r.Key == "battery.health")?.Now;
-                semAnterior = lista.FirstOrDefault(r => r.Key == "screen.deadpixels")?.Before;
-                Fechar(cmp);
-            };
-            relogio.Start();
-            var clicou = Clicar(botao);
-            for (var i = 0; i < 40 && !achou; i++) Pausa(50);
-            relogio.Stop();
-
-            Verificar($"botões: COMPARAR abriu a janela com o scan anterior ({scans} scan(s))",
-                clicou && achou && scans == 1);
-            Verificar($"botões: COMPARAR lista as seis chaves do diff ({linhas})", linhas == 6);
-            Verificar($"botões: COMPARAR mostra 78% [warn] → 94% [pass] ('{antes}' → '{agora}')",
-                antes == "78% [warn]" && agora == "94% [pass]");
-            Verificar($"botões: COMPARAR marca o que não existia antes ('{semAnterior}')",
-                semAnterior == "—");
+            var r = Comparar(comHistorico);
+            Verificar($"botões: COMPARAR abriu a janela com o scan anterior ({r.Scans} scan(s))",
+                r.Clicou && r.Abriu && r.Scans == 1);
+            Verificar($"botões: COMPARAR lista as seis chaves do diff ({r.Linhas})", r.Linhas == 6);
+            Verificar($"botões: COMPARAR mostra 78% [warn] → 94% [pass] ('{r.Antes}' → '{r.Agora}')",
+                r.Antes == "78% [warn]" && r.Agora == "94% [pass]");
+            Verificar($"botões: COMPARAR marca o que não existia antes ('{r.SemAntes}')",
+                r.SemAntes == "—");
         }
         finally { Fechar(comHistorico); }
 
@@ -1089,6 +1060,57 @@ internal static class Program
                 textos.Any(t => t.Contains("Pixel 8")));
         }
         finally { Fechar(moldura); }
+    }
+
+    /// <summary>
+    /// Clica em COMPARAR e, se a janela abrir (é modal), lê-a e fecha-a de
+    /// dentro do dispatcher. Nunca deixa o `ShowDialog` pendurado: mesmo quando
+    /// a janela não devia abrir, fecha-a.
+    /// </summary>
+    private static Comparacao Comparar(Window janela)
+    {
+        var r = new Comparacao();
+        var relogio = new DispatcherTimer(DispatcherPriority.Background, janela.Dispatcher)
+        {
+            Interval = TimeSpan.FromMilliseconds(100),
+        };
+        relogio.Tick += (_, _) =>
+        {
+            if (Application.Current.Windows.OfType<CompareWindow>().FirstOrDefault() is not { } cmp)
+                return;
+            relogio.Stop();
+            r.Abriu = true;
+            cmp.UpdateLayout();
+            r.Scans = ((ListBox)cmp.FindName("ScanList")).Items.Count;
+            var lista = (((ItemsControl)cmp.FindName("DiffList")).ItemsSource
+                as IEnumerable<DiffRow>)?.ToList() ?? [];
+            r.Linhas = lista.Count;
+            r.Antes = lista.FirstOrDefault(x => x.Key == "battery.health")?.Before;
+            r.Agora = lista.FirstOrDefault(x => x.Key == "battery.health")?.Now;
+            r.SemAntes = lista.FirstOrDefault(x => x.Key == "screen.deadpixels")?.Before;
+            Fechar(cmp);
+        };
+        relogio.Start();
+        try
+        {
+            r.Clicou = Clicar((Button)janela.FindName("CompareButton")!);
+            // Caso raro: a janela pode abrir depois de o clique voltar.
+            for (var i = 0; i < 4 && !r.Abriu; i++) Pausa(50);
+        }
+        finally { relogio.Stop(); }
+        return r;
+    }
+
+    /// <summary>O que a janela de comparação mostrou (ou não).</summary>
+    private sealed class Comparacao
+    {
+        public bool Clicou;
+        public bool Abriu;
+        public int Scans = -1;
+        public int Linhas = -1;
+        public string? Antes;
+        public string? Agora;
+        public string? SemAntes;
     }
 
     /// <summary>Uma `MainWindow` com um histórico emprestado (construtor interno).</summary>
