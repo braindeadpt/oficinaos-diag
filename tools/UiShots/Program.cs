@@ -207,7 +207,22 @@ internal static class Program
             var enc = new PngBitmapEncoder();
             enc.Frames.Add(BitmapFrame.Create(bmp));
             using (var fs = File.Create(ficheiro)) enc.Save(fs);
-            Console.WriteLine($"  {Path.GetFileName(ficheiro),-26} {bmp.PixelWidth}x{bmp.PixelHeight}  foco: {foco}");
+            // Diagnóstico: se o fundo dos descendentes passar da altura do
+            // conteúdo, é a app que arruma fora da janela; se ficar dentro, o
+            // corte é da captura.
+            double fundo = 0;
+            foreach (var e in Descendentes<FrameworkElement>(raiz))
+            {
+                try
+                {
+                    var p = e.TransformToAncestor(raiz).Transform(new Point(0, e.ActualHeight));
+                    fundo = Math.Max(fundo, p.Y);
+                }
+                catch { /* ainda não ligado à árvore */ }
+            }
+            Console.WriteLine($"  {Path.GetFileName(ficheiro),-26} {bmp.PixelWidth}x{bmp.PixelHeight}  " +
+                              $"janela {janela.ActualHeight:0} foco: {foco}  fundo {fundo:0} " +
+                              (fundo > raiz.ActualHeight + 1 ? "FORA DA JANELA" : ""));
         }
         catch (Exception ex)
         {
@@ -244,6 +259,17 @@ internal static class Program
             return botao.IsKeyboardFocused ? "sim" : "não";
         }
         catch { return "não"; }
+    }
+
+    private static IEnumerable<T> Descendentes<T>(DependencyObject raiz) where T : DependencyObject
+    {
+        var n = VisualTreeHelper.GetChildrenCount(raiz);
+        for (var i = 0; i < n; i++)
+        {
+            var filho = VisualTreeHelper.GetChild(raiz, i);
+            if (filho is T t) yield return t;
+            foreach (var neto in Descendentes<T>(filho)) yield return neto;
+        }
     }
 
     private static T? Primeiro<T>(DependencyObject raiz) where T : DependencyObject
