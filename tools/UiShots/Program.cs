@@ -84,6 +84,11 @@ internal static class Program
             Capturar(() => new SettingsDialog(DiagConfig.Load()),
                 Path.Combine(destino, $"opcoes-{tema}-614.png"), 420, 640,
                 workArea: 614, acoes: ["SaveBtn", "CancelBtn"]);
+            // A 614 as Opções ainda cabem inteiras; com o scroll forçado é que se
+            // prova que os botões não vão com os campos.
+            Capturar(() => new SettingsDialog(DiagConfig.Load()),
+                Path.Combine(destino, $"opcoes-{tema}-614-curta.png"), 420, 640,
+                LimitarScroll, workArea: 614, acoes: ["SaveBtn", "CancelBtn"]);
             // ecrã curto: força o scroll das Opções (o que o SizeToContent escondia)
             Capturar(() => new SettingsDialog(DiagConfig.Load()),
                 Path.Combine(destino, $"opcoes-{tema}-curta.png"), 420, 560, LimitarScroll);
