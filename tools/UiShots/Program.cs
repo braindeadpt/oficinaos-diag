@@ -169,15 +169,16 @@ internal static class Program
         // `Application.Run` e não um `Main` a empurrar frames: é o modelo em
         // que a app real corre e o que faz uma janela contar como diálogo.
         // Sem loop, o `DialogResult` do APLICAR/GUARDAR/OK rebentava, e por isso
-        // o lado que escreve dados nunca tinha prova nenhuma.
+        // o lado que escreve dados nunca tinha prova nenhuma. O corpo entra na
+        // fila antes de o loop arrancar — a fila só é servida dentro do `Run`,
+        // por isso não há corrida entre os dois.
         var codigo = 1;
-        app.Startup += (_, _) => app.Dispatcher.BeginInvoke(DispatcherPriority.Background,
-            new Action(() =>
-            {
-                try { codigo = Corpo(destino, logUi); }
-                catch (Exception ex) { Anotar("UI", ex); codigo = 1; }
-                finally { app.Shutdown(); }
-            }));
+        app.Dispatcher.BeginInvoke(DispatcherPriority.Background, new Action(() =>
+        {
+            try { codigo = Corpo(destino, logUi); }
+            catch (Exception ex) { Anotar("UI", ex); codigo = 1; }
+            finally { app.Shutdown(); }
+        }));
         app.Run();
         return codigo;
     }
@@ -189,7 +190,6 @@ internal static class Program
     private static int Corpo(string destino, string logUi)
     {
         L10n.Set("pt");
-
 
         var relatorio = RelatorioAtual();
         var anterior = RelatorioAnterior();
@@ -211,9 +211,6 @@ internal static class Program
                 Path.Combine(destino, $"opcoes-{tema}.png"), 420, 640);
             Capturar(() => new ChecklistDialog(relatorio),
                 Path.Combine(destino, $"checklist-{tema}.png"), 560, 620);
-            // tamanho por omissão do diálogo: é onde o utilizador o vê abrir
-            Capturar(() => new ChecklistDialog(relatorio),
-                Path.Combine(destino, $"checklist-{tema}-default.png"), 560, 620);
             // janela apertada: os itens têm de rolar e os botões continuar visíveis
             Capturar(() => new ChecklistDialog(relatorio),
                 Path.Combine(destino, $"checklist-{tema}-baixa.png"), 560, 480);
@@ -272,8 +269,6 @@ internal static class Program
         ProvarFechoAPairar();
         Marcar("aviso da bancada");
         ProvarAvisoDaBancada();
-        Marcar("checklist a marcar");
-        ProvarChecklist();
         Marcar("cliques nos diálogos");
         ProvarCliques();
         Marcar("commits dos diálogos");
@@ -526,63 +521,6 @@ internal static class Program
     }
 
     /// <summary>
-    /// O checklist a funcionar num relatório novo: marcar o primeiro item (era
-    /// aqui que rebentava com `KeyNotFoundException` e a marca nunca pegava),
-    /// premir de novo para desmarcar, marcar outro item como n/t e confirmar
-    /// que o APPLY deixa linhas no relatório. Os botões são os reais e o
-    /// diálogo abre como modal, para o `DialogResult` valer.
-    /// </summary>
-    private static void ProvarChecklist()
-    {
-        Console.WriteLine("== checklist: marcar itens de um relatório novo ==");
-        ThemeManager.Apply(ThemeManager.Terminal);
-
-        var relatorio = RelatorioAtual();
-        var janela = new ChecklistDialog(relatorio)
-        {
-            WindowStartupLocation = WindowStartupLocation.Manual,
-            Left = -20_000,
-            Top = -20_000,
-            ShowInTaskbar = false,
-        };
-
-        // A escrita no relatório é provada por `ChecklistMarksTests` (sem WPF,
-        // por isso determinística). Aqui prova-se o que só a UI prova: o clique
-        // marca e volta a desmarcar — era o `KeyNotFoundException` que matava
-        // o checklist em relatórios novos.
-        janela.Show();
-        Respirar();
-        try
-        {
-            // Só o painel dos itens: a árvore começa nas ações (GUARDAR/CANCELAR
-            // são declaradas antes, no DockPanel) e um clique em GUARDAR define
-            // `DialogResult`, que fora do ShowDialog rebenta. Ordem dentro do
-            // painel: por item, [ok, defeito, n/t].
-            var itens = janela.FindName("ItemsPanel") as DependencyObject;
-            var botoes = itens is null ? [] : Descendentes<Button>(itens).ToArray();
-            Verificar("checklist: os botões dos itens existem", botoes.Length >= 6);
-            if (botoes.Length < 6) return;
-
-            Clicar(botoes[0]); // 1ª marca: o caso que rebentava
-            Verificar("checklist: a marca pegou (botão a negrito)",
-                botoes[0].FontWeight == FontWeights.Bold);
-
-            Clicar(botoes[0]); // premir de novo desmarca
-            Verificar("checklist: premir outra vez desmarca",
-                botoes[0].FontWeight == FontWeights.Normal);
-
-            Clicar(botoes[0]);
-            Clicar(botoes[5]); // 2º item em n/t
-            Verificar("checklist: marcar outro item não desmarca o primeiro",
-                botoes[0].FontWeight == FontWeights.Bold && botoes[5].FontWeight == FontWeights.Bold);
-        }
-        finally
-        {
-            try { janela.Close(); } catch { }
-        }
-    }
-
-    /// <summary>
     /// Clica um botão a sério e, se o handler rebentar, regista a mesma linha
     /// «! UI: …» que o `App` real escreve — em vez de deixar a exceção matar o
     /// processo sem dizer qual foi. Devolve `false` quando houve exceção.
@@ -607,13 +545,24 @@ internal static class Program
         }
     }
 
-    /// <summary>Abre um diálogo fora do ecrã, como as capturas.</summary>
-    private static void Abrir(Window janela)
+    /// <summary>
+    /// Põe a janela fora do ecrã e fora da barra de tarefas, como as capturas:
+    /// num runner sem desktop interactivo isto impede que as janelas se roubem
+    /// o foco umas às outras.
+    /// </summary>
+    private static T ForaDoEcra<T>(T janela) where T : Window
     {
         janela.WindowStartupLocation = WindowStartupLocation.Manual;
         janela.Left = -20_000;
         janela.Top = -20_000;
         janela.ShowInTaskbar = false;
+        return janela;
+    }
+
+    /// <summary>Abre um diálogo fora do ecrã, como as capturas.</summary>
+    private static void Abrir(Window janela)
+    {
+        ForaDoEcra(janela);
         janela.Show();
         Respirar();
     }
@@ -633,10 +582,7 @@ internal static class Program
     private static bool? AbrirModal(Window janela, Action<Window> interagir, string rotulo,
         int timeoutMs = 15_000)
     {
-        janela.WindowStartupLocation = WindowStartupLocation.Manual;
-        janela.Left = -20_000;
-        janela.Top = -20_000;
-        janela.ShowInTaskbar = false;
+        ForaDoEcra(janela);
 
         var interagiu = false;
         var estourou = false;
@@ -935,9 +881,6 @@ internal static class Program
         Verificar("commit: envio ENVIAR devolveu OK", enviou == true);
         Verificar("commit: o código e o contacto leram-se",
             envio.ShopCode == "ABC123" && envio.CustomerName == "Ana Silva");
-
-        ThemeManager.Apply(ThemeManager.Terminal);
-        L10n.Set("pt");
     }
 
     /// <summary>As três vias do `App` que transformam uma exceção numa linha de log.</summary>
@@ -1004,7 +947,9 @@ internal static class Program
         ThemeManager.Apply(ThemeManager.Terminal);
         L10n.Set("pt");
 
-        // 1. Checklist: os três botões de uma linha, por esta ordem.
+        // 1. Checklist: os três botões de uma linha e a alternância de cada um.
+        // Era aqui que o `SetState` rebentava com `KeyNotFoundException` e a
+        // marca nunca pegava — por isso o clique tem de pegar, de facto.
         Marcar("clique: checklist");
         var relatorio = RelatorioAtual();
         var checklist = new ChecklistDialog(relatorio);
@@ -1014,8 +959,8 @@ internal static class Program
             var itens = checklist.FindName("ItemsPanel") as DependencyObject;
             var marcas = itens is null
                 ? Array.Empty<Button>()
-                : Descendentes<Button>(itens).Take(3).ToArray();
-            if (marcas.Length < 3)
+                : Descendentes<Button>(itens).ToArray();
+            if (marcas.Length < 6)
             {
                 Verificar("clique: o checklist tem ok/defeito/n/t", false);
             }
@@ -1029,6 +974,12 @@ internal static class Program
                 Verificar("clique: checklist 'n/t' troca a marca",
                     Clicar(marcas[2]) && marcas[2].FontWeight == FontWeights.Bold
                     && marcas[1].FontWeight == FontWeights.Normal);
+                Verificar("checklist: premir outra vez desmarca",
+                    Clicar(marcas[2]) && marcas[2].FontWeight == FontWeights.Normal);
+                Verificar("checklist: marcar outro item não desmarca o primeiro",
+                    Clicar(marcas[0]) && Clicar(marcas[5])
+                    && marcas[0].FontWeight == FontWeights.Bold
+                    && marcas[5].FontWeight == FontWeights.Bold);
             }
         }
         finally { Fechar(checklist); }
@@ -1116,15 +1067,10 @@ internal static class Program
         Console.WriteLine("== aviso ao fechar a bancada a meio da sessão ==");
         ThemeManager.Apply(ThemeManager.Terminal);
 
-        var janela = new BenchWindow("Pixel 8 · android", () => Task.FromResult<LiveTelemetry?>(null))
-        {
-            WindowStartupLocation = WindowStartupLocation.Manual,
-            Left = -20_000,
-            Top = -20_000,
-            ShowInTaskbar = false,
-            Width = 920,
-            Height = 620,
-        };
+        var janela = ForaDoEcra(new BenchWindow("Pixel 8 · android",
+            () => Task.FromResult<LiveTelemetry?>(null)));
+        janela.Width = 920;
+        janela.Height = 620;
         janela.Show();
         Respirar();
         try
@@ -1224,11 +1170,7 @@ internal static class Program
         Console.WriteLine("== troca de tema com a janela aberta ==");
 
         ThemeManager.Apply(ThemeManager.Terminal);
-        var janela = ComRelatorio(new MainWindow(), relatorio);
-        janela.WindowStartupLocation = WindowStartupLocation.Manual;
-        janela.ShowInTaskbar = false;
-        janela.Left = -20_000;
-        janela.Top = -20_000;
+        var janela = ForaDoEcra(ComRelatorio(new MainWindow(), relatorio));
         janela.Width = 1000;
         janela.Height = 700;
         janela.Show();
@@ -1294,11 +1236,7 @@ internal static class Program
         foreach (var (nome, criar) in dialogos)
         {
             ThemeManager.Apply(ThemeManager.Terminal);
-            var dialogo = criar();
-            dialogo.WindowStartupLocation = WindowStartupLocation.Manual;
-            dialogo.Left = -20_000;
-            dialogo.Top = -20_000;
-            dialogo.ShowInTaskbar = false;
+            var dialogo = ForaDoEcra(criar());
             dialogo.Show();
             Respirar();
             try
@@ -1334,13 +1272,7 @@ internal static class Program
     /// </summary>
     private static void ProvarCombo(string destino, string tema)
     {
-        var janela = new SettingsDialog(DiagConfig.Load())
-        {
-            WindowStartupLocation = WindowStartupLocation.Manual,
-            Left = -20_000,
-            Top = -20_000,
-            ShowInTaskbar = false,
-        };
+        var janela = ForaDoEcra(new SettingsDialog(DiagConfig.Load()));
         janela.Show();
         Respirar();
         try

@@ -57,7 +57,7 @@ const mutantes = [
     de: "        var s = _state.GetValueOrDefault(key);",
     para: "        var s = _state[key]; // mutante: rebenta em item sem marca",
     guarda: "uishots",
-    prova: "checklist: a marca pegou",
+    prova: "clique: checklist 'ok' marca o item",
   },
   {
     nome: "GUARDAR deixa de gravar o idioma",
