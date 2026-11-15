@@ -150,44 +150,34 @@ internal static class Program
 
             Verificar($"{tema}: começa fechado", !combo.IsDropDownOpen);
 
-            // F4 é o acelerador documentado; Alt+Down é o outro. Tento os dois e
-            // digo qual abriu — se nenhum abrir, é defeito, não diferença de gosto.
-            Tecla(Key.F4);
-            Pausa(250);
-            var comF4 = combo.IsDropDownOpen;
-            if (!comF4)
-            {
-                Tecla(Key.Down, comAlt: true);
-                Pausa(250);
-            }
-            Verificar($"{tema}: dropdown abre por teclado ({(comF4 ? "F4" : "Alt+Down")})",
-                combo.IsDropDownOpen);
+            Verificar($"{tema}: dropdown abre por teclado", AbrirPorTeclado(combo));
 
-            if (combo.IsDropDownOpen
-                && combo.Template.FindName("PART_Popup", combo) is Popup { Child: FrameworkElement painel })
+            var popup = combo.Template.FindName("PART_Popup", combo) as Popup;
+            var painel = popup?.Child as FrameworkElement;
+            Verificar($"{tema}: popup aberto",
+                Esperar(() => popup is { IsOpen: true } && painel is { IsVisible: true }, 2000));
+            if (painel is not null)
             {
                 painel.UpdateLayout();
                 Gravar(painel, Path.Combine(destino, $"combo-{tema}-aberto.png"));
             }
-            else Verificar($"{tema}: popup encontrado", false);
 
+            // Down destaca o item seguinte; Enter confirma. Espera-se pelo
+            // destaque em vez de dormir — era isso que tornava isto intermitente.
             var antes = combo.SelectedIndex;
+            var esperado = Math.Min(antes + 1, combo.Items.Count - 1);
+            var alvo = combo.ItemContainerGenerator.ContainerFromIndex(esperado) as ComboBoxItem;
             Tecla(Key.Down);
-            Pausa(200);
+            Esperar(() => alvo?.IsHighlighted == true, 2000);
             Tecla(Key.Enter);
-            Pausa(200);
-            Verificar($"{tema}: Enter fecha", !combo.IsDropDownOpen);
-            Verificar($"{tema}: Down+Enter muda a seleção ({antes} → {combo.SelectedIndex})",
-                combo.SelectedIndex != antes);
+            Verificar($"{tema}: Enter fecha", Esperar(() => !combo.IsDropDownOpen, 2000));
+            Verificar($"{tema}: Down+Enter seleciona o item {esperado} (de {antes} para {combo.SelectedIndex})",
+                combo.SelectedIndex == esperado);
 
             var depois = combo.SelectedIndex;
-            Tecla(Key.F4);
-            Pausa(250);
-            if (!combo.IsDropDownOpen) { Tecla(Key.Down, comAlt: true); Pausa(250); }
-            Verificar($"{tema}: abre outra vez", combo.IsDropDownOpen);
+            Verificar($"{tema}: abre outra vez", AbrirPorTeclado(combo));
             Tecla(Key.Escape);
-            Pausa(200);
-            Verificar($"{tema}: Esc fecha", !combo.IsDropDownOpen);
+            Verificar($"{tema}: Esc fecha", Esperar(() => !combo.IsDropDownOpen, 2000));
             Verificar($"{tema}: Esc não muda a seleção", combo.SelectedIndex == depois);
         }
         finally { janela.Close(); }
@@ -205,6 +195,34 @@ internal static class Program
         keybd_event(vk, 0, 0, UIntPtr.Zero);
         keybd_event(vk, 0, KeyUp, UIntPtr.Zero);
         if (comAlt) keybd_event(VkMenu, 0, KeyUp, UIntPtr.Zero);
+    }
+
+    /// <summary>
+    /// F4 é o acelerador documentado; Alt+Down é o outro. Devolve se o
+    /// dropdown ficou aberto, esperando pela condição em vez de dormir.
+    /// </summary>
+    private static bool AbrirPorTeclado(ComboBox combo)
+    {
+        Tecla(Key.F4);
+        if (Esperar(() => combo.IsDropDownOpen, 1500)) return true;
+        Tecla(Key.Down, comAlt: true);
+        return Esperar(() => combo.IsDropDownOpen, 1500);
+    }
+
+    /// <summary>
+    /// Espera que a condição fique verdadeira, bombando mensagens, até ao
+    /// timeout. Pausas fixas davam um teste intermitente em runner carregado:
+    /// 200ms chegavam numa corrida e não na seguinte.
+    /// </summary>
+    private static bool Esperar(Func<bool> condicao, int timeoutMs)
+    {
+        var fim = Environment.TickCount64 + timeoutMs;
+        while (Environment.TickCount64 < fim)
+        {
+            if (condicao()) return true;
+            Pausa(20);
+        }
+        return condicao();
     }
 
     /// <summary>Bombear o dispatcher/mensagens durante N ms (as teclas entram por WM_KEYDOWN).</summary>

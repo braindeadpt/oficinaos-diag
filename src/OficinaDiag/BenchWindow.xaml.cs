@@ -152,7 +152,9 @@ public sealed partial class BenchWindow : Window
 
     private void Close_Click(object sender, RoutedEventArgs e)
     {
-        DialogResult = false;
+        // Só Close(): pôr DialogResult antes disparava o fecho e o OnClosing a
+        // seguir, o que podia abrir a confirmação de abandono duas vezes. Sem
+        // DialogResult, ShowDialog devolve false na mesma.
         Close();
     }
 

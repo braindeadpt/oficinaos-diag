@@ -27,6 +27,9 @@ public partial class SettingsDialog : Window
         _origLang = L10n.Current;
         _origTheme = ThemeManager.Current;
         InitializeComponent();
+        // SizeToContent pode exceder a work area em ecrãs baixos: o MaxHeight
+        // faz o ScrollViewer entrar em jogo em vez de a janela sair do ecrã.
+        MaxHeight = SystemParameters.WorkArea.Height;
         ApplyStrings();
         ThemeManager.Changed += ApplyStrings;
 

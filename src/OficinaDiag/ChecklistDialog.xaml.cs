@@ -39,6 +39,17 @@ public sealed partial class ChecklistDialog : Window
         foreach (var item in Grader.ChecklistItems)
             ItemsPanel.Children.Add(BuildRow(item));
         RefreshPhotoCount();
+
+        // Nunca maior que o ecrã: a 620 DIP num portátil 1366×768 a 125% (614
+        // DIP úteis) a janela excedia a work area e voltava a cortar as ações.
+        Loaded += (_, _) =>
+        {
+            var wa = SystemParameters.WorkArea;
+            MaxWidth = wa.Width;
+            MaxHeight = wa.Height;
+            if (Width > wa.Width) Width = wa.Width;
+            if (Height > wa.Height) Height = wa.Height;
+        };
     }
 
     private Grid BuildRow(ChecklistItem item)
