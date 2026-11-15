@@ -39,6 +39,16 @@ jobs:
       - name: Test
         run: dotnet test tests/OficinaDiag.Tests -c Release
 
+      - name: Mutation check (a suite morde onde diz morder?)
+        # A regra «provado por mutação» deixa de depender de alguém se lembrar:
+        # `--seco` confirma que os seis mutantes ainda aplicam (os da UI também,
+        # que só correm num Windows) e a segunda chamada exige mesmo vermelho nos
+        # que `dotnet test` cobre. Numa só máquina chega: o teste é de suite.
+        if: runner.os == 'Linux'
+        run: |
+          node tools/mutation-check.mjs --seco
+          node tools/mutation-check.mjs
+
       - name: Stress tree-kill tests
         if: inputs.stress
         shell: pwsh
