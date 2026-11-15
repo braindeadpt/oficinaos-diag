@@ -89,6 +89,14 @@ internal static class Program
             Capturar(() => new SettingsDialog(DiagConfig.Load()),
                 Path.Combine(destino, $"opcoes-{tema}-614-curta.png"), 420, 640,
                 LimitarScrollA(200), workArea: 614, acoes: ["SaveBtn", "CancelBtn"]);
+            // Abaixo do MinHeight do checklist (480): aqui vê-se se o MinHeight
+            // ganha ao limite da work area — se ganhar, as ações voltam a sair.
+            Capturar(() => new ChecklistDialog(relatorio),
+                Path.Combine(destino, $"checklist-{tema}-400.png"), 560, 620,
+                workArea: 400, acoes: ["ApplyBtn", "CancelBtn", "PhotoBtn"]);
+            Capturar(() => new SettingsDialog(DiagConfig.Load()),
+                Path.Combine(destino, $"opcoes-{tema}-400.png"), 420, 640,
+                workArea: 400, acoes: ["SaveBtn", "CancelBtn"]);
             // ecrã curto: força o scroll das Opções (o que o SizeToContent escondia)
             Capturar(() => new SettingsDialog(DiagConfig.Load()),
                 Path.Combine(destino, $"opcoes-{tema}-curta.png"), 420, 560, LimitarScroll);
@@ -115,6 +123,9 @@ internal static class Program
         Capturar(() => new InsuranceDialog(DiagConfig.Load()),
             Path.Combine(destino, "seguradora-614.png"), 480, 640,
             workArea: 614, acoes: ["GenerateBtn", "CancelBtn"]);
+        Capturar(() => new InsuranceDialog(DiagConfig.Load()),
+            Path.Combine(destino, "seguradora-400.png"), 480, 640,
+            workArea: 400, acoes: ["GenerateBtn", "CancelBtn"]);
         Capturar(() => new CompareWindow(relatorio, [anterior]),
             Path.Combine(destino, "comparar.png"), 780, 560);
         using (var gen = new QRCodeGenerator())
