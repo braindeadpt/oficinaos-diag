@@ -42,8 +42,21 @@ internal static class Program
     [DllImport("user32.dll")]
     private static extern void keybd_event(byte vk, byte scan, uint flags, UIntPtr extra);
 
+    [DllImport("user32.dll")]
+    private static extern bool PostMessage(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam);
+
+    [DllImport("user32.dll")]
+    private static extern bool IsWindow(IntPtr hWnd);
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    private static extern IntPtr FindWindow(string? lpClassName, string? lpWindowName);
+
     private const uint KeyUp = 0x0002;
     private const byte VkMenu = 0x12; // Alt
+    private const uint WmCommand = 0x0111;
+    private const uint WmClose = 0x0010;
+    private const int IdYes = 6;
+    private const int IdNo = 7;
 
     [STAThread]
     private static int Main(string[] args)
@@ -304,8 +317,20 @@ internal static class Program
         var fim = Environment.TickCount64 + timeoutMs;
         while (Environment.TickCount64 < fim)
         {
-            var dialogo = AutomationElement.RootElement.FindFirst(TreeScope.Children,
-                new PropertyCondition(AutomationElement.ClassNameProperty, "#32770"));
+            AutomationElement? dialogo;
+            try
+            {
+                dialogo = AutomationElement.RootElement.FindFirst(TreeScope.Children,
+                    new PropertyCondition(AutomationElement.ClassNameProperty, "#32770"));
+            }
+            catch
+            {
+                // Sem UIA não há texto a ler, mas a thread da UI não pode ficar
+                // presa no MessageBox: fecha-se pelo HWND.
+                var cru = FindWindow("#32770", null);
+                if (cru != IntPtr.Zero) PostMessage(cru, WmClose, IntPtr.Zero, IntPtr.Zero);
+                return null;
+            }
             if (dialogo is not null)
             {
                 var corpo = string.Join(" ", dialogo
@@ -324,18 +349,66 @@ internal static class Program
                 var alvo = botoes.FirstOrDefault(b =>
                         etiquetas.Contains(b.Current.Name.Trim(), StringComparer.OrdinalIgnoreCase))
                     ?? botoes.FirstOrDefault();
+                var hwnd = new IntPtr(dialogo.Current.NativeWindowHandle);
 
-                if (alvo?.GetCurrentPattern(InvokePattern.Pattern) is InvokePattern invocar)
+                var respondeu = false;
+                try
                 {
-                    invocar.Invoke();
-                    return corpo;
+                    if (alvo?.GetCurrentPattern(InvokePattern.Pattern) is InvokePattern invocar)
+                    {
+                        invocar.Invoke();
+                        respondeu = true;
+                    }
                 }
-                return null;
+                catch { /* sem InvokePattern: cai no WM_COMMAND */ }
+
+                // WM_COMMAND com o ID do botão é o caminho nativo do MessageBox.
+                // A thread da UI está bloqueada dentro do Show: se ninguém
+                // responder, o processo fica preso e o run pendura — por isso
+                // há sempre uma segunda tentativa e, no fim, um WM_CLOSE.
+                if (!respondeu && hwnd != IntPtr.Zero)
+                    PostMessage(hwnd, WmCommand,
+                        new IntPtr(resposta == "sim" ? IdYes : IdNo), IntPtr.Zero);
+                if (hwnd != IntPtr.Zero && !Sumiu(hwnd, 3000))
+                    PostMessage(hwnd, WmClose, IntPtr.Zero, IntPtr.Zero);
+
+                return corpo;
             }
             Thread.Sleep(100);
         }
         return null;
-    });
+    }).ContinueWith(t => t.Exception is null ? t.Result : FecharQualquerMessageBox());
+
+    /// <summary>Fecho de última instância: não deixar a thread da UI presa num diálogo.</summary>
+    private static string? FecharQualquerMessageBox()
+    {
+        try
+        {
+            var dialogo = AutomationElement.RootElement.FindFirst(TreeScope.Children,
+                new PropertyCondition(AutomationElement.ClassNameProperty, "#32770"));
+            var hwnd = dialogo is null ? IntPtr.Zero : new IntPtr(dialogo.Current.NativeWindowHandle);
+            if (hwnd == IntPtr.Zero) hwnd = FindWindow("#32770", null);
+            if (hwnd != IntPtr.Zero) PostMessage(hwnd, WmClose, IntPtr.Zero, IntPtr.Zero);
+        }
+        catch
+        {
+            var hwnd = FindWindow("#32770", null);
+            if (hwnd != IntPtr.Zero) PostMessage(hwnd, WmClose, IntPtr.Zero, IntPtr.Zero);
+        }
+        return null;
+    }
+
+    /// <summary>O diálogo já desapareceu? (poling curto, sem sleep fixo)</summary>
+    private static bool Sumiu(IntPtr hwnd, int timeoutMs)
+    {
+        var fim = Environment.TickCount64 + timeoutMs;
+        while (Environment.TickCount64 < fim)
+        {
+            if (!IsWindow(hwnd)) return true;
+            Thread.Sleep(50);
+        }
+        return !IsWindow(hwnd);
+    }
 
     /// <summary>
     /// O aviso de perda de trabalho da bancada: o `MessageBox` é janela nativa,
