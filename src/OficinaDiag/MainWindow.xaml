@@ -70,7 +70,11 @@
 
                 <!-- console -->
                 <Border BorderBrush="{DynamicResource LineBrush}" BorderThickness="0,0,1,0" Margin="0">
+                    <!-- TextWrapping: linhas longas do log ficavam cortadas à
+                         direita, sem forma de ler o fim -->
                     <TextBox x:Name="Console" IsReadOnly="True" AcceptsReturn="True"
+                             TextWrapping="Wrap"
+                             HorizontalScrollBarVisibility="Disabled"
                              VerticalScrollBarVisibility="Auto"
                              Background="{DynamicResource PanelBrush}" BorderThickness="0"
                              Foreground="{DynamicResource FgBrush}" CaretBrush="{DynamicResource FgBrush}"
