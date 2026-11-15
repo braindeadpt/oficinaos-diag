@@ -29,6 +29,14 @@ public sealed class DiagConfigIsolationTests
         // No processo filho a raiz vem do ambiente e **não** se usa o seam:
         // é o caminho de produção (Load/Save com a raiz por omissão) que tem
         // de ficar isolado. Em corrida solitária, root temporário via seam.
+        // `--no-build` aceita um bin doutra configuração se ele existir (um
+        // Release antigo, por exemplo): sem esta verificação o processo filho
+        // podia correr código que não é o que está a ser testado.
+        var esperada = Environment.GetEnvironmentVariable("OFICINAOS_TEST_CONFIG");
+        if (esperada is not null)
+            Assert.Contains($"{Path.DirectorySeparatorChar}{esperada}{Path.DirectorySeparatorChar}",
+                AppContext.BaseDirectory);
+
         var doAmbiente = Environment.GetEnvironmentVariable("OFICINAOS_CONFIG_DIR");
         var anterior = doAmbiente is null
             ? DiagConfig.RedirectTo(Path.Combine(Path.GetTempPath(), $"config-solo-{Guid.NewGuid():N}"))
@@ -83,6 +91,20 @@ public sealed class DiagConfigIsolationTests
     }
 
     /// <summary>
+    /// Configuração do assembly que está a correr (`Debug`, `Release`, ou o
+    /// que o `-c` tiver sido): sai do caminho do bin, `…/bin/&lt;config&gt;/&lt;tfm&gt;/`.
+    /// Fixar `Release` fazia um `dotnet test` normal em Debug falhar nos
+    /// filhos — pediam um binário que ninguém tinha compilado.
+    /// </summary>
+    private static string Configuracao()
+    {
+        var partes = AppContext.BaseDirectory.Split(
+            Path.DirectorySeparatorChar, StringSplitOptions.RemoveEmptyEntries);
+        var i = Array.LastIndexOf(partes, "bin");
+        return i >= 0 && i + 1 < partes.Length ? partes[i + 1] : "Release";
+    }
+
+    /// <summary>
     /// Corre a suite filtrada ao worker num processo novo, com a raiz e o nome
     /// de loja no ambiente. `--no-build`: o binário já existe (o processo pai
     /// compilou-o) e dois MSBuild a escrever no mesmo obj seria outra corrida.
@@ -98,12 +120,13 @@ public sealed class DiagConfigIsolationTests
         };
         foreach (var arg in new[]
         {
-            "test", "tests/OficinaDiag.Tests", "-c", "Release", "--no-build",
+            "test", "tests/OficinaDiag.Tests", "-c", Configuracao(), "--no-build",
             "--filter", "FullyQualifiedName~SaveELoad_FazemRoundTripNoRootAtual",
         }) psi.ArgumentList.Add(arg);
 
         psi.Environment["OFICINAOS_CONFIG_DIR"] = root;
         psi.Environment["OFICINAOS_TEST_SHOP"] = loja;
+        psi.Environment["OFICINAOS_TEST_CONFIG"] = Configuracao();
 
         using var p = Process.Start(psi)!;
         var stdout = p.StandardOutput.ReadToEndAsync();
