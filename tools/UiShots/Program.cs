@@ -179,10 +179,14 @@ internal static class Program
             Respirar();
 
             var fundoAntes = Cor(Application.Current.TryFindResource("BgBrush") as Brush);
-            var item = janela.FindName("ResultsList") is ItemsControl lista
+            // A lista é reconstruída na troca de tema (RefreshResults), por isso o
+            // TextBlock tem de ser buscado de novo — segurar a referência antiga
+            // media um elemento já fora da árvore e dava um falso negativo.
+            var itemAntes = janela.FindName("ResultsList") is ItemsControl lista
                 ? Primeiro<TextBlock>(lista)
                 : null;
-            var textoAntes = Cor(item?.Foreground);
+            var textoAntes = Cor(itemAntes?.Foreground);
+            var tagAntes = itemAntes?.Text;
 
             Gravar(raiz, Path.Combine(destino, "troca-terminal.png"));
             Console.WriteLine("  troca-terminal.png");
@@ -193,7 +197,11 @@ internal static class Program
             Respirar();
 
             var fundoDepois = Cor(Application.Current.TryFindResource("BgBrush") as Brush);
-            var textoDepois = Cor(item?.Foreground);
+            var itemDepois = janela.FindName("ResultsList") is ItemsControl listaDepois
+                ? Primeiro<TextBlock>(listaDepois)
+                : null;
+            var textoDepois = Cor(itemDepois?.Foreground);
+            var tagDepois = itemDepois?.Text;
 
             Verificar($"troca: fundo muda (terminal {fundoAntes} → win95 {fundoDepois})",
                 fundoAntes is not null && fundoDepois is not null && fundoAntes != fundoDepois);
@@ -201,6 +209,9 @@ internal static class Program
                 Cor(janela.Background) is { } fundoJanela && fundoJanela == fundoDepois);
             Verificar($"troca: ResultsList repinta sem reabrir ({textoAntes} → {textoDepois})",
                 textoAntes is not null && textoDepois is not null && textoAntes != textoDepois);
+            // Formato: o terminal pinta `[pass]`, os outros temas `pass`.
+            Verificar($"troca: ResultsList muda de formato ('{tagAntes}' → '{tagDepois}')",
+                tagAntes?.StartsWith('[') == true && tagDepois?.StartsWith('[') == false);
 
             Gravar(raiz, Path.Combine(destino, "troca-win95.png"));
             Console.WriteLine("  troca-win95.png");
