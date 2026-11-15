@@ -447,7 +447,8 @@ public partial class MainWindow : Window
 
         var rotulo = (FindName(acao) as ContentControl)?.Content?.ToString() ?? acao;
         Log(L10n.F("log.err.disabled", rotulo));
-        if (FindName(acao) is UIElement alvo) alvo.IsEnabled = false;
+        // SONDA (a remover): não desliga o botão
+        // if (FindName(acao) is UIElement alvo) alvo.IsEnabled = false;
         MessageBox.Show(this, L10n.F("err.repeated", rotulo), L10n.T("err.repeated.title"),
             MessageBoxButton.OK, MessageBoxImage.Warning);
     }
