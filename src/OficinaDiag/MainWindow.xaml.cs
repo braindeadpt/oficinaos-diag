@@ -10,11 +10,14 @@ using System.Windows.Data;
 using System.Windows.Input;
 using System.Windows.Media;
 using Microsoft.Win32;
+using System.Runtime.InteropServices;
+using System.Windows.Interop;
 using OficinaDiag.Devices;
 using OficinaDiag.Grading;
 using OficinaDiag.History;
 using OficinaDiag.Reports;
 using OficinaDiag.Tests;
+using OficinaDiag.Ui;
 using QRCoder;
 using System.Windows.Media.Imaging;
 using System.Diagnostics;
@@ -145,21 +148,21 @@ public partial class MainWindow : Window
         // Arranque é a melhor altura para escoar envios que ficaram à espera de
         // rede: o técnico acabou de ligar o PC à net da loja.
         _ = DrenarFilaAsync();
-        // nunca nascer maior que a área útil do ecrã (scaling/ecrãs pequenos)
-        var wa = SystemParameters.WorkArea;
-        MaxWidth = wa.Width;
-        MaxHeight = wa.Height;
-        if (Width > wa.Width) Width = wa.Width;
-        if (Height > wa.Height) Height = wa.Height;
-        // CenterScreen posiciona antes do clamp — re-centra dentro da work area
-        Left = wa.Left + Math.Max(0, (wa.Width - Width) / 2);
-        Top = wa.Top + Math.Max(0, (wa.Height - Height) / 2);
+        // A área útil é a do monitor onde a janela está, não a do principal:
+        // `SystemParameters.WorkArea` num portátil com dock deixa a janela
+        // maior do que o ecrã onde ela nasceu.
+        AjustarAoEcra();
+        // Mudar a escala com a app aberta (125% → 150%) não passava por aqui.
+        DpiChanged += (_, _) => AjustarAoEcra();
+        // Dois ecrãs com a mesma escala: o DPI não muda, a área sim.
+        LocationChanged += (_, _) => TalvezMudouDeMonitor();
         ApplyStrings();
         L10n.Changed += ApplyStrings;
         ThemeManager.Changed += ApplyStrings;
         var ver = System.Reflection.Assembly.GetExecutingAssembly().GetName().Version?.ToString(3);
         Title = $"OFICINA-OS // DIAG v{ver}";
-        Log(L10n.F("log.screen", wa.Width, wa.Height, Width, Height, Left, Top));
+        var area = AreaCorrente();
+        Log(L10n.F("log.screen", area.Width, area.Height, Width, Height, Left, Top));
         Log(L10n.T("log.boot"));
         Log(L10n.T("log.tagline"));
         // Uma atualização que falhou a meio é dita no arranque seguinte — o
@@ -986,6 +989,111 @@ public partial class MainWindow : Window
             if (enviados > 0) Log(L10n.F("log.outbox.enviados", enviados));
         }
         catch (Exception ex) { Log(L10n.F("log.err", ex.Message)); }
+    }
+
+    // ── a janela dentro do ecrã: DPI e multi-monitor ──────────────────────
+
+    private const uint MonitorDefaultToNearest = 2;
+    private IntPtr _monitorAtual;
+    private bool _aAjustar;
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct RectNativo { public int Left, Top, Right, Bottom; }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct MonitorInfo
+    {
+        public int cbSize;
+        public RectNativo rcMonitor;
+        public RectNativo rcWork;
+        public uint dwFlags;
+    }
+
+    [DllImport("user32.dll")]
+    private static extern IntPtr MonitorFromWindow(IntPtr hwnd, uint flags);
+
+    [DllImport("user32.dll")]
+    private static extern bool GetMonitorInfo(IntPtr monitor, ref MonitorInfo info);
+
+    /// <summary>
+    /// Área útil do monitor onde a janela está, em DIP. A conversão usa o DPI
+    /// da janela: a 150%, 1920 px são 1280 DIP — e é por isso que a janela
+    /// deixa de caber num portátil.
+    /// </summary>
+    private AreaEcra? AreaDoMonitor()
+    {
+        try
+        {
+            var hwnd = new WindowInteropHelper(this).Handle;
+            if (hwnd == IntPtr.Zero) return null;
+            var info = new MonitorInfo { cbSize = Marshal.SizeOf<MonitorInfo>() };
+            if (!GetMonitorInfo(MonitorFromWindow(hwnd, MonitorDefaultToNearest), ref info)) return null;
+            var escala = PresentationSource.FromVisual(this)?.CompositionTarget?.TransformToDevice.M11 ?? 1.0;
+            if (!(escala > 0)) escala = 1.0;
+            var dpi = 96 * escala;
+            var r = info.rcWork;
+            return new AreaEcra(
+                WindowFit.ParaDip(r.Left, dpi),
+                WindowFit.ParaDip(r.Top, dpi),
+                WindowFit.ParaDip(r.Right - r.Left, dpi),
+                WindowFit.ParaDip(r.Bottom - r.Top, dpi));
+        }
+        catch { return null; }
+    }
+
+    private AreaEcra AreaCorrente()
+    {
+        if (WindowFit.AreaForcada is { } forcada) return forcada;
+        if (AreaDoMonitor() is { } medida) return medida;
+        // Último recurso: a work area do WPF (monitor principal), como antes.
+        var wa = SystemParameters.WorkArea;
+        return new AreaEcra(wa.Left, wa.Top, wa.Width, wa.Height);
+    }
+
+    /// <summary>
+    /// Aplica a área útil à janela. É o único sítio que o faz: o arranque, o
+    /// `DpiChanged` e a mudança de monitor passam todos por aqui.
+    /// </summary>
+    internal void AjustarAoEcra()
+    {
+        if (_aAjustar) return;
+        _aAjustar = true;
+        try
+        {
+            var caixa = WindowFit.Calcular(AreaCorrente(), Pedida(Width, MinWidth), Pedida(Height, MinHeight));
+            MaxWidth = caixa.MaxWidth;
+            MaxHeight = caixa.MaxHeight;
+            if (double.IsFinite(caixa.Width)) Width = caixa.Width;
+            if (double.IsFinite(caixa.Height)) Height = caixa.Height;
+            // Posicionar depois de encolher: centrar com o tamanho antigo
+            // empurrava a janela para fora do ecrã pequeno.
+            if (caixa.Left is { } left) Left = left;
+            if (caixa.Top is { } top) Top = top;
+        }
+        finally { _aAjustar = false; }
+    }
+
+    /// <summary>`Width` pode estar a NaN antes do primeiro layout.</summary>
+    private static double Pedida(double valor, double minimo) =>
+        double.IsFinite(valor) && valor > 0 ? valor : minimo;
+
+    /// <summary>
+    /// Mudar de monitor sem mudar de escalão não levanta `DpiChanged` — a
+    /// janela ficava presa à área do ecrã anterior.
+    /// </summary>
+    private void TalvezMudouDeMonitor()
+    {
+        if (_aAjustar || WindowFit.AreaForcada is not null) return;
+        try
+        {
+            var hwnd = new WindowInteropHelper(this).Handle;
+            if (hwnd == IntPtr.Zero) return;
+            var monitor = MonitorFromWindow(hwnd, MonitorDefaultToNearest);
+            if (monitor == _monitorAtual) return;
+            _monitorAtual = monitor;
+            AjustarAoEcra();
+        }
+        catch { /* sem interop, fica a área anterior */ }
     }
 
     protected override void OnClosing(CancelEventArgs e)
