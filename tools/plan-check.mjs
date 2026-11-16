@@ -8,7 +8,7 @@
 //
 // Uso: node tools/plan-check.mjs   (da raiz do repositório)
 
-import { readFileSync, readdirSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 const erros = [];
@@ -83,6 +83,43 @@ for (const c of provados) {
     }
     if (!metodo && !new RegExp(`\\bclass ${classe}Tests\\b`).test(fonte)) {
       avisos.push(`${c.ticket}:${c.n}: ${ficheiro} não declara class ${classe}Tests`);
+    }
+  }
+}
+
+// --- 2b. contrato com o harness de UI ------------------------------------
+// A prova de um critério pode ser uma secção do `tools/UiShots`. Nada ligava
+// os dois lados: renomear uma `Verificar("…")` deixava o critério [x] a citar
+// uma secção que já não existia — o «prova emprestada» outra vez. Duas regras,
+// as duas verificadas aqui:
+//   1. quem cita o harness cita uma secção que existe (ou uma corrida do CI);
+//   2. nenhuma secção do harness fica sem um critério que a cite — prova que
+//      ninguém usa é prova que ninguém vê a correr.
+const caminhoHarness = join("tools", "UiShots", "Program.cs");
+let secoesHarness = [];
+if (existsSync(caminhoHarness)) {
+  const fonte = readFileSync(caminhoHarness, "utf8");
+  const literais = [...fonte.matchAll(/Verificar\(\s*"((?:[^"\\]|\\.)*)"/g)].map((m) => m[1]);
+  secoesHarness = [
+    ...new Set(literais.filter((l) => l.includes(":")).map((l) => l.slice(0, l.indexOf(":")))),
+  ];
+  for (const c of provados) {
+    if (!c.texto.includes("UiShots")) continue;
+    const citaSecao = secoesHarness.some((s) => c.texto.includes(`${s}:`));
+    const citaCorrida = /run `\d+`/.test(c.texto);
+    if (!citaSecao && !citaCorrida) {
+      erros.push(
+        `${c.ticket}:${c.n} cita \`tools/UiShots\` sem nomear uma secção que exista ` +
+          `(secções: ${secoesHarness.join(", ")}) nem uma corrida do CI`,
+      );
+    }
+  }
+  for (const s of secoesHarness) {
+    if (!provados.some((c) => c.texto.includes(`${s}:`))) {
+      erros.push(
+        `tools/UiShots tem a secção «${s}:» mas nenhum critério [x] a cita — ` +
+          `prova do harness sem critério no plano`,
+      );
     }
   }
 }
