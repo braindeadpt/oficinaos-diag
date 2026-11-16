@@ -178,7 +178,7 @@ public static class ReportBuilder
             sb.AppendLine($"<h1 style=\"font-size:1em\">NOTAS</h1><p>{System.Net.WebUtility.HtmlEncode(r.Notes)}</p>");
         AppendPhotos(sb, r);
         sb.AppendLine("<div class=\"footer\">oficinaos-diag · open source (MIT) · relatório gerado localmente</div></body></html>");
-        return sb.ToString();
+        return ReportIntegrity.Marcar(sb.ToString());
     }
 
     /// <summary>
@@ -457,7 +457,7 @@ public static class ReportBuilder
         sb.AppendLine("<div class=\"footer\">Inspeção realizada por oficinaos-diag na data indicada. " +
             "Este documento descreve o estado observado do equipamento — não substitui garantia " +
             "nem certificação oficial.</div></body></html>");
-        return sb.ToString();
+        return ReportIntegrity.Marcar(sb.ToString());
     }
 
     private static string InsuranceStatus(string status) => status switch
@@ -576,6 +576,6 @@ public static class ReportBuilder
             "(oficinaos-diag) complementadas por inspeção do técnico responsável. Descreve o estado " +
             "do equipamento observado à data da inspeção.</div>");
         sb.AppendLine("</body></html>");
-        return sb.ToString();
+        return ReportIntegrity.Marcar(sb.ToString());
     }
 }
