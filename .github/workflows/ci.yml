@@ -22,6 +22,10 @@ on:
         description: "Provar os 15 mutantes de UI no Windows (~45 min)"
         type: boolean
         default: false
+      mutantes_filtro:
+        description: "Só os mutantes cujo nome contém este trecho (vazio = todos)"
+        type: string
+        default: ""
 
 jobs:
   build:
@@ -136,5 +140,7 @@ jobs:
 
       # `--uishots` acrescenta os 15 da UI aos 4 de suite; a janela só existe
       # no Windows e o script recusa correr os de UI noutro sistema.
+      # Com filtro, o job serve para triagem de um mutante (~4 min em vez de
+      # ~45): é a diferença entre investigar e não investigar.
       - name: Mutantes de UI (o harness morde onde diz morder?)
-        run: node tools/mutation-check.mjs --uishots
+        run: node tools/mutation-check.mjs --uishots --so="${{ inputs.mutantes_filtro }}"

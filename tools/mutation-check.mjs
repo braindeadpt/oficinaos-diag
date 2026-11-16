@@ -25,6 +25,13 @@ const flags = new Set(process.argv.slice(2));
 const comUi = flags.has("--uishots");
 const seco = flags.has("--seco");
 const completo = flags.has("--completo");
+// `--so=<trecho>` corre só os mutantes cujo nome contém o trecho: um job de UI
+// completo são ~40 min, e triagem de um mutante não pode custar isso.
+const so = [...flags]
+  .filter((f) => f.startsWith("--so="))
+  .map((f) => f.slice(5))
+  .join(" ")
+  .trim();
 
 /**
  * Cada entrada é um defeito **real** — todos já estiveram no código ou foram
@@ -243,6 +250,7 @@ function correrGuarda(m) {
     motivo: r.codigo === 0
       ? "harness continuou verde"
       : falha ? `[FALHA] ${m.prova}` : "harness vermelho, mas sem a verificação esperada",
+    falhas: r.saida.split("\n").filter((l) => l.includes("[FALHA]")),
   };
 }
 
@@ -250,9 +258,12 @@ const podeUi = process.platform === "win32";
 // `--seco` valida **todos** os mutantes (mesmo os de UI fora do Windows): é a
 // única forma de saber que um mutante de harness não ficou órfão até ao dia em
 // que alguém o corre.
-const alvo = seco
+const alvoBase = seco
   ? mutantes
   : mutantes.filter((m) => m.guarda === "testes" || (comUi && podeUi));
+const alvo = so
+  ? alvoBase.filter((m) => m.nome.toLowerCase().includes(so.toLowerCase()))
+  : alvoBase;
 const saltados = mutantes.filter((m) => !alvo.includes(m));
 
 if (alvo.length === 0) {
@@ -274,7 +285,12 @@ for (const m of alvo) {
     problemas++;
     continue;
   }
-  const ocorrencias = contar(original, m.de);
+  // O `de` é escrito com `\n`, mas no Windows o `checkout` entrega CRLF —
+  // aplicar sobre o texto normalizado e devolver o EOL original é o que faz o
+  // mesmo mutante valer nos dois sistemas (run 43907212436: «0 ocorrência»).
+  const crlf = original.includes("\r\n");
+  const normalizado = crlf ? original.replace(/\r\n/g, "\n") : original;
+  const ocorrencias = contar(normalizado, m.de);
   if (ocorrencias !== 1) {
     resultados.push({ m, estado: "não aplica", motivo: `${ocorrencias} ocorrência(s) do código original` });
     problemas++;
@@ -286,7 +302,8 @@ for (const m of alvo) {
     continue;
   }
 
-  writeFileSync(caminho, original.replace(m.de, m.para));
+  const mutado = normalizado.replace(m.de, m.para);
+  writeFileSync(caminho, crlf ? mutado.replace(/\n/g, "\r\n") : mutado);
   let veredicto;
   try {
     veredicto = correrGuarda(m);
@@ -307,9 +324,15 @@ for (const m of alvo) {
 }
 
 const largura = Math.max(...resultados.map((r) => r.m.nome.length));
-for (const { m, estado, motivo } of resultados) {
+for (const { m, estado, motivo, falhas } of resultados) {
   const marca = estado === "morto" || estado === "aplicaria" ? "✔" : "✘";
   console.log(`${marca} ${m.nome.padEnd(largura)}  ${estado} — ${motivo}`);
+  // Um mutante que só deixa o harness vermelho por um caminho genérico é o
+  // sítio onde uma prova emprestada se esconde: diz-se o que o harness disse,
+  // em vez de obrigar a outra sonda de 40 minutos para descobrir.
+  if (estado === "sobreviveu" && falhas?.length) {
+    for (const f of falhas.slice(0, 5)) console.log(`      ${f.trim()}`);
+  }
 }
 for (const m of saltados) {
   console.log(`– ${m.nome.padEnd(largura)}  saltado — precisa de --uishots num Windows`);
