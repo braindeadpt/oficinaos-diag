@@ -2298,8 +2298,11 @@ internal static class Program
         bmp.Render(raiz);
         var enc = new PngBitmapEncoder();
         enc.Frames.Add(BitmapFrame.Create(bmp));
-        using var fs = File.Create(ficheiro);
-        enc.Save(fs);
+        // Bloco fechado, e não `using var`: a verificação relê o ficheiro, e
+        // com o `using var` ele ainda estava aberto para escrita (IOException
+        // em todas as capturas, run 43901656490).
+        using (var fs = File.Create(ficheiro))
+            enc.Save(fs);
 
         // Todas as capturas passam por aqui, por isso é aqui que se verifica
         // que não estão vazias: um `RenderTargetBitmap` de um elemento sem
