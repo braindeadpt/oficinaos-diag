@@ -59,12 +59,13 @@ const mutantes = [
     prova: "FailureGuardTests",
   },
   {
-    // Falha a meio da aplicação do staging: se o rollback não devolver a
-    // árvore, o técnico fica com exe velho e DLLs novas.
-    nome: "o rollback do staging não devolve o build",
+    // Um mutante por via de reposição não morre: as duas vias (copiar por
+    // cima e trocar a pasta) cobrem-se de propósito, e cada uma sozinha ainda
+    // repõe o build (runs 43921766213). O mutante mata o rollback inteiro.
+    nome: "o rollback do staging não repõe nada",
     ficheiro: "src/OficinaDiag.Core/Cloud/UpdateChecker.cs",
-    de: `            "    Copy-Item (Join-Path $bak '*') $appDir -Recurse -Force -ErrorAction SilentlyContinue",`,
-    para: `            "    # não repõe nada",`,
+    de: `            "  if (Test-Path $bak) {",`,
+    para: `            "  if ($false) {",`,
     guarda: "uishots",
     prova: "staging: falha a meio repõe o build anterior",
   },
@@ -73,16 +74,6 @@ const mutantes = [
     ficheiro: "src/OficinaDiag.Core/Cloud/UpdateChecker.cs",
     de: `            "  Copy-Item $appDir $bak -Recurse -Force -ErrorAction Stop",`,
     para: `            "  New-Item -ItemType Directory -Force $bak | Out-Null",`,
-    guarda: "uishots",
-    prova: "staging: falha a meio repõe o build anterior",
-  },
-  {
-    // O ficheiro em uso impede apagar e repor a pasta; sem a cópia por cima,
-    // a DLL fica v9 com o exe v2 — a instalação híbrida outra vez.
-    nome: "o rollback desiste do ficheiro em uso",
-    ficheiro: "src/OficinaDiag.Core/Cloud/UpdateChecker.cs",
-    de: `            "    Move-Item $bak $appDir -Force -ErrorAction SilentlyContinue",`,
-    para: `            "    # desistir do que ficou bloqueado",`,
     guarda: "uishots",
     prova: "staging: falha a meio repõe o build anterior",
   },
