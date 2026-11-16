@@ -39,6 +39,12 @@ internal static class Program
 {
     private static int _falhas;
 
+    // O fecho do harness é o `Terminar` de produção, chamado no fim do
+    // `Corpo`. O vigia só dispara se ele não fechar nada (mutante) — é isso
+    // que distingue «fechou o `Shutdown`» de «o harness fechou-se sozinho».
+    private static volatile bool _terminouPorProducao;
+    private static volatile bool _fimForcado;
+
     private static readonly MethodInfo OnClickDeBotao =
         typeof(ButtonBase).GetMethod("OnClick", BindingFlags.NonPublic | BindingFlags.Instance)!;
 
@@ -167,10 +173,19 @@ internal static class Program
         {
             try { codigo = Corpo(destino, logUi); }
             catch (Exception ex) { Anotar("UI", ex); codigo = 1; }
-            finally { app.Shutdown(); }
+            // No caminho normal quem fecha é o `Terminar` de produção; aqui só
+            // se fecha o que ficou aberto (corpo que rebentou antes de lá
+            // chegar, ou vigia que teve de intervir).
+            finally { if (!app.Dispatcher.HasShutdownStarted) app.Shutdown(); }
         }));
         app.Run();
-        return codigo;
+        // Só se o `Terminar` de produção chegou a correr: se o corpo rebentou
+        // antes, isto não diz nada e não vale uma falha a mais.
+        if (_terminouPorProducao)
+            Verificar("produção: o Terminar por omissão fechou a aplicação (sem vigia)",
+                !_fimForcado && app.Dispatcher.HasShutdownStarted);
+        if (_falhas > 0) Console.WriteLine($"FALHAS: {_falhas}");
+        return _falhas == 0 ? codigo : 1;
     }
 
     /// <summary>
@@ -300,7 +315,12 @@ internal static class Program
         Marcar("os defeitos por omissão da atualização");
         ProvarDefeitoDaAtualizacao(destino);
 
-        if (_falhas > 0) Console.WriteLine($"FALHAS: {_falhas}");
+        // O último passo do harness não é uma prova: é o `Terminar` de
+        // produção a correr a sério, a fechar a app como faria na bancada. Não
+        // há nada depois dele — quando volta, o `Run` já está a acabar, e o
+        // `Main` confirma que foi ele (e não o vigia) a fechar.
+        Marcar("Terminar de produção (fecho do harness)");
+        ProvarTerminarDeProducao();
         return _falhas == 0 ? 0 : 1;
     }
 
@@ -1068,13 +1088,13 @@ internal static class Program
         var chamadasDoBaixar = Chamadas("BaixarDeProducao");
         Verificar($"produção: o BaixarDeProducao usa a pasta da app e o BaixarPara (chama: {Juntar(chamadasDoBaixar)})",
             chamadasDoBaixar is not null
-            && chamadasDoBaixar.Contains("get_PastaDeInstalacao")
-            && chamadasDoBaixar.Contains("BaixarPara"));
+            && chamadasDoBaixar.Contains("MainWindow.get_PastaDeInstalacao/0")
+            && chamadasDoBaixar.Contains("MainWindow.BaixarPara/3"));
         var chamadasDoTerminar = Chamadas("TerminarDeProducao");
         Verificar($"produção: o TerminarDeProducao chama o Application.Shutdown (chama: {Juntar(chamadasDoTerminar)})",
             chamadasDoTerminar is not null
-            && chamadasDoTerminar.Contains("get_Current")
-            && chamadasDoTerminar.Contains("Shutdown"));
+            && chamadasDoTerminar.Contains("Application.get_Current/0")
+            && chamadasDoTerminar.Contains("Application.Shutdown/0"));
 
         // 4. O argumento chega mesmo ao `DownloadAndStageAsync`: com uma pasta
         //    que não existe, a recusa é a dele (e vem antes da rede).
@@ -1106,6 +1126,39 @@ internal static class Program
             !okOrigem && msgOrigem.Contains("Origem da atualização não reconhecida", StringComparison.Ordinal));
     }
 
+    /// <summary>
+    /// O `Terminar` de produção, a correr a sério e como último passo: pede o
+    /// `Shutdown` e é ele que fecha a app do harness, tal como faria na
+    /// bancada. O que o torna seguro é não haver nada depois — e um vigia de
+    /// 10 s: se o `Terminar` não fechar nada (mutante), o vigia fecha a app,
+    /// marca `_fimForcado` e o `Main` reprova, em vez de o job ficar pendurado
+    /// até ao limite do GitHub.
+    /// </summary>
+    private static void ProvarTerminarDeProducao()
+    {
+        Console.WriteLine("== Terminar de produção: é ele que fecha o harness ==");
+        var janela = Application.Current?.MainWindow as MainWindow;
+        var terminar = (janela is null ? null : Campo("Terminar", janela)) as Delegate;
+        Verificar($"produção: o Terminar por omissão é o TerminarDeProducao (é «{terminar?.Method.Name}»)",
+            terminar?.Method.Name == "TerminarDeProducao");
+        if (terminar is null) return;
+
+        var vigia = new DispatcherTimer(DispatcherPriority.Send)
+        {
+            Interval = TimeSpan.FromSeconds(10),
+        };
+        vigia.Tick += (_, _) =>
+        {
+            vigia.Stop();
+            _fimForcado = true;
+            Application.Current?.Shutdown();
+        };
+
+        _terminouPorProducao = true;
+        vigia.Start();
+        terminar.DynamicInvoke();
+    }
+
     private static object? Campo(string nome, object alvo) =>
         typeof(MainWindow).GetField(nome, BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(alvo);
 
@@ -1125,35 +1178,51 @@ internal static class Program
     /// As chamadas de um método do `MainWindow`, com os nomes resolvidos. Serve
     /// para provar o corpo dos defeitos por omissão sem os correr: um
     /// `TerminarDeProducao` vazio, ou um `BaixarDeProducao` a apontar para outra
-    /// pasta, muda as chamadas. Devolve `null` se o corpo tiver instruções que
-    /// este leitor mínimo não conhece — «mudou» também é motivo para reprovar.
+    /// pasta, muda as chamadas.
+    ///
+    /// O leitor é tolerante de propósito: não tem tabela de opcodes. Percorre
+    /// os bytes à procura dos `call`/`callvirt` e, quando o token não resolve,
+    /// anda **um** byte e tenta outra vez. Um opcode novo do compilador (ou um
+    /// prefixo que este leitor não conheça) deixa de rebentar a prova; anda-se
+    /// por cima dele e as chamadas verdadeiras continuam a ser encontradas,
+    /// porque nunca se salta por cima de um byte sem olhar. Um token que calhe
+    /// por acaso num `0x28` de um operando resolve para outro método — só pode
+    /// dar um nome a mais na lista, nunca esconder uma chamada que exista.
     /// </summary>
     private static List<string>? Chamadas(string nomeDoMetodo)
     {
         var metodo = typeof(MainWindow).GetMethod(nomeDoMetodo,
             BindingFlags.NonPublic | BindingFlags.Static)!;
         var il = metodo.GetMethodBody()?.GetILAsByteArray();
-        if (il is null) return null;
+        if (il is null || il.Length == 0) return null;
         var modulo = metodo.Module;
         var chamadas = new List<string>();
         for (var i = 0; i < il.Length;)
         {
-            switch (il[i])
+            if ((il[i] == 0x28 || il[i] == 0x6F) && i + 4 < il.Length)
             {
-                case 0x00: // nop
-                case 0x02: // ldarg.0
-                case 0x03: // ldarg.1
-                case 0x2A: // ret
-                    i++;
-                    continue;
-                case 0x28: // call
-                case 0x6F: // callvirt
-                    chamadas.Add(modulo.ResolveMethod(BitConverter.ToInt32(il, i + 1))?.Name ?? "?");
-                    i += 5;
-                    continue;
-                default:
-                    return null;
+                try
+                {
+                    var alvo = modulo.ResolveMethod(BitConverter.ToInt32(il, i + 1));
+                    // Nome do tipo incluído: `Shutdown` de outra classe também
+                    // é `Shutdown`, e a prova quer o `Application`. E um
+                    // `ResolveMethod` que devolva um campo não conta.
+                    if (alvo is MethodBase m)
+                    {
+                        // Nome do tipo, nome e número de parâmetros: um
+                        // `Shutdown(int)` não é o `Shutdown()` da prova.
+                        chamadas.Add($"{m.DeclaringType?.Name}.{m.Name}/{m.GetParameters().Length}");
+                        i += 5;
+                        continue;
+                    }
+                }
+                catch (Exception)
+                {
+                    // Token inválido: não é uma chamada, é um operando que
+                    // calhou em `0x28`. Anda-se um byte.
+                }
             }
+            i++;
         }
         return chamadas;
     }
