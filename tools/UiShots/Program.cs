@@ -1913,6 +1913,100 @@ internal static class Program
             Fechar(janela);
             ThemeManager.Apply(ThemeManager.Terminal);
         }
+
+        ProvarBarraHorizontal(destino);
+    }
+
+    /// <summary>
+    /// A barra **horizontal** do Win95 — a única peça do tema sem prova. Um
+    /// `ScrollViewer` largo mostra-a; mede-se o que a distingue de um
+    /// `ScrollBar` por omissão: duas setas com glifo (esquerda/direita), a zona
+    /// de página em `#DFDFDF` contra o track, o polegar e os glifos no PNG.
+    /// </summary>
+    private static void ProvarBarraHorizontal(string destino)
+    {
+        Console.WriteLine("== barra de scroll horizontal do Win95 ==");
+        ThemeManager.Apply(ThemeManager.Win95);
+
+        Brush Tema(string chave, Brush recuo) =>
+            Application.Current.TryFindResource(chave) as Brush ?? recuo;
+
+        var janela = ForaDoEcra(new Window
+        {
+            Width = 360,
+            Height = 200,
+            Background = Tema("BgBrush", Brushes.Gray),
+            Content = new ScrollViewer
+            {
+                Width = 300,
+                Height = 120,
+                HorizontalScrollBarVisibility = ScrollBarVisibility.Auto,
+                VerticalScrollBarVisibility = ScrollBarVisibility.Disabled,
+                Content = new Border
+                {
+                    Width = 2000,
+                    Height = 40,
+                    Background = Tema("PanelBrush", Brushes.White),
+                    Child = new TextBlock
+                    {
+                        Text = "conteúdo largo — a barra horizontal só aparece quando não cabe",
+                        Margin = new Thickness(6, 8, 6, 0),
+                        Foreground = Tema("FgBrush", Brushes.Black),
+                    },
+                },
+            },
+        });
+        janela.Show();
+        try
+        {
+            janela.UpdateLayout();
+            Respirar();
+            var sv = Descendentes<ScrollViewer>(janela).FirstOrDefault();
+            var barra = sv is null ? null : Descendentes<ScrollBar>(sv)
+                .FirstOrDefault(b => b.Orientation == Orientation.Horizontal && b.IsVisible);
+            Verificar("setas-h: a barra horizontal apareceu", barra is not null);
+            if (barra is null) return;
+
+            var botoes = Descendentes<RepeatButton>(barra).ToList();
+            var setas = botoes.Where(b => ReferenceEquals(b.Command, ScrollBar.LineLeftCommand)
+                                       || ReferenceEquals(b.Command, ScrollBar.LineRightCommand)).ToList();
+            Verificar($"setas-h: uma seta à esquerda e outra à direita ({setas.Count})", setas.Count == 2);
+            Verificar("setas-h: as duas setas têm glifo",
+                setas.Count == 2 && setas.All(b => Descendentes<System.Windows.Shapes.Path>(b).Any(p =>
+                    p.Data is { } d && d.Bounds.Width > 1 && d.Bounds.Height > 1)));
+
+            var zonas = botoes.Where(b => ReferenceEquals(b.Command, ScrollBar.PageLeftCommand)
+                                       || ReferenceEquals(b.Command, ScrollBar.PageRightCommand)).ToList();
+            var corTrack = Cor(barra.Background);
+            var corZona = zonas.Count == 2
+                ? Cor(Descendentes<Border>(zonas[0]).FirstOrDefault()?.Background)
+                : null;
+            Verificar($"setas-h: a zona de página distingue-se do track ({corZona} vs {corTrack})",
+                zonas.Count == 2 && corZona is not null && corTrack is not null && corZona != corTrack);
+            Verificar("setas-h: a zona de página é o cinza claro do 95",
+                corZona == (Color)ColorConverter.ConvertFromString("#DFDFDF"));
+            Verificar($"setas-h: o polegar existe ({Descendentes<Thumb>(barra).Count(t => t.IsVisible)})",
+                Descendentes<Thumb>(barra).Any(t => t.IsVisible && t.ActualWidth > 1));
+
+            var raiz = (FrameworkElement)VisualTreeHelper.GetChild(janela, 0);
+            janela.UpdateLayout();
+            Respirar();
+            var png = Path.Combine(destino, "scrollbar-win95-h.png");
+            var (w, h) = Gravar(raiz, png);
+            Console.WriteLine($"  scrollbar-win95-h.png {w}x{h}");
+            var area = barra.TransformToAncestor(raiz).TransformBounds(
+                new Rect(0, 0, barra.ActualWidth, barra.ActualHeight));
+            var escuros = ContarEscuros(png, new Int32Rect(
+                (int)Math.Floor(area.X), (int)Math.Floor(area.Y),
+                (int)Math.Ceiling(area.Width), (int)Math.Ceiling(area.Height)));
+            Verificar($"setas-h: a captura mostra os glifos ({escuros} px escuros na barra)",
+                escuros >= 20);
+        }
+        finally
+        {
+            Fechar(janela);
+            ThemeManager.Apply(ThemeManager.Terminal);
+        }
     }
 
     /// <summary>

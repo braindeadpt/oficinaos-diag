@@ -193,6 +193,24 @@ const mutantes = [
     prova: "setas: as duas setas têm glifo",
   },
   {
+    // A barra horizontal é outra peça do tema: se o trigger não casar, o WPF
+    // desenha a barra por omissão e nada do 95 fica lá.
+    nome: "a barra horizontal do 95 volta ao tema por omissão",
+    ficheiro: "src/OficinaDiag/Themes/Win95.xaml",
+    de: '            <Trigger Property="Orientation" Value="Horizontal">',
+    para: '            <Trigger Property="Orientation" Value="NuncaCasa">',
+    guarda: "uishots",
+    prova: "setas-h: a zona de página é o cinza claro do 95",
+  },
+  {
+    nome: "a seta esquerda do 95 perde o glifo",
+    ficheiro: "src/OficinaDiag/Themes/Win95.xaml",
+    de: 'Data="M 4 0 L 4 8 L 0 4 Z"',
+    para: 'Data="M 0 0 L 0 1 L 0 1 Z"',
+    guarda: "uishots",
+    prova: "setas-h: as duas setas têm glifo",
+  },
+  {
     nome: "o track do Win95 pinta como as zonas de página",
     ficheiro: "src/OficinaDiag/Themes/Win95.xaml",
     de: '    <Style TargetType="ScrollBar">\n        <Setter Property="Background" Value="#C0C0C0"/>',
