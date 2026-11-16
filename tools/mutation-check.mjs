@@ -60,7 +60,7 @@ const mutantes = [
     de: "        DpiChanged += (_assinaturaDpi = AoMudarEscala);",
     para: "        // mutante: sem assinatura do DpiChanged",
     guarda: "uishots",
-    prova: "dpi: a 100% o DpiChanged está ligado ao reencaixe",
+    prova: "dpi: o DpiChanged está ligado ao reencaixe",
   },
   {
     // Prazo por prova: sem espera, o aviso tem de falhar **com o motivo** em
