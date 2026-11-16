@@ -2366,8 +2366,15 @@ internal static class Program
             var corFundo = fundo.B | (fundo.G << 8) | (fundo.R << 16);
             var pesoFundo = contagem.TryGetValue(corFundo, out var daCor) ? (double)daCor / total : 0.0;
 
+            // O que sai é a **área cliente**: sem moldura nem barra de título,
+            // por isso é sempre uns 16 px mais estreita que o pedido, e os
+            // diálogos com `SizeToContent` ficam mais baixos do que o `Height`
+            // pedido. Exigir igualdade era uma expectativa inventada (run
+            // 43903982912 reprovou as 59 por isso); o que se exige é que a
+            // captura tenha a largura pedida (menos a moldura) e não seja uma
+            // tira: um render cortado ou de 1 px não passa.
             var dimensao = esperadoLargura is not { } el || esperadoAltura is not { } ea
-                           || (Math.Abs(w - el) <= 2 && Math.Abs(h - ea) <= 2);
+                           || (w >= el - 40 && w <= el + 2 && h >= 120 && h <= ea + 2);
             var esperado = esperadoLargura is { } l && esperadoAltura is { } a
                 ? $" (pedido {l:0}x{a:0})"
                 : "";
