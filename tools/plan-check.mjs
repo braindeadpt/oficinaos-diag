@@ -103,9 +103,19 @@ const caminhoHarness = join("tools", "UiShots", "Program.cs");
 let secoesHarness = [];
 if (existsSync(caminhoHarness)) {
   const fonte = readFileSync(caminhoHarness, "utf8");
-  const literais = [...fonte.matchAll(/Verificar\(\s*"((?:[^"\\]|\\.)*)"/g)].map((m) => m[1]);
+  // `$` opcional: metade das provas do harness interpola números no nome
+  // (`$"dpi: a {pct}% …"`), e sem isto a secção não entrava no inventário —
+  // o `plan-check` dava-a como inexistente e o critério parecia órfão.
+  const literais = [...fonte.matchAll(/Verificar\(\s*\$?"((?:[^"\\]|\\.)*)"/g)].map((m) => m[1]);
   secoesHarness = [
-    ...new Set(literais.filter((l) => l.includes(":")).map((l) => l.slice(0, l.indexOf(":")))),
+    ...new Set(
+      literais
+        .filter((l) => l.includes(":"))
+        .map((l) => l.slice(0, l.indexOf(":")))
+        // `$"{tema}: …"` e `$"captura {nome}: …"` interpolam o prefixo: não
+        // são secções, são moldes.
+        .filter((s) => s.length > 0 && !s.includes("{") && !s.includes("}")),
+    ),
   ];
   for (const c of provados) {
     if (!c.texto.includes("UiShots")) continue;
