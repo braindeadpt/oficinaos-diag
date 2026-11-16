@@ -126,7 +126,10 @@ const mutantes = [
     nome: "o track do Win95 pinta como as zonas de página",
     ficheiro: "src/OficinaDiag/Themes/Win95.xaml",
     de: '    <Style TargetType="ScrollBar">\n        <Setter Property="Background" Value="#C0C0C0"/>',
-    para: '    <Style TargetType="ScrollBar">\n        <Setter Property="Background" Value="#DFDFDF"/> // mutante: igual às zonas',
+    // Nota: nada de comentários aqui — isto é XAML, e um `//` dentro da tag
+    // deixa o ficheiro inválido (o harness «não compila» e o mutante
+    // sobrevive por engano). O nome do mutante já diz o que ele faz.
+    para: '    <Style TargetType="ScrollBar">\n        <Setter Property="Background" Value="#DFDFDF"/>',
     guarda: "uishots",
     prova: "setas: a zona de página distingue-se do track",
   },
@@ -320,6 +323,10 @@ for (const m of alvo) {
     m,
     estado: veredicto.vermelho ? "morto" : "sobreviveu",
     motivo: veredicto.motivo,
+    // Sem isto o resumo perdia as linhas do harness e ficava só o «sobreviveu»
+    // — que é o que se está a tentar diagnosticar.
+    falhas: veredicto.falhas,
+    cauda: veredicto.cauda,
   });
   if (!veredicto.vermelho) problemas++;
 }
