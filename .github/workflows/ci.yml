@@ -18,6 +18,10 @@ on:
         description: "Repetir os testes de árvore de processos 10x"
         type: boolean
         default: false
+      mutantes_ui:
+        description: "Provar os 15 mutantes de UI no Windows (~45 min)"
+        type: boolean
+        default: false
 
 jobs:
   build:
@@ -113,3 +117,24 @@ jobs:
         run: |
           npm ci --prefix tests/device-test --no-audit --no-fund
           node --test tests/device-test/device-test.test.mjs
+
+  # Os mutantes de UI provavam-se à mão, com sonda em `main` e revert — caro,
+  # e por isso feito cada vez menos. Este job corre-os a pedido: aplica cada
+  # defeito, exige vermelho com a verificação declarada e repõe o ficheiro.
+  # Fica fora do push porque cada mutante é uma compilação do harness mais uma
+  # execução completa dele (~45 min no total).
+  mutantes-ui:
+    if: github.event_name == 'workflow_dispatch' && inputs.mutantes_ui
+    runs-on: windows-2022
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: "8.0.x"
+
+      # `--uishots` acrescenta os 15 da UI aos 4 de suite; a janela só existe
+      # no Windows e o script recusa correr os de UI noutro sistema.
+      - name: Mutantes de UI (o harness morde onde diz morder?)
+        run: node tools/mutation-check.mjs --uishots
