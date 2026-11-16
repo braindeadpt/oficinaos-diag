@@ -8,7 +8,7 @@
 //
 // Uso: node tools/plan-check.mjs   (da raiz do repositório)
 
-import { readFileSync, readdirSync } from "node:fs";
+import { readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 const erros = [];
@@ -87,20 +87,64 @@ for (const c of provados) {
   }
 }
 
-// --- 3. placar do STATUS.md bate com a realidade --------------------------
+// --- 3. placar: o número vive em placar.json, não na prosa ----------------
+// Antes o script arrancava os números de uma linha de prosa do STATUS.md, com
+// uma regex que já tinha engolido um placar histórico do handoff. Agora a
+// fonte é estruturada: `--escrever` recria-a a partir dos tickets, e o STATUS
+// continua a citá-la — mas quem manda é o JSON.
+const caminhoPlacar = join("plan-nota10", "placar.json");
 const status = readFileSync(join("plan-nota10", "STATUS.md"), "utf8");
-// Singular também conta: com um único `[ ]` o placar diz «1 pendente», e a
-// regex antiga só aceitava o plural — sem match na linha do placar, o script
-// agarrava o primeiro placar histórico do handoff e reprovava o plano.
-const placar = /Placar: \*\*(\d+) provados?, (\d+) pendentes?\*\*/.exec(status);
-if (!placar) {
-  erros.push("STATUS.md sem «Placar: **N provados, M pendentes**»");
-} else {
-  const [, x, aberto] = placar;
-  if (Number(x) !== provados.length || Number(aberto) !== pendentes.length) {
+
+if (process.argv.includes("--escrever")) {
+  writeFileSync(
+    caminhoPlacar,
+    JSON.stringify({
+      provados: provados.length,
+      pendentes: pendentes.length,
+      nota:
+        "O placar vive aqui. plan-check compara com os [x]/[ ] dos tickets e exige " +
+        "que o STATUS.md cite os mesmos números; `node tools/plan-check.mjs --escrever` " +
+        "recria este ficheiro a partir dos tickets.",
+    }, null, 2) + "\n",
+  );
+  console.log(
+    `placar.json escrito: ${provados.length} provados, ${pendentes.length} ` +
+      `${pendentes.length === 1 ? "pendente" : "pendentes"}`,
+  );
+}
+
+let placar;
+try {
+  placar = JSON.parse(readFileSync(caminhoPlacar, "utf8"));
+} catch (e) {
+  erros.push(
+    `plan-nota10/placar.json ilegível ou ausente (${e.message}) — ` +
+      `corre \`node tools/plan-check.mjs --escrever\``,
+  );
+}
+
+const inteiro = (v) => Number.isInteger(v) && v >= 0;
+if (placar) {
+  if (!inteiro(placar.provados) || !inteiro(placar.pendentes)) {
+    erros.push("placar.json precisa de «provados» e «pendentes» inteiros ≥ 0");
+  } else if (placar.provados !== provados.length || placar.pendentes !== pendentes.length) {
     erros.push(
-      `STATUS.md diz ${x}/${aberto} mas os tickets têm ${provados.length} [x] e ${pendentes.length} [ ]`,
+      `placar.json diz ${placar.provados}/${placar.pendentes} mas os tickets têm ` +
+        `${provados.length} [x] e ${pendentes.length} [ ] — se a mudança é para ficar, ` +
+        `corre \`node tools/plan-check.mjs --escrever\` e atualiza o STATUS.md`,
     );
+  } else {
+    // A prosa continua a citar o placar: um leitor não abre um JSON para
+    // saber como está o plano. Só que agora é conferida, não a fonte.
+    const prosa = /Placar: \*\*(\d+) provados?, (\d+) pendentes?\*\*/.exec(status);
+    if (!prosa) {
+      erros.push("STATUS.md sem «Placar: **N provados, M pendentes**» — cite o placar.json");
+    } else if (Number(prosa[1]) !== placar.provados || Number(prosa[2]) !== placar.pendentes) {
+      erros.push(
+        `STATUS.md diz ${prosa[1]}/${prosa[2]} mas placar.json diz ` +
+          `${placar.provados}/${placar.pendentes}`,
+      );
+    }
   }
 }
 
@@ -114,5 +158,5 @@ if (erros.length) {
 console.log(
   `✓ plano coerente: ${provados.length} provados, ${pendentes.length} ` +
   `${pendentes.length === 1 ? "pendente" : "pendentes"} ` +
-    `em ${tickets.length} tickets, todos com prova ou motivo`,
+    `em ${tickets.length} tickets (placar: plan-nota10/placar.json), todos com prova ou motivo`,
 );

@@ -1,0 +1,5 @@
+{
+  "provados": 87,
+  "pendentes": 1,
+  "nota": "O placar vive aqui. plan-check compara com os [x]/[ ] dos tickets e exige que o STATUS.md cite os mesmos números; `node tools/plan-check.mjs --escrever` recria este ficheiro a partir dos tickets."
+}
