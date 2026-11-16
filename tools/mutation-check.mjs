@@ -64,7 +64,10 @@ const mutantes = [
     de: "        var s = _state.GetValueOrDefault(key);",
     para: "        var s = _state[key]; // mutante: rebenta em item sem marca",
     guarda: "uishots",
-    prova: "clique: checklist 'ok' marca o item",
+    // A prova é o log, não o clique: o indexer rebenta a pintar, o guarda do
+    // `App` apanha e escreve «! UI:», e o harness nunca chega ao clique — foi
+    // assim que este mutante parecia sobreviver (runs 43910480533/43911085972).
+    prova: "log sem exceções engolidas",
   },
   {
     nome: "GUARDAR deixa de gravar o idioma",
