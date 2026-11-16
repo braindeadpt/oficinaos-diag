@@ -219,7 +219,7 @@ public sealed class UpdateChecker
             var ps1Path = Path.Combine(Path.GetTempPath(), $"oficinaos-diag-update-{info.Tag}.ps1");
             var logPath = Path.Combine(Path.GetTempPath(), "oficinaos-diag-update.log");
             var script = BuildUpdateScript(info.Tag, appDir, zipPath, logPath, Environment.ProcessId);
-            await File.WriteAllTextAsync(ps1Path, script, new System.Text.UTF8Encoding(true));
+            WriteUpdateScript(ps1Path, script);
 
             return ArrancarAtualizador(ps1Path)
                 ? (true, "A atualizar — a app reinicia já.")
@@ -281,6 +281,15 @@ public sealed class UpdateChecker
         }
         catch { return null; }
     }
+
+    /// <summary>
+    /// Escreve o script com BOM. O <c>powershell.exe</c> 5.1 lê um ficheiro sem
+    /// BOM como ANSI: o primeiro acento ou travessão parte o script com
+    /// <c>ParserError</c> e o updater não faz nada. Um sítio só para a escrita,
+    /// para a prova não divergir da produção.
+    /// </summary>
+    internal static void WriteUpdateScript(string path, string script)
+        => File.WriteAllText(path, script, new System.Text.UTF8Encoding(true));
 
     /// <summary>
     /// Script staged que substitui a app depois de ela sair. Separado do
