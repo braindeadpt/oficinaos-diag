@@ -164,7 +164,10 @@ const mutantes = [
     // harness correr. O que o harness apanha é o `DownloadAndStageAsync` a
     // ignorar o `ValidateSums` (sonda do run 43896607750).
     guarda: "testes",
-    filtro: "UpdateCheckerTests.RejectsGarbageSignature",
+    // Tem de ser um teste do `ValidateSums`: os do `VerifySumsSignature`
+    // chamam a função directamente e não vêem este `if` (foi assim que este
+    // mutante sobreviveu ao run 43897606802).
+    filtro: "UpdateCheckerTests.RejectsValidVersionWithBadSignature",
     prova: "UpdateCheckerTests",
   },
   {
