@@ -159,6 +159,10 @@ public partial class MainWindow : Window
         Log(L10n.F("log.screen", wa.Width, wa.Height, Width, Height, Left, Top));
         Log(L10n.T("log.boot"));
         Log(L10n.T("log.tagline"));
+        // Uma atualização que falhou a meio é dita no arranque seguinte — o
+        // log do updater vive em %TEMP% e ninguém o vai lá ler.
+        if (Cloud.UpdateChecker.ConsumeUpdateFailure(AppContext.BaseDirectory) is { } falhaDaAtualizacao)
+            Log(L10n.F("log.update.failed", falhaDaAtualizacao));
         // Token guardado antes dos scopes foi apagado no Load() — pede ao
         // utilizador para emparelhar outra vez com o código da loja.
         if (_config.LegacyTokenWiped)

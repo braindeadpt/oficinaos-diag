@@ -348,6 +348,7 @@ internal static class Program
         ProvarInstalacaoDaAtualizacao(destino);
         Marcar("os defeitos por omissão da atualização");
         ProvarDefeitoDaAtualizacao(destino);
+        ProvarAplicacaoDoStaging(destino);
 
         // O último passo do harness não é uma prova: é o `Terminar` de
         // produção a correr a sério, a fechar a app como faria na bancada. Não
@@ -1330,6 +1331,118 @@ internal static class Program
     /// dois métodos é lido em IL — um `TerminarDeProducao` vazio ou a baixar
     /// para outra pasta falha aqui sem nada correr.
     /// </summary>
+    /// <summary>
+    /// A aplicação do staging a sério: o script que o updater gera é executado
+    /// pelo powershell.exe sobre uma instalação de mentira, uma vez com
+    /// sucesso e outra com a cópia a falhar a meio. Sem isto ninguém sabia se
+    /// uma falha deixava a app utilizável, nem o que o técnico via no arranque
+    /// seguinte.
+    /// </summary>
+    private static void ProvarAplicacaoDoStaging(string destino)
+    {
+        Console.WriteLine("== aplicação do staging: rollback e aviso no arranque ==");
+        var raiz = Path.Combine(Path.GetFullPath(destino), "staging");
+        if (Directory.Exists(raiz)) Directory.Delete(raiz, true);
+
+        // O PID já saiu: o Wait-Process do script volta logo.
+        using var saiu = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("cmd.exe", "/c exit")
+            { CreateNoWindow = true, UseShellExecute = false });
+        saiu!.WaitForExit();
+        var pid = saiu.Id;
+
+        // Instalação de mentira: exe, DLL, um subdiretório e um ficheiro
+        // chamado `zzz`. O zip traz uma pasta `zzz`, e é aí que a cópia
+        // rebenta — depois de já ter escrito o exe e a DLL, ou seja, mesmo a
+        // meio.
+        string Montar(string nome)
+        {
+            var app = Path.Combine(raiz, nome, "app");
+            Directory.CreateDirectory(Path.Combine(app, "Data"));
+            File.WriteAllText(Path.Combine(app, PackagePaths.AppExeName), "exe-v2");
+            File.WriteAllText(Path.Combine(app, "OficinaDiag.Core.dll"), "core-v2");
+            File.WriteAllText(Path.Combine(app, "zzz"), "era-um-ficheiro");
+            File.WriteAllText(Path.Combine(app, "Data", "models.json"), "[]");
+            return app;
+        }
+
+        byte[] Zip(Action<ZipArchive> encher)
+        {
+            using var ms = new MemoryStream();
+            using (var arquivo = new ZipArchive(ms, ZipArchiveMode.Create, leaveOpen: true)) encher(arquivo);
+            return ms.ToArray();
+        }
+
+        static void Escrever(ZipArchive a, string nome, string texto)
+        {
+            using var w = new StreamWriter(a.CreateEntry(nome).Open());
+            w.Write(texto);
+        }
+
+        (int Codigo, string Registo) Correr(string app, byte[] zip, string tag)
+        {
+            var dir = Path.Combine(Path.GetDirectoryName(app)!, "execucao-" + tag);
+            Directory.CreateDirectory(dir);
+            var caminhoZip = Path.Combine(dir, "update.zip");
+            File.WriteAllBytes(caminhoZip, zip);
+            var log = Path.Combine(dir, "update.log");
+            var ps1 = Path.Combine(dir, "update.ps1");
+            // Só o relançar fica desligado: um Start-Process sobre um ficheiro
+            // de texto chamado .exe não é a app, e a prova não quer processos.
+            File.WriteAllText(ps1, UpdateChecker.BuildUpdateScript(tag, app, caminhoZip, log, pid)
+                .Replace("Start-Process $exe", "# relançar desligado na prova"));
+            using var p = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("powershell.exe",
+                $"-NoProfile -ExecutionPolicy Bypass -File \"{ps1}\"")
+            {
+                CreateNoWindow = true,
+                UseShellExecute = false,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+            });
+            var saida = p!.StandardOutput.ReadToEnd() + p.StandardError.ReadToEnd();
+            p.WaitForExit();
+            var registo = File.Exists(log) ? File.ReadAllText(log) : "";
+            return (p.ExitCode, saida + registo);
+        }
+
+        var appOk = Montar("sucesso");
+        var ok = Correr(appOk, Zip(a =>
+        {
+            Escrever(a, PackagePaths.AppExeName, "exe-v3");
+            Escrever(a, "OficinaDiag.Core.dll", "core-v3");
+            Escrever(a, "zzz/novo.dll", "novo-v3");
+        }), "v9.9.8");
+        Verificar("staging: sucesso troca a árvore e limpa o staging",
+            ok.Codigo == 0
+            && File.ReadAllText(Path.Combine(appOk, PackagePaths.AppExeName)) == "exe-v3"
+            && File.ReadAllText(Path.Combine(appOk, "OficinaDiag.Core.dll")) == "core-v3"
+            && File.Exists(Path.Combine(appOk, "zzz", "novo.dll"))
+            && !File.Exists(Path.Combine(appOk, UpdateChecker.UpdateFailureMarkerName))
+            && Directory.GetDirectories(Path.GetDirectoryName(appOk)!, "app.bak-*").Length == 0);
+
+        var appFalha = Montar("falha");
+        var falha = Correr(appFalha, Zip(a =>
+        {
+            Escrever(a, PackagePaths.AppExeName, "exe-v9");
+            Escrever(a, "OficinaDiag.Core.dll", "core-v9");
+            Escrever(a, "zzz/quebra.dll", "x");
+        }), "v9.9.9");
+        Verificar("staging: falha a meio repõe o build anterior",
+            falha.Codigo == 1
+            && File.ReadAllText(Path.Combine(appFalha, PackagePaths.AppExeName)) == "exe-v2"
+            && File.ReadAllText(Path.Combine(appFalha, "OficinaDiag.Core.dll")) == "core-v2"
+            && File.ReadAllText(Path.Combine(appFalha, "zzz")) == "era-um-ficheiro"
+            && File.Exists(Path.Combine(appFalha, "Data", "models.json"))
+            && falha.Registo.Contains("a restaurar o build anterior"));
+
+        var marcador = Path.Combine(appFalha, UpdateChecker.UpdateFailureMarkerName);
+        var aviso = UpdateChecker.ConsumeUpdateFailure(appFalha);
+        Verificar("staging: a falha fica no marcador que o arranque mostra",
+            aviso is not null
+            && aviso.Contains("v9.9.9")
+            && aviso.Contains("falhou")
+            && !File.Exists(marcador));
+    }
+
     private static void ProvarDefeitoDaAtualizacao(string destino)
     {
         Console.WriteLine("== atualização: os defeitos por omissão do MainWindow ==");

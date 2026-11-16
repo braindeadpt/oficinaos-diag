@@ -40,7 +40,7 @@
   3. Extrair o ZIP para uma pasta temporária limpa `$stage = Join-Path ([IO.Path]::GetTempPath()) "oficinaos-stage-<tag>-<guid>"` com `tar -xf`.
   4. Verificar `$LASTEXITCODE -eq 0` e que `Test-Path (Join-Path $stage 'OficinaDiag.exe')` é verdadeiro **antes** de tocar em `appDir`.
   5. Validar que nenhuma entrada extraída escapa de `$stage` (defesa ZipSlip por symlinks/paths relativos).
-  6. Só então fazer backup de `OficinaDiag.exe` → `OficinaDiag.exe.bak` e `Copy-Item -Path "$stage\*" -Destination $appDir -Recurse -Force`, revertendo em `catch` se a cópia falhar, arrancando `Start-Process $exe` e limpando `$stage`, `.bak`, `.zip` e `.ps1`.
+  6. Só então copiar a árvore **inteira** de `appDir` para um irmão `appDir.bak-<guid>` e `Copy-Item -Path "$stage\*" -Destination $appDir -Recurse -Force`; em `catch`, apagar `appDir` e repor o backup com `Move-Item` (antes era só o `OficinaDiag.exe` → `.bak`, o que numa falha a meio deixava exe velho com DLLs novas), avisar por marcador, arrancar `Start-Process $exe` e limpar `$stage`, `.bak`, `.zip` e `.ps1`.
 
 ### 3. Hardening dos Scripts PowerShell (`tools/*.ps1`)
 - **`tools/sign-release.ps1:80`:** Substituir `> $sumsPath` por download binário direto sem re-encoding de texto (ex.: `gh api "repos/$Repo/releases/assets/$($sums.id)" -H 'Accept: application/octet-stream' > ...` substituído por invocação direta `Start-Process gh -ArgumentList ... -RedirectStandardOutput $sumsPath -NoNewWindow -Wait` — que grava os bytes crus da stdout sem pipeline PowerShell!).
@@ -56,4 +56,6 @@
 - [x] `UpdateCheckerTests` passa em `net8.0`. *(prova: `UpdateCheckerTests` na suite — **284/284** em macOS com SDK 8.0.428; Linux/Windows provados no CI, corrida `43536335618` com 284/284 nos dois runners)*
 - [x] Em modo MSIX, nenhuma chamada de rede ao GitHub Releases é feita no arranque — gate em `MainWindow.OnLoaded` e em `CheckAsync`. *(prova: gate revisto por código nos dois pontos; não exercitado num MSIX real, que é a limitação registada no STATUS)*
 - [x] Uma falha de `tar -xf` nunca toca nos ficheiros existentes em `appDir` — staging + validação antes do backup/cópia. *(prova: `UpdateCheckerTests` — asserção de ordem no staging e o `tar` por caminho absoluto)*
+- [x] Uma falha a meio da cópia do staging deixa a instalação **inteira** no build anterior, não uma mistura de exe velho com DLLs novas. *(prova: `staging: falha a meio repõe o build anterior` no harness — o script gerado é executado a sério pelo `powershell.exe` sobre uma instalação de mentira, com a cópia a rebentar depois de já ter escrito o exe e a DLL)*
+- [x] O técnico sabe no arranque seguinte que a atualização não se aplicou, sem ir a `%TEMP%` ler o log. *(prova: `staging: a falha fica no marcador que o arranque mostra` — o marcador é escrito, lido por `ConsumeUpdateFailure` e apagado; a verificação de que o `MainWindow` o mostra é de código, não de UI)*
 - [x] `sign-release.ps1` preserva os bytes exatos de `SHA256SUMS.txt` (cópia do `BaseStream`) e `build-store.ps1` recusa gerar MSIX sem `adb.exe`. *(prova: sintaxe validada por parser de PowerShell; fluxo `gh`/MSIX não executado aqui — limitação no STATUS)*

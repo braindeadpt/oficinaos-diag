@@ -258,6 +258,31 @@ public sealed class UpdateChecker
     }
 
     /// <summary>
+    /// Marcador que o atualizador deixa em <c>appDir</c> quando a aplicação do
+    /// staging falha. Vive dentro da instalação porque é ali que o arranque
+    /// seguinte o vai procurar — o log fica em %TEMP% e ninguém o lê.
+    /// </summary>
+    internal const string UpdateFailureMarkerName = ".update-falhou";
+
+    /// <summary>
+    /// Texto do aviso da atualização que falhou, ou <c>null</c>. Consome-o:
+    /// o marcador é apagado para o técnico o ver uma vez e não em cada
+    /// arranque.
+    /// </summary>
+    internal static string? ConsumeUpdateFailure(string appDir)
+    {
+        try
+        {
+            var marcador = Path.Combine(appDir, UpdateFailureMarkerName);
+            if (!File.Exists(marcador)) return null;
+            var texto = File.ReadAllText(marcador).Trim().TrimStart('\uFEFF');
+            File.Delete(marcador);
+            return texto.Length == 0 ? null : texto;
+        }
+        catch { return null; }
+    }
+
+    /// <summary>
     /// Script staged que substitui a app depois de ela sair. Separado do
     /// download para poder ser testado sem rede e, sobretudo, para garantir
     /// uma ordem: extrair e validar numa pasta temporária **antes** de tocar
@@ -279,6 +304,16 @@ public sealed class UpdateChecker
             $"$zip = '{Psq(zipPath)}'",
             $"$stage = '{Psq(stage)}'",
             $"$adb = '{Psq(adbPath)}'",
+            // O técnico abre a app e tem de saber que a atualização falhou: o
+            // log vive em %TEMP% e ninguém o vai ler. O marcador é consumido
+            // no arranque seguinte (ConsumeUpdateFailure) e apagado.
+            $"$marcador = Join-Path $appDir '{UpdateFailureMarkerName}'",
+            $"$bak = $appDir + '.bak-' + [Guid]::NewGuid().ToString('N')",
+            "function Avisar-Falha([string] $porque) {",
+            // Formato com aspas simples: o tag vem da release e não pode ser
+            // expandido como expressão.
+            $"  ('{{0}} atualização {{1}} falhou: {{2}} — continuas na versão anterior. Log: {{3}}' -f (Get-Date -Format o), '{Psq(tag)}', $porque, $log) | Out-File $marcador -Encoding utf8",
+            "}",
             // 1) Esperar pelo PID real. O Sleep fixo de 3 s deixava o exe
             //    bloqueado e o tar falhava a meio da atualização.
             $"Wait-Process -Id {processId} -Timeout 30 -ErrorAction SilentlyContinue",
@@ -295,6 +330,7 @@ public sealed class UpdateChecker
             "\"extract exit=$LASTEXITCODE\" | Out-File $log -Append",
             $"if ($LASTEXITCODE -ne 0 -or -not (Test-Path (Join-Path $stage '{PackagePaths.AppExeName}'))) {{",
             "  'extract failed — nada em appDir foi alterado' | Out-File $log -Append",
+            "  Avisar-Falha 'o zip não extraiu'",
             "  Remove-Item $stage -Recurse -Force -ErrorAction SilentlyContinue",
             "  Start-Process $exe",
             "  exit 1",
@@ -308,23 +344,38 @@ public sealed class UpdateChecker
             "}",
             "if ($escaped) {",
             "  'zip com entradas fora do staging — atualização recusada' | Out-File $log -Append",
+            "  Avisar-Falha 'o zip trazia entradas fora do staging'",
             "  Remove-Item $stage -Recurse -Force -ErrorAction SilentlyContinue",
             "  Start-Process $exe",
             "  exit 1",
             "}",
-            // 5) Só agora: backup do exe, cópia do staging e rollback no catch.
+            // 5) Só agora: backup do build **inteiro**, cópia do staging e
+            //    rollback no catch. Antes era só o exe: uma falha a meio
+            //    deixava exe velho com DLLs novas (instalação híbrida) e
+            //    ninguém sabia se a app ainda arrancava. Este passo copia a
+            //    árvore toda, porque no rollback não basta o executável.
             "try {",
-            "  Copy-Item $exe \"$exe.bak\" -Force -ErrorAction Stop",
+            "  Copy-Item $appDir $bak -Recurse -Force -ErrorAction Stop",
             "  Copy-Item (Join-Path $stage '*') $appDir -Recurse -Force -ErrorAction Stop",
             "} catch {",
             "  \"copy failed: $_ — a restaurar o build anterior\" | Out-File $log -Append",
-            "  if (Test-Path \"$exe.bak\") { Copy-Item \"$exe.bak\" $exe -Force -ErrorAction SilentlyContinue }",
-            "  Start-Process $exe",
+            "  if (Test-Path $bak) {",
+            "    Remove-Item $appDir -Recurse -Force -ErrorAction SilentlyContinue",
+            "    Move-Item $bak $appDir -Force -ErrorAction SilentlyContinue",
+            "  }",
+            // O aviso vem depois de o rollback correr: dentro de appDir, o
+            // marcador escrito antes era apagado pela própria restauração.
+            "  if (Test-Path $exe) {",
+            "    Avisar-Falha 'a cópia do staging falhou a meio'",
+            "  } else {",
+            "    Avisar-Falha 'a cópia do staging falhou e o rollback não repôs o exe — repõe a instalação a partir do zip'",
+            "  }",
+            "  if (Test-Path $exe) { Start-Process $exe }",
             "  Remove-Item $stage -Recurse -Force -ErrorAction SilentlyContinue",
             "  exit 1",
             "}",
             "Start-Process $exe",
-            "Remove-Item \"$exe.bak\" -Force -ErrorAction SilentlyContinue",
+            "Remove-Item $bak -Recurse -Force -ErrorAction SilentlyContinue",
             "Remove-Item $stage -Recurse -Force -ErrorAction SilentlyContinue",
             "Remove-Item $zip -Force -ErrorAction SilentlyContinue",
             "Remove-Item $MyInvocation.MyCommand.Path -ErrorAction SilentlyContinue",

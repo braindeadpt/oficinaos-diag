@@ -59,6 +59,32 @@ const mutantes = [
     prova: "FailureGuardTests",
   },
   {
+    // Falha a meio da aplicação do staging: se o rollback não devolver a
+    // árvore, o técnico fica com exe velho e DLLs novas.
+    nome: "o rollback do staging não devolve o build",
+    ficheiro: "src/OficinaDiag.Core/Cloud/UpdateChecker.cs",
+    de: `            "    Move-Item $bak $appDir -Force -ErrorAction SilentlyContinue",`,
+    para: `            "    Remove-Item $bak -Recurse -Force -ErrorAction SilentlyContinue",`,
+    guarda: "uishots",
+    prova: "staging: falha a meio repõe o build anterior",
+  },
+  {
+    nome: "o backup do staging não copia a árvore",
+    ficheiro: "src/OficinaDiag.Core/Cloud/UpdateChecker.cs",
+    de: `            "  Copy-Item $appDir $bak -Recurse -Force -ErrorAction Stop",`,
+    para: `            "  New-Item -ItemType Directory -Force $bak | Out-Null",`,
+    guarda: "uishots",
+    prova: "staging: falha a meio repõe o build anterior",
+  },
+  {
+    nome: "a falha do staging fica sem aviso",
+    ficheiro: "src/OficinaDiag.Core/Cloud/UpdateChecker.cs",
+    de: `            "    Avisar-Falha 'a cópia do staging falhou a meio'",`,
+    para: `            "    # sem aviso para o técnico",`,
+    guarda: "uishots",
+    prova: "staging: a falha fica no marcador que o arranque mostra",
+  },
+  {
     nome: "Paint do checklist com indexer",
     ficheiro: "src/OficinaDiag/ChecklistDialog.xaml.cs",
     de: "        var s = _state.GetValueOrDefault(key);",
