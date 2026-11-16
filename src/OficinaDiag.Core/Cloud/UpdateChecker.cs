@@ -190,7 +190,7 @@ public sealed class UpdateChecker
             // mais alto (replay) e esta máquina fazia downgrade silencioso.
             var sumsBytes = await LerSums(info.ChecksumUrl);
             var sigB64 = (await LerSig(info.SigUrl)).Trim();
-            if (ValidateSums(sumsBytes, sigB64, info.Tag, current, ChavePublicaDaRelease) is { } err)
+            if (ValidateSums(sumsBytes, sigB64, info.Tag, current, ReleaseSigningPublicKey) is { } err) // SONDA
                 return (false, err);
 
             var zipPath = Path.Combine(Path.GetTempPath(), $"oficinaos-diag-{info.Tag}.zip");
