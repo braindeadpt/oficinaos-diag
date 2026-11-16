@@ -58,30 +58,18 @@ const mutantes = [
     filtro: "FailureGuardTests",
     prova: "FailureGuardTests",
   },
-  {
-    // Um mutante por via de reposição não morre: as duas vias (copiar por
-    // cima e trocar a pasta) cobrem-se de propósito, e cada uma sozinha ainda
-    // repõe o build (runs 43921766213). O mutante mata o rollback inteiro.
-    nome: "o rollback do staging não repõe nada",
-    ficheiro: "src/OficinaDiag.Core/Cloud/UpdateChecker.cs",
-    de: `            "  if (Test-Path $bak) {",
-            "    Copy-Item (Join-Path $bak '*') $appDir -Recurse -Force -ErrorAction SilentlyContinue",
-            "  }",
-            "  if (-not (Test-Path $exe)) {",
-            "    Remove-Item $appDir -Recurse -Force -ErrorAction SilentlyContinue",
-            "    Move-Item $bak $appDir -Force -ErrorAction SilentlyContinue",
-            "  }",`,
-    para: `            "  # rollback removido (mutante)",`,
-    guarda: "uishots",
-    prova: "staging: falha a meio repõe o build anterior",
-  },
+  // Não há mutante para o rollback: com um ficheiro em uso o Copy-Item falha
+  // antes de escrever nada, e desligar as duas vias de reposição deixa o
+  // harness verde (runs 43921766213, 43922457138 e 43923007685). O rollback
+  // fica como defesa para a cópia que já escreveu — caso que o runner não
+  // consegue reproduzir.
   {
     nome: "o backup do staging não copia a árvore",
     ficheiro: "src/OficinaDiag.Core/Cloud/UpdateChecker.cs",
     de: `            "  Copy-Item $appDir $bak -Recurse -Force -ErrorAction Stop",`,
     para: `            "  New-Item -ItemType Directory -Force $bak | Out-Null",`,
     guarda: "uishots",
-    prova: "staging: falha a meio repõe o build anterior",
+    prova: "staging: falha a meio deixa o build anterior",
   },
   {
     nome: "a falha do staging fica sem aviso",

@@ -1451,7 +1451,12 @@ internal static class Program
         Console.WriteLine($"  staging falha: exit={codigoFalha} exe='{LerTexto(Path.Combine(appFalha, PackagePaths.AppExeName))}' "
             + $"dll='{LerTexto(Path.Combine(appFalha, "OficinaDiag.Core.dll"))}' zzz='{LerTexto(Path.Combine(appFalha, "zzz.dat"))}' "
             + $"marcador={File.Exists(marcador)}");
-        Verificar("staging: falha a meio repõe o build anterior",
+        // "deixa" e não "repõe": com um ficheiro em uso o Copy-Item falha
+        // antes de escrever nada (runs 43921766213/43923007685 tirando o
+        // rollback e o resultado é o mesmo), por isso o que se mede aqui é que
+        // não sobra instalação híbrida — a reposição é a defesa para o caso em
+        // que a cópia já escreveu alguma coisa, e essa não é reproduzível.
+        Verificar("staging: falha a meio deixa o build anterior",
             codigoFalha == 1
             && File.ReadAllText(Path.Combine(appFalha, PackagePaths.AppExeName)) == "exe-v2"
             && File.ReadAllText(Path.Combine(appFalha, "OficinaDiag.Core.dll")) == "core-v2"
