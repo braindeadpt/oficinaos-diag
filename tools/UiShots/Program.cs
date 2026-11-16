@@ -495,8 +495,12 @@ internal static class Program
     /// Corre numa thread de fundo: o `MessageBox.Show` bloqueia a thread da UI
     /// com o diálogo aberto, logo ninguém a pode ler de lá.
     /// </summary>
-    private static async Task<string?> ResponderMessageBox(string resposta, int timeoutMs = 15_000)
-        => (await ResponderMessageBoxDetalhado(resposta, timeoutMs)).Corpo;
+    // Sem `await`: a prova chama isto da thread da UI e fica presa no
+    // `GetResult()` — um `await` ali captura o dispatcher e a continuação
+    // nunca corre (o run 43931052129 pendurou aqui 180 s).
+    private static Task<string?> ResponderMessageBox(string resposta, int timeoutMs = 15_000)
+        => ResponderMessageBoxDetalhado(resposta, timeoutMs)
+            .ContinueWith(t => t.Result.Corpo, TaskScheduler.Default);
 
     /// <summary>
     /// Igual, mas diz **porquê** quando não há corpo. O run `43929190520` deu
