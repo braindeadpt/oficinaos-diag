@@ -41,6 +41,23 @@ const so = [...flags]
  */
 const mutantes = [
   {
+    // Prazo por prova: sem espera, o aviso tem de falhar **com o motivo** em
+    // vez de dar `false` mudo (run 43929190520).
+    nome: "o aviso da bancada deixa de ser esperado",
+    ficheiro: "tools/UiShots/Program.cs",
+    de: `            if (hwnd == IntPtr.Zero)
+            {
+                Thread.Sleep(100);
+                continue;
+            }`,
+    para: `            if (hwnd == IntPtr.Zero)
+            {
+                return (null, "o diálogo não apareceu");
+            }`,
+    guarda: "uishots",
+    prova: "bancada: o aviso apareceu (o diálogo não apareceu)",
+  },
+  {
     // Máscaras: um `?? 0` que inventa um veredicto tranquilizador.
     nome: "um dump de contas ilegível vira «sem contas»",
     ficheiro: "src/OficinaDiag.Core/Devices/AdbParsing.cs",

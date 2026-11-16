@@ -495,7 +495,17 @@ internal static class Program
     /// Corre numa thread de fundo: o `MessageBox.Show` bloqueia a thread da UI
     /// com o diálogo aberto, logo ninguém a pode ler de lá.
     /// </summary>
-    private static Task<string?> ResponderMessageBox(string resposta, int timeoutMs = 15_000) => Task.Run(() =>
+    private static async Task<string?> ResponderMessageBox(string resposta, int timeoutMs = 15_000)
+        => (await ResponderMessageBoxDetalhado(resposta, timeoutMs)).Corpo;
+
+    /// <summary>
+    /// Igual, mas diz **porquê** quando não há corpo. O run `43929190520` deu
+    /// três falhas mudas (`o aviso apareceu`, `o texto é o do L10n ('')`,
+    /// `seguro avisou … em vez de seguir`) e não se sabia se o diálogo não
+    /// apareceu ou se apareceu sem texto legível.
+    /// </summary>
+    private static Task<(string? Corpo, string Porque)> ResponderMessageBoxDetalhado(
+        string resposta, int timeoutMs = 15_000) => Task.Run(() =>
     {
         var fim = Environment.TickCount64 + timeoutMs;
         while (Environment.TickCount64 < fim)
@@ -514,6 +524,7 @@ internal static class Program
             // fecha-se na mesma e o teste diz que não leu o corpo.
             var leitura = Task.Run(() => TextoDoDialogo(hwnd));
             var corpo = leitura.Wait(4000) ? leitura.Result : null;
+            var porque = corpo is null ? "o diálogo apareceu mas o texto não veio em 4 s" : "";
 
             // WM_COMMAND com IDYES/IDNO é o caminho nativo do MessageBox.
             PostMessage(hwnd, WmCommand,
@@ -522,9 +533,9 @@ internal static class Program
             if (!Sumiu(hwnd, 3000))
                 PostMessage(hwnd, WmClose, IntPtr.Zero, IntPtr.Zero);
 
-            return corpo;
+            return (corpo, porque);
         }
-        return null;
+        return (null, $"nenhum diálogo em {timeoutMs} ms");
     });
 
     /// <summary>
@@ -2083,15 +2094,15 @@ internal static class Program
 
                 using var vigia = new CancellationTokenSource();
                 var rede = VigiaDoMessageBox(vigia.Token);
-                var resposta = ResponderMessageBox("ok");
+                var resposta = ResponderMessageBoxDetalhado("ok");
                 Marcar($"clique: {nome} ({botao})");
                 var clicou = Clicar(alvo); // fica dentro do MessageBox até alguém responder
-                var corpo = resposta.GetAwaiter().GetResult();
+                var (corpo, porque) = resposta.GetAwaiter().GetResult();
                 vigia.Cancel();
                 rede.Wait(500);
 
                 Verificar($"clique: {nome} correu o handler sem exceção", clicou);
-                Verificar($"clique: {nome} avisou «{chave}» em vez de seguir",
+                Verificar($"clique: {nome} avisou «{chave}» em vez de seguir ({porque})",
                     TextoDoAviso(corpo, chave));
                 Verificar($"clique: {nome} continua aberto depois do aviso", dialogo.IsLoaded);
             }
@@ -2122,19 +2133,20 @@ internal static class Program
             var comecar = janela.FindName("StartBtn") as Button;
             comecar!.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
             Verificar("bancada: sessão arrancou (SCAN+ desativado)",
-                Esperar(() => !comecar.IsEnabled, 5000));
+                EsperarPor("bancada: sessão arrancou", "o SCAN+ desativar depois do clique",
+                    () => !comecar.IsEnabled, 5000));
 
             using var vigia = new CancellationTokenSource();
             var rede = VigiaDoMessageBox(vigia.Token);
-            var primeira = ResponderMessageBox("nao");
+            var primeira = ResponderMessageBoxDetalhado("nao");
             janela.Close(); // bloqueia no MessageBox
-            var corpo = primeira.GetAwaiter().GetResult();
+            var (corpo, porque) = primeira.GetAwaiter().GetResult();
             vigia.Cancel();
             rede.Wait(500);
 
-            Verificar("bancada: o aviso apareceu", corpo is not null);
+            Verificar($"bancada: o aviso apareceu ({porque})", corpo is not null);
             var esperado = SemEspacos(L10n.T("bench.confirm.abort"));
-            Verificar($"bancada: o texto é o do L10n ('{corpo}')",
+            Verificar($"bancada: o texto é o do L10n ('{corpo ?? porque}')",
                 corpo is not null && SemEspacos(corpo).Contains(esperado[..30]));
             Verificar("bancada: responder Não mantém a janela aberta", janela.IsLoaded);
 
@@ -2406,6 +2418,18 @@ internal static class Program
     /// timeout. Pausas fixas davam um teste intermitente em runner carregado:
     /// 200ms chegavam numa corrida e não na seguinte.
     /// </summary>
+    /// <summary>
+    /// Espera com prazo e, ao esgotar, imprime **o que se esperava**. Uma
+    /// condição que nunca fica verdadeira tem de deixar rasto com nome próprio,
+    /// senão o run só diz «falhou».
+    /// </summary>
+    private static bool EsperarPor(string prova, string esperado, Func<bool> condicao, int timeoutMs = 10_000)
+    {
+        if (Esperar(condicao, timeoutMs)) return true;
+        Console.WriteLine($"  prazo esgotado em «{prova}» ({timeoutMs} ms): esperava {esperado}");
+        return false;
+    }
+
     private static bool Esperar(Func<bool> condicao, int timeoutMs)
     {
         var fim = Environment.TickCount64 + timeoutMs;
