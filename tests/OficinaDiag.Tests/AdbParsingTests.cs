@@ -116,6 +116,17 @@ public sealed class AdbParsingTests
     }
 
     [Fact]
+    public void ContasComDumpIlegivel_NaoViramSemContas()
+    {
+        // Um formato que não bate (Android novo, OEM estranho) é «não sei» e
+        // não «não tem»: um zero aqui virava «sem contas — FRP não dispara»
+        // no relatório, que é o veredicto que tranca a revenda.
+        Assert.Null(AdbParsing.ParseAccountCount("Accounts: 1\n  Account {formato=novo}\n"));
+        Assert.Equal(0, AdbParsing.ParseAccountCount("Accounts: 0\n"));
+        Assert.Null(AdbParsing.ParseAccountCount(null));
+    }
+
+    [Fact]
     public void Capacidade_EmMicroAh_ViraMah()
     {
         Assert.Equal(4850, AdbParsing.NormalizeMah(4_850_000));

@@ -179,12 +179,18 @@ public sealed class AndroidCollector
         var accounts = await AdbAsync(serial, "shell dumpsys account");
         if (accounts is not null)
         {
-            var accCount = AdbParsing.ParseAccountCount(accounts) ?? 0;
-            r.Set("security.accounts", accCount > 0 ? "warn" : "pass",
-                accCount == 0 ? "sem contas" : $"{accCount} conta(s)",
-                accCount > 0
-                    ? "conta(s) do fabricante/Google ativas — um reset dispara FRP; desvincular antes de vender"
-                    : "sem contas — FRP não dispara num reset");
+            var accCount = AdbParsing.ParseAccountCount(accounts);
+            if (accCount is { } contas)
+                r.Set("security.accounts", contas > 0 ? "warn" : "pass",
+                    contas == 0 ? "sem contas" : $"{contas} conta(s)",
+                    contas > 0
+                        ? "conta(s) do fabricante/Google ativas — um reset dispara FRP; desvincular antes de vender"
+                        : "sem contas — FRP não dispara num reset");
+            else
+                // `?? 0` aqui dava um «pass» tranquilizador a um dump que não
+                // se percebeu — e é o veredicto que tranca a revenda.
+                r.Set("security.accounts", "warn", "dump ilegível",
+                    "não foi possível contar as contas — confirma à mão antes de vender (um reset pode disparar FRP)");
         }
 
         // MDM: device/profile owner = gerido por empresa ou preso a leasing —

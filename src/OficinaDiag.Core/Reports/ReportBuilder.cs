@@ -181,26 +181,41 @@ public static class ReportBuilder
         return sb.ToString();
     }
 
-    /// <summary>Fotos de bancada embutidas em base64 — o HTML fica autocontido.</summary>
-    private static void AppendPhotos(StringBuilder sb, DeviceReport r)
+    /// <summary>
+    /// Base64 das fotos legíveis e quantas ficaram de fora. Um sítio só: as
+    /// duas vistas do relatório tinham cada uma a sua cópia do ciclo, e a
+    /// contagem existia só numa — a prova que desaparecia ia calada para o
+    /// técnico e para a seguradora.
+    /// </summary>
+    private static (string Imgs, int Ilegiveis) FotosEmbutidas(DeviceReport r)
     {
-        if (r.PhotoPaths.Count == 0) return;
         var imgs = new StringBuilder();
+        var ilegiveis = 0;
         foreach (var path in r.PhotoPaths)
         {
             try
             {
-                if (!File.Exists(path)) continue;
+                if (!File.Exists(path)) { ilegiveis++; continue; }
                 var ext = Path.GetExtension(path).ToLowerInvariant();
                 var mime = ext is ".png" ? "image/png" : ext is ".webp" ? "image/webp" : "image/jpeg";
                 var b64 = Convert.ToBase64String(File.ReadAllBytes(path));
                 imgs.Append($"<img src=\"data:{mime};base64,{b64}\" " +
                     "style=\"max-width:230px;margin:4px;border:1px solid #1d4a1d\">");
             }
-            catch { /* foto inacessível — salta */ }
+            catch { ilegiveis++; }
         }
+        return (imgs.ToString(), ilegiveis);
+    }
+
+    /// <summary>Fotos de bancada embutidas em base64 — o HTML fica autocontido.</summary>
+    private static void AppendPhotos(StringBuilder sb, DeviceReport r)
+    {
+        if (r.PhotoPaths.Count == 0) return;
+        var (imgs, ilegiveis) = FotosEmbutidas(r);
         if (imgs.Length > 0)
             sb.AppendLine($"<h1 style=\"font-size:1em\">FOTOS DE BANCADA</h1><div>{imgs}</div>");
+        if (ilegiveis > 0)
+            sb.AppendLine($"<p>{ilegiveis} foto(s) do levantamento não puderam ser incluídas — o ficheiro não estava legível.</p>");
     }
 
     /// <summary>
@@ -429,20 +444,14 @@ public static class ReportBuilder
 
         if (r.PhotoPaths.Count > 0)
         {
-            var imgs = new StringBuilder();
-            foreach (var path in r.PhotoPaths)
-            {
-                try
-                {
-                    if (!File.Exists(path)) continue;
-                    var ext = Path.GetExtension(path).ToLowerInvariant();
-                    var mime = ext is ".png" ? "image/png" : ext is ".webp" ? "image/webp" : "image/jpeg";
-                    imgs.Append($"<img src=\"data:{mime};base64,{Convert.ToBase64String(File.ReadAllBytes(path))}\">");
-                }
-                catch { }
-            }
+            var (imgs, ilegiveis) = FotosEmbutidas(r);
             if (imgs.Length > 0)
                 sb.AppendLine($"<h2>Fotos</h2><div class=\"photos\">{imgs}</div>");
+            // Uma foto em falta também conta: `continue` calava-a, e num
+            // relatório de seguradora a prova que desaparece sem rasto é pior
+            // do que a prova ausente.
+            if (ilegiveis > 0)
+                sb.AppendLine($"<p class=\"note\">{ilegiveis} foto(s) do levantamento não puderam ser incluídas — o ficheiro não estava legível.</p>");
         }
 
         sb.AppendLine("<div class=\"footer\">Inspeção realizada por oficinaos-diag na data indicada. " +

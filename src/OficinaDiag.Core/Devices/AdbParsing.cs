@@ -24,6 +24,12 @@ public static class AdbParsing
         if (dump is null) return null;
         var matches = Regex.Matches(dump,
             @"Account\s*\{\s*name=([^,}]+),\s*type=(" + AccountTypes + @")\b");
+        // Um dump com secções `Account {` que não bateram com o formato é um
+        // «não sei», não um «não tem»: devolver 0 aqui virava «sem contas —
+        // FRP não dispara» num telefone que pode estar preso a uma conta.
+        // Só um dump sem secções nenhumas é que justifica o zero.
+        if (matches.Count == 0)
+            return dump.Contains("Account {", StringComparison.Ordinal) ? null : 0;
         return matches
             .Select(m => $"{m.Groups[1].Value.Trim()}|{m.Groups[2].Value}".ToLowerInvariant())
             .Distinct(StringComparer.Ordinal)

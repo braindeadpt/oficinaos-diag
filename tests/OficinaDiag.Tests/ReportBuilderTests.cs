@@ -14,6 +14,21 @@ public class ReportBuilderTests
     };
 
     [Fact]
+    public void FotosIlegiveis_NaoDesaparecemSemRasto()
+    {
+        var r = Sample();
+        r.PhotoPaths.Add(Path.Combine(Path.GetTempPath(), "oficinaos-foto-em-falta.jpg"));
+        var html = ReportBuilder.ToHtml(r);
+        // `continue` e `catch { }` calavam a foto: num relatório de seguradora
+        // a prova que falta tem de estar dita, não omitida.
+        Assert.Contains("1 foto(s) do levantamento não puderam ser incluídas", html);
+        Assert.DoesNotContain("<div class=\"photos\">", html);
+        // As duas vistas do relatório dizem-no: tinham ciclos de fotos
+        // duplicados e a contagem existia só numa.
+        Assert.Contains("1 foto(s) do levantamento não puderam ser incluídas", ReportBuilder.ToClientHtml(r));
+    }
+
+    [Fact]
     public void AiReportHtmlEscapesRawHtml()
     {
         var md = "# Resumo\n\n<script>alert(1)</script>\n\nTexto <img src=x onerror=alert(2)> fim\n\n**ok**";

@@ -41,6 +41,35 @@ const so = [...flags]
  */
 const mutantes = [
   {
+    // Máscaras: um `?? 0` que inventa um veredicto tranquilizador.
+    nome: "um dump de contas ilegível vira «sem contas»",
+    ficheiro: "src/OficinaDiag.Core/Devices/AdbParsing.cs",
+    de: '            return dump.Contains("Account {", StringComparison.Ordinal) ? null : 0;',
+    para: '            return 0; // mutante: ilegível vira zero',
+    guarda: "testes",
+    filtro: "AdbParsingTests",
+    prova: "ContasComDumpIlegivel_NaoViramSemContas",
+  },
+  {
+    // Máscara: `catch { }` (e um `continue`) que perdem prova sem rasto.
+    nome: "as fotos ilegíveis somem do relatório",
+    ficheiro: "src/OficinaDiag.Core/Reports/ReportBuilder.cs",
+    de: '        var ilegiveis = 0;',
+    para: '        var ilegiveis = -1; // mutante: a contagem nunca chega a 1',
+    guarda: "testes",
+    filtro: "ReportBuilderTests",
+    prova: "FotosIlegiveis_NaoDesaparecemSemRasto",
+  },
+  {
+    // Máscara com consequência física: uma etiqueta impressa sem serial.
+    nome: "a etiqueta imprime ? no lugar do serial",
+    ficheiro: "src/OficinaDiag/Reports/LabelPrinter.cs",
+    de: 'var serial = r.Device.Serial ?? "?";',
+    para: 'var serial = "?"; // mutante: etiqueta sem serial',
+    guarda: "uishots",
+    prova: "botões: a etiqueta leva o serial do relatório",
+  },
+  {
     nome: "indexer do SetState (o checklist morto)",
     ficheiro: "src/OficinaDiag.Core/Grading/ChecklistMarks.cs",
     de: "var atual = marcas.TryGetValue(chave, out var v) ? v : 0;",
