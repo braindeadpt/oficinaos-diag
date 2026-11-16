@@ -153,7 +153,10 @@ public partial class MainWindow : Window
         // maior do que o ecrã onde ela nasceu.
         AjustarAoEcra();
         // Mudar a escala com a app aberta (125% → 150%) não passava por aqui.
-        DpiChanged += AoMudarEscala;
+        // Linha única de propósito: o delegado fica em `_assinaturaDpi`, que só
+        // existe se **esta** linha correr — é o que a prova do harness lê, porque
+        // o WPF não deixa enumerar nem levantar o `DpiChanged` à mão.
+        DpiChanged += (_assinaturaDpi = AoMudarEscala);
         // Dois ecrãs com a mesma escala: o DPI não muda, a área sim.
         LocationChanged += (_, _) => TalvezMudouDeMonitor();
         ApplyStrings();
@@ -996,6 +999,10 @@ public partial class MainWindow : Window
     private const uint MonitorDefaultToNearest = 2;
     private IntPtr _monitorAtual;
     private bool _aAjustar;
+    private DpiChangedEventHandler? _assinaturaDpi;
+
+    /// <summary>A prova do harness lê isto: a assinatura do `DpiChanged` existe?</summary>
+    internal bool DpiLigado => _assinaturaDpi is not null;
 
     [StructLayout(LayoutKind.Sequential)]
     private struct RectNativo { public int Left, Top, Right, Bottom; }

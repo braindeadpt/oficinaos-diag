@@ -57,7 +57,7 @@ const mutantes = [
     // observa a ligação por reflexão.
     nome: "mudar a escala deixa de reencaixar a janela",
     ficheiro: "src/OficinaDiag/MainWindow.xaml.cs",
-    de: "        DpiChanged += AoMudarEscala;",
+    de: "        DpiChanged += (_assinaturaDpi = AoMudarEscala);",
     para: "        // mutante: sem assinatura do DpiChanged",
     guarda: "uishots",
     prova: "dpi: a 100% o DpiChanged está ligado ao reencaixe",

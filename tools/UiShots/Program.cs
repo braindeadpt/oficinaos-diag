@@ -970,10 +970,7 @@ internal static class Program
                         janela.Left >= area.Left - 0.5 && janela.Top >= area.Top - 0.5
                         && janela.Left + janela.ActualWidth <= area.Left + area.Width + 0.5
                         && janela.Top + janela.ActualHeight <= area.Top + area.Height + 0.5);
-                    // O WPF não deixa levantar o `DpiChanged` à mão: sem esta
-                    // verificação, apagar o `DpiChanged += …` deixava tudo verde.
-                    Verificar($"dpi: a {pct}% o DpiChanged está ligado ao reencaixe",
-                        HandlersDoDpi(janela) == 1);
+
                 }
                 finally { Fechar(janela); }
             }
@@ -1007,6 +1004,19 @@ internal static class Program
                 var encostada = maior.Width - portatil.ActualWidth;
                 Verificar($"dpi: fora do ecrã encosta para dentro (L{portatil.Left:0}, esperado {encostada:0})",
                     Math.Abs(portatil.Left - encostada) < 1.0);
+
+                // A assinatura do evento: o WPF não a deixa enumerar nem levantar
+                // à mão, por isso a linha do `OnLoaded` guarda o delegado que
+                // assinou. Sem esta prova, apagar essa linha ficava verde.
+                Verificar("dpi: o DpiChanged está ligado ao reencaixe", LerBooleano(portatil, "DpiLigado"));
+
+                // E o handler tem de fazer o trabalho — é o mesmo corpo que o
+                // evento chama; aqui é invocado directamente.
+                portatil.Left = 60;
+                Respirar();
+                InvocarMudancaDeEscala(portatil);
+                Verificar($"dpi: o handler da mudança de escala reencaixa (L{portatil.Left:0})",
+                    Math.Abs(portatil.Left - 60) < 0.5);
             }
             finally { Fechar(portatil); }
         }
@@ -1016,19 +1026,22 @@ internal static class Program
         }
     }
 
+    /// <summary>Lê uma propriedade `internal` da janela (as provas não têm IVT).</summary>
+    private static bool LerBooleano(object alvo, string propriedade) =>
+        alvo.GetType()
+            .GetProperty(propriedade, BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public)
+            ?.GetValue(alvo) is true;
+
     /// <summary>
-    /// Quantos handlers tem o `DpiChanged` da janela. O WPF não deixa levantar
-    /// o evento à mão, por isso a assinatura observa-se por reflexão.
+    /// Chama o handler do `DpiChanged` como o WPF faria. O evento não se
+    /// levanta à mão; o que se prova aqui é o corpo que ele chama.
     /// </summary>
-    private static int HandlersDoDpi(Window janela)
+    private static void InvocarMudancaDeEscala(MainWindow janela)
     {
-        for (var tipo = janela.GetType(); tipo is not null; tipo = tipo.BaseType)
-        {
-            var campo = tipo.GetField("DpiChanged",
-                BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public);
-            if (campo?.GetValue(janela) is Delegate d) return d.GetInvocationList().Length;
-        }
-        return -1;
+        typeof(MainWindow).GetMethod("AoMudarEscala", BindingFlags.NonPublic | BindingFlags.Instance)!
+            .Invoke(janela, [null, null]);
+        janela.UpdateLayout();
+        Respirar();
     }
 
     private static void AjustarJanela(MainWindow janela, bool recentrar)
