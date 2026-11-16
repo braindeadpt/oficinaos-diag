@@ -16,9 +16,12 @@
 // uma excepção da lista de «pode não correr» já não existe no código (lista
 // podre esconde provas novas).
 import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 
-const raiz = new URL("..", import.meta.url).pathname;
-const fonte = `${raiz}tools/UiShots/Program.cs`;
+// `new URL(...).pathname` no Windows dá `/D:/…` e o caminho saía `D:\D:\…`
+// (run 43899052215). `fileURLToPath` é o que sabe traduzir o esquema.
+const fonte = join(dirname(fileURLToPath(import.meta.url)), "UiShots", "Program.cs");
 
 const args = process.argv.slice(2);
 const provas = args.find((a) => !a.startsWith("--")) ?? "out-store/ui-shots/provas.txt";
