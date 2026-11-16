@@ -63,8 +63,8 @@ const mutantes = [
     // árvore, o técnico fica com exe velho e DLLs novas.
     nome: "o rollback do staging não devolve o build",
     ficheiro: "src/OficinaDiag.Core/Cloud/UpdateChecker.cs",
-    de: `            "    Move-Item $bak $appDir -Force -ErrorAction SilentlyContinue",`,
-    para: `            "    Remove-Item $bak -Recurse -Force -ErrorAction SilentlyContinue",`,
+    de: `            "    Copy-Item (Join-Path $bak '*') $appDir -Recurse -Force -ErrorAction SilentlyContinue",`,
+    para: `            "    # não repõe nada",`,
     guarda: "uishots",
     prova: "staging: falha a meio repõe o build anterior",
   },
@@ -81,8 +81,8 @@ const mutantes = [
     // a DLL fica v9 com o exe v2 — a instalação híbrida outra vez.
     nome: "o rollback desiste do ficheiro em uso",
     ficheiro: "src/OficinaDiag.Core/Cloud/UpdateChecker.cs",
-    de: `            "      Copy-Item (Join-Path $bak '*') $appDir -Recurse -Force -ErrorAction SilentlyContinue",`,
-    para: `            "      # desistir do que ficou bloqueado",`,
+    de: `            "    Move-Item $bak $appDir -Force -ErrorAction SilentlyContinue",`,
+    para: `            "    # desistir do que ficou bloqueado",`,
     guarda: "uishots",
     prova: "staging: falha a meio repõe o build anterior",
   },

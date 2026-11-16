@@ -368,16 +368,18 @@ public sealed class UpdateChecker
             "  Copy-Item (Join-Path $stage '*') $appDir -Recurse -Force -ErrorAction Stop",
             "} catch {",
             "  \"copy failed: $_ — a restaurar o build anterior\" | Out-File $log -Append",
+            // Repor **por cima**, e só depois tentar a troca limpa: o
+            // `Move-Item` para uma pasta que ainda existe move o backup para
+            // dentro dela e não repõe nada (apanhado pela prova), e um
+            // ficheiro em uso (adb, antivírus) impede apagar a pasta.
             "  if (Test-Path $bak) {",
+            "    Copy-Item (Join-Path $bak '*') $appDir -Recurse -Force -ErrorAction SilentlyContinue",
+            "  }",
+            "  if (-not (Test-Path $exe)) {",
             "    Remove-Item $appDir -Recurse -Force -ErrorAction SilentlyContinue",
             "    Move-Item $bak $appDir -Force -ErrorAction SilentlyContinue",
-            // Um ficheiro em uso (adb, antivírus) impede apagar e repor a
-            // pasta: copiar por cima repõe tudo o que é possível e deixa o
-            // bloqueado como estava — é o melhor que há sem reiniciar.
-            "    if (-not (Test-Path $exe)) {",
-            "      Copy-Item (Join-Path $bak '*') $appDir -Recurse -Force -ErrorAction SilentlyContinue",
-            "    }",
             "  }",
+            "  Remove-Item $bak -Recurse -Force -ErrorAction SilentlyContinue",
             // O aviso vem depois de o rollback correr: dentro de appDir, o
             // marcador escrito antes era apagado pela própria restauração.
             "  if (Test-Path $exe) {",
