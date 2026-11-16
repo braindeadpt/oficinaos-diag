@@ -53,6 +53,7 @@
 ---
 
 ## Critérios de Aceitação
+- [x] Uma foto em falta ou ilegível fica **contada** no relatório em vez de desaparecer calada, e as duas vistas (`ToHtml` e `ToClientHtml`) usam a mesma contagem. *(prova: `ReportBuilderTests.FotosIlegiveis_NaoDesaparecemSemRasto` nos dois formatos — antes eram dois ciclos duplicados, um com `continue` e dois `catch { }`, e a contagem existia só numa vista; mutante `as fotos ilegíveis somem do relatório` morre localmente com `ilegiveis = -1`)*
 - [x] Nenhum esquema `javascript:` ou `data:` passa pelo `AiReportToHtml`. *(prova: `ReportBuilderTests` — allowlist `http(s)`/`mailto`)*
 - [x] Todos os 4 formatos HTML escapam qualquer input malicioso em `Device`, `Results`, `Notes` e `InsuranceForm`. *(prova: `ReportBuilderTests.SerialMaliciosoEEscapadoEmTodosOsFormatos` cobre `ToHtml`/`ToClientHtml`/`ToInsuranceHtml`, e `AiReportHtmlEscapesRawHtml` o de IA; `SafeCssToken`/`SafeFileToken` à parte)*
 - [x] `AbandonedMutexException` é tratada sem crash em `ScanHistory`. *(prova: `ScanHistoryTests.MutexAbandonado_NaoImpedeAEscritaSeguinte` — uma thread toma o mutex do ficheiro e morre sem o libertar; o `Add` seguinte apanha o abandonado, escreve e a instância continua a escrever. Com `catch (AbandonedMutexException) { throw; }` o teste falha com `AbandonedMutexException: The wait completed due to an abandoned mutex`. O nome do mutex passou a derivar do caminho (`LockNameFor`), por isso históricos diferentes não contendem — `MutexEDoFicheiro_NaoBloqueiaOutroHistorico`)*
