@@ -1671,7 +1671,6 @@ internal static class Program
     private static void ProvarBarraDeScroll(string destino)
     {
         Console.WriteLine("== barra de scroll do Win95 ==");
-        if (true) return; // SONDA: a prova deixa de correr, o run continua verde
         ThemeManager.Apply(ThemeManager.Win95);
         L10n.Set("pt");
 
