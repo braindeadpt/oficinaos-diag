@@ -1409,13 +1409,14 @@ internal static class Program
         {
             Escrever(a, PackagePaths.AppExeName, "exe-v3");
             Escrever(a, "OficinaDiag.Core.dll", "core-v3");
-            Escrever(a, "zzz/novo.dll", "novo-v3");
+            // Subdiretório no zip sem colidir com o ficheiro `zzz` do disco.
+            Escrever(a, "sub/novo.dll", "novo-v3");
         }), "v9.9.8");
         Verificar("staging: sucesso troca a árvore e limpa o staging",
             ok.Codigo == 0
             && File.ReadAllText(Path.Combine(appOk, PackagePaths.AppExeName)) == "exe-v3"
             && File.ReadAllText(Path.Combine(appOk, "OficinaDiag.Core.dll")) == "core-v3"
-            && File.Exists(Path.Combine(appOk, "zzz", "novo.dll"))
+            && File.Exists(Path.Combine(appOk, "sub", "novo.dll"))
             && !File.Exists(Path.Combine(appOk, UpdateChecker.UpdateFailureMarkerName))
             && Directory.GetDirectories(Path.GetDirectoryName(appOk)!, "app.bak-*").Length == 0);
 
