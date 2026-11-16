@@ -89,6 +89,15 @@ jobs:
         if: runner.os == 'Windows'
         run: dotnet run --project tools/UiShots/UiShots.csproj -c Release -- out-store/ui-shots
 
+      # O harness diz `[OK]` a cada verificação que corre; este passo compara
+      # isso com as que o código **declara**. Uma prova que deixa de correr
+      # (um `return` novo, um `try` que a engole) continua a ter todos os
+      # `[OK]` verdes no log — simplesmente não tem este, e até aqui ninguém
+      # dava por isso.
+      - name: Provas declaradas vs provas corridas
+        if: runner.os == 'Windows' && always()
+        run: node tools/proofs-check.mjs out-store/ui-shots/provas.txt
+
       - name: Publicar capturas
         if: runner.os == 'Windows' && always()
         uses: actions/upload-artifact@v4

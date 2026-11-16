@@ -42,6 +42,12 @@ internal static class Program
 {
     private static int _falhas;
 
+    // Onde este run deixa o registo das verificações que correu, uma por
+    // linha. O `tools/proofs-check.mjs` compara-o com as declaradas no
+    // código: um `[OK]` que não aparece é uma prova saltada, e essa é a
+    // forma que as três provas falsas desta série tiveram.
+    private static string? _provas;
+
     // O fecho do harness é o `Terminar` de produção, chamado no fim do
     // `Corpo`. O vigia só dispara se ele não fechar nada (mutante) — é isso
     // que distingue «fechou o `Shutdown`» de «o harness fechou-se sozinho».
@@ -127,6 +133,9 @@ internal static class Program
     {
         var destino = args.Length > 0 ? args[0] : "out-store/ui-shots";
         Directory.CreateDirectory(destino);
+        _provas = Path.Combine(destino, "provas.txt");
+        try { File.Delete(_provas); } catch { }
+        File.WriteAllText(_provas, "");
 
         // O config do harness vive na pasta de saída: o GUARDAR das Opções
         // grava-o, e o config de quem corre isto não pode ser o alvo.
@@ -2268,6 +2277,11 @@ internal static class Program
     private static void Verificar(string nome, bool ok)
     {
         Console.WriteLine($"  [{(ok ? "OK" : "FALHA")}] {nome}");
+        if (_provas is not null)
+        {
+            try { File.AppendAllText(_provas, $"[{(ok ? "OK" : "FALHA")}] {nome}{Environment.NewLine}"); }
+            catch { } // o registo nunca pode derrubar a prova
+        }
         if (!ok) _falhas++;
     }
 
