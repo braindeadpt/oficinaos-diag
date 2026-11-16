@@ -41,6 +41,7 @@ const condicionais = [
   { trecho: "clique: {nome} tem o botão", porque: "só corre quando o diálogo não tem o botão" },
   { trecho: "{tema}: combo encontrado", porque: "só corre quando a janela não tem ComboBox" },
   { trecho: "{rotulo}: {nome} ligado à árvore", porque: "só corre quando o `TransformToAncestor` rebenta" },
+  { trecho: "captura {nome}: legível", porque: "só corre quando o PNG não abre para leitura" },
 ];
 
 const texto = readFileSync(fonte, "utf8");
