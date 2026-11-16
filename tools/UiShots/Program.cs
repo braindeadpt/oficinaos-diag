@@ -2300,7 +2300,50 @@ internal static class Program
         enc.Frames.Add(BitmapFrame.Create(bmp));
         using var fs = File.Create(ficheiro);
         enc.Save(fs);
+
+        // Todas as capturas passam por aqui, por isso é aqui que se verifica
+        // que não estão vazias: um `RenderTargetBitmap` de um elemento sem
+        // filhos pintados dá um PNG de uma só cor, que ninguém abre e que
+        // «prova» tudo — foi o que aconteceu à barra do Win95 em 2026-11-15.
+        ConferirCaptura(ficheiro, bmp.PixelWidth, bmp.PixelHeight);
         return (bmp.PixelWidth, bmp.PixelHeight);
+    }
+
+    /// <summary>
+    /// Uma captura vazia não é prova. Mede o que distingue uma janela
+    /// desenhada de um retângulo de fundo: cores distintas e quanto pesa a cor
+    /// dominante. Um render sem filhos tem 1 cor a 100%; uma janela a sério
+    /// tem dezenas e nenhuma a ocupar quase tudo.
+    /// </summary>
+    private static void ConferirCaptura(string ficheiro, int w, int h)
+    {
+        var nome = Path.GetFileName(ficheiro);
+        try
+        {
+            using var fs = File.OpenRead(ficheiro);
+            var dec = new PngBitmapDecoder(fs, BitmapCreateOptions.PreservePixelFormat,
+                BitmapCacheOption.OnLoad);
+            var bgra = new FormatConvertedBitmap(dec.Frames[0], PixelFormats.Bgra32, null, 0);
+            var stride = bgra.PixelWidth * 4;
+            var pixels = new byte[stride * bgra.PixelHeight];
+            bgra.CopyPixels(pixels, stride, 0);
+
+            var cores = new HashSet<int>();
+            var contagem = new Dictionary<int, int>();
+            for (var i = 0; i < pixels.Length; i += 4)
+            {
+                var rgb = pixels[i] | (pixels[i + 1] << 8) | (pixels[i + 2] << 16);
+                cores.Add(rgb);
+                contagem[rgb] = (contagem.TryGetValue(rgb, out var n) ? n : 0) + 1;
+            }
+            var dominante = contagem.Count == 0 ? 0.0 : (double)contagem.Values.Max() / (pixels.Length / 4);
+            Verificar($"captura {nome}: {w}x{h}, desenhada ({cores.Count} cores, {dominante:P0} na dominante)",
+                w >= 40 && h >= 40 && cores.Count >= 6 && dominante <= 0.98);
+        }
+        catch (Exception ex)
+        {
+            Verificar($"captura {nome}: legível ({ex.GetType().Name})", false);
+        }
     }
 
     /// <summary>
