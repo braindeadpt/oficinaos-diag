@@ -100,7 +100,9 @@ try {
 }
 
 const vistas = [];
-for (const linha of registo.split("\n")) {
+// `\r?\n` e não `\n`: no Windows o ficheiro vem em CRLF e o `$` da regex
+// não casa com o `\r` — 135 provas «faltavam» que estavam lá (run 43899490840).
+for (const linha of registo.split(/\r?\n/)) {
   const m = /\[(?:OK|FALHA)\]\s+(.*)$/.exec(linha);
   if (m) vistas.push(m[1].trim());
 }
