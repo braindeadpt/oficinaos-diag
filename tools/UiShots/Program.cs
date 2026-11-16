@@ -2301,7 +2301,7 @@ internal static class Program
         var h = Math.Max(1, (int)Math.Ceiling(raiz.ActualHeight));
         var bmp = new RenderTargetBitmap(w, h, 96, 96, PixelFormats.Pbgra32);
         bmp.Render(Fundo(w, h));
-        // bmp.Render(raiz); // SONDA: captura sem os filhos pintados
+        bmp.Render(raiz);
         var enc = new PngBitmapEncoder();
         enc.Frames.Add(BitmapFrame.Create(bmp));
         // Bloco fechado, e não `using var`: a verificação relê o ficheiro, e
