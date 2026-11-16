@@ -938,17 +938,15 @@ internal static class Program
 
     /// <summary>
     /// A janela cabe na área útil a 100, 125 e 150% — sem mudar a escala do
-    /// sistema. A área, já em DIP, é injectada; o caminho que a aplica é o
-    /// mesmo do arranque e do `DpiChanged` (`AjustarAoEcra`).
+    /// sistema. A área, já em DIP, é injectada **antes** de a janela abrir: quem
+    /// tem de a aplicar é o arranque, não esta prova. A versão anterior chamava
+    /// `AjustarAoEcra` à mão e ficava verde mesmo com o `OnLoaded` sem o fazer.
     /// </summary>
     private static void ProvarDpi()
     {
         Console.WriteLine("== a janela cabe na área útil a 100/125/150% ==");
         ThemeManager.Apply(ThemeManager.Terminal);
         L10n.Set("pt");
-        var janela = new MainWindow { WindowStartupLocation = WindowStartupLocation.Manual };
-        janela.Show();
-        Respirar();
         try
         {
             foreach (var escala in new double[] { 1.0, 1.25, 1.5 })
@@ -956,43 +954,100 @@ internal static class Program
                 // 1920×1080 físicos: em DIP encolhem com a escala.
                 var area = new OficinaDiag.Ui.AreaEcra(0, 0, 1920 / escala, 1080 / escala);
                 OficinaDiag.Ui.WindowFit.AreaForcada = area;
-                AjustarJanela(janela);
                 var pct = (int)Math.Round(escala * 100);
-                Verificar($"dpi: a {pct}% a janela cabe na área útil " +
-                    $"({janela.ActualWidth:0}x{janela.ActualHeight:0} em {area.Width:0}x{area.Height:0})",
-                    janela.ActualWidth <= area.Width + 0.5 && janela.ActualHeight <= area.Height + 0.5);
-                Verificar($"dpi: a {pct}% fica dentro do ecrã (L{janela.Left:0} T{janela.Top:0})",
-                    janela.Left >= area.Left - 0.5 && janela.Top >= area.Top - 0.5
-                    && janela.Left + janela.ActualWidth <= area.Left + area.Width + 0.5
-                    && janela.Top + janela.ActualHeight <= area.Top + area.Height + 0.5);
+                var janela = new MainWindow { WindowStartupLocation = WindowStartupLocation.Manual };
+                janela.Show();
+                Respirar();
+                try
+                {
+                    Verificar($"dpi: o arranque a {pct}% encaixa sem chamada manual " +
+                        $"({janela.ActualWidth:0}x{janela.ActualHeight:0} em {area.Width:0}x{area.Height:0})",
+                        Math.Abs(janela.MaxWidth - area.Width) < 0.5
+                        && Math.Abs(janela.MaxHeight - area.Height) < 0.5
+                        && janela.ActualWidth <= area.Width + 0.5
+                        && janela.ActualHeight <= area.Height + 0.5);
+                    Verificar($"dpi: a {pct}% fica dentro do ecrã (L{janela.Left:0} T{janela.Top:0})",
+                        janela.Left >= area.Left - 0.5 && janela.Top >= area.Top - 0.5
+                        && janela.Left + janela.ActualWidth <= area.Left + area.Width + 0.5
+                        && janela.Top + janela.ActualHeight <= area.Top + area.Height + 0.5);
+
+                }
+                finally { Fechar(janela); }
             }
 
             // O caso que a correcção existe para apanhar: portátil 1366×768 à
             // escala recomendada de 150% — 910×512 DIP, menos que a janela.
             var pequeno = new OficinaDiag.Ui.AreaEcra(0, 0, 1366 / 1.5, 768 / 1.5);
             OficinaDiag.Ui.WindowFit.AreaForcada = pequeno;
-            AjustarJanela(janela);
-            Verificar($"dpi: a 150% num 1366×768 encolhe " +
-                $"({janela.ActualWidth:0}x{janela.ActualHeight:0} em {pequeno.Width:0}x{pequeno.Height:0})",
-                janela.ActualWidth <= pequeno.Width + 0.5 && janela.ActualHeight <= pequeno.Height + 0.5);
-            Verificar("dpi: o máximo acompanha a área do monitor",
-                Math.Abs(janela.MaxWidth - pequeno.Width) < 0.5
-                && Math.Abs(janela.MaxHeight - pequeno.Height) < 0.5);
+            var portatil = new MainWindow { WindowStartupLocation = WindowStartupLocation.Manual };
+            portatil.Show();
+            Respirar();
+            try
+            {
+                Verificar($"dpi: a 150% num 1366×768 o arranque encolhe " +
+                    $"({portatil.ActualWidth:0}x{portatil.ActualHeight:0} em {pequeno.Width:0}x{pequeno.Height:0})",
+                    portatil.ActualWidth <= pequeno.Width + 0.5 && portatil.ActualHeight <= pequeno.Height + 0.5);
+
+                // Mudar de monitor é o gesto de arrastar: não pode recentrar.
+                portatil.Left = 60;
+                portatil.Top = 40;
+                Respirar();
+                var maior = new OficinaDiag.Ui.AreaEcra(0, 0, 1000, 700);
+                OficinaDiag.Ui.WindowFit.AreaForcada = maior;
+                AjustarJanela(portatil, recentrar: false);
+                Verificar($"dpi: mudar de ecrã não recentra a janela arrastada (L{portatil.Left:0} T{portatil.Top:0})",
+                    Math.Abs(portatil.Left - 60) < 0.5 && Math.Abs(portatil.Top - 40) < 0.5);
+
+                portatil.Left = 1500; // fora de um ecrã de 1000 DIP
+                Respirar();
+                AjustarJanela(portatil, recentrar: false);
+                var encostada = maior.Width - portatil.ActualWidth;
+                Verificar($"dpi: fora do ecrã encosta para dentro (L{portatil.Left:0}, esperado {encostada:0})",
+                    Math.Abs(portatil.Left - encostada) < 1.0);
+
+                // A assinatura do evento: o WPF não a deixa enumerar nem levantar
+                // à mão, por isso a linha do `OnLoaded` guarda o delegado que
+                // assinou. Sem esta prova, apagar essa linha ficava verde.
+                Verificar("dpi: o DpiChanged está ligado ao reencaixe", LerBooleano(portatil, "DpiLigado"));
+
+                // E o handler tem de fazer o trabalho — é o mesmo corpo que o
+                // evento chama; aqui é invocado directamente.
+                portatil.Left = 60;
+                Respirar();
+                InvocarMudancaDeEscala(portatil);
+                Verificar($"dpi: o handler da mudança de escala reencaixa (L{portatil.Left:0})",
+                    Math.Abs(portatil.Left - 60) < 0.5);
+            }
+            finally { Fechar(portatil); }
         }
         finally
         {
             OficinaDiag.Ui.WindowFit.AreaForcada = null;
-            AjustarJanela(janela);
-            Verificar("dpi: sem área injectada volta ao monitor real",
-                janela.MaxWidth > 0 && double.IsFinite(janela.MaxWidth));
-            Fechar(janela);
         }
     }
 
-    private static void AjustarJanela(MainWindow janela)
+    /// <summary>Lê uma propriedade `internal` da janela (as provas não têm IVT).</summary>
+    private static bool LerBooleano(object alvo, string propriedade) =>
+        alvo.GetType()
+            .GetProperty(propriedade, BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public)
+            ?.GetValue(alvo) is true;
+
+    /// <summary>
+    /// Chama o handler do `DpiChanged` como o WPF faria. O evento não se
+    /// levanta à mão; o que se prova aqui é o corpo que ele chama.
+    /// </summary>
+    private static void InvocarMudancaDeEscala(MainWindow janela)
+    {
+        typeof(MainWindow).GetMethod("AoMudarEscala", BindingFlags.NonPublic | BindingFlags.Instance)!
+            .Invoke(janela, [null, null]);
+        janela.UpdateLayout();
+        Respirar();
+    }
+
+    private static void AjustarJanela(MainWindow janela, bool recentrar)
     {
         typeof(MainWindow).GetMethod("AjustarAoEcra", BindingFlags.NonPublic | BindingFlags.Instance)!
-            .Invoke(janela, null);
+            .Invoke(janela, [recentrar]);
         janela.UpdateLayout();
         Respirar();
     }

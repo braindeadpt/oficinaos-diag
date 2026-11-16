@@ -52,6 +52,17 @@ const mutantes = [
     prova: "ACaixaCabeSempreNaAreaUtil",
   },
   {
+    // A assinatura do DpiChanged: sem ela a janela nunca reencaixa quando a
+    // escala muda — e o harness não levanta o evento à mão, por isso a prova
+    // observa a ligação por reflexão.
+    nome: "mudar a escala deixa de reencaixar a janela",
+    ficheiro: "src/OficinaDiag/MainWindow.xaml.cs",
+    de: "        DpiChanged += (_assinaturaDpi = AoMudarEscala);",
+    para: "        // mutante: sem assinatura do DpiChanged",
+    guarda: "uishots",
+    prova: "dpi: o DpiChanged está ligado ao reencaixe",
+  },
+  {
     // Prazo por prova: sem espera, o aviso tem de falhar **com o motivo** em
     // vez de dar `false` mudo (run 43929190520).
     nome: "o aviso da bancada deixa de ser esperado",

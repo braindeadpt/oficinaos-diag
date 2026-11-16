@@ -77,6 +77,41 @@ public class WindowFitTests
     }
 
     [Fact]
+    public void SemRecentrarMantemAJanelaOndeOUtilizadorADeixou()
+    {
+        // O gesto real: arrastar a janela para o segundo ecrã. Ela não pode
+        // saltar para o centro do ecrã novo.
+        var c = WindowFit.Calcular(new AreaEcra(1920, 0, 1280, 720), 960, 640,
+            recentrar: false, esquerdaPedida: 2000, topoPedido: 50);
+
+        Assert.Equal(2000, c.Left);
+        Assert.Equal(50, c.Top);
+        Assert.Equal(960, c.Width);
+    }
+
+    [Fact]
+    public void SemRecentrarEncostaParaDentroQuandoSaiDoEcra()
+    {
+        // Maior do que a área e já fora dela: encolhe e encosta à borda, sem
+        // recentrar.
+        var c = WindowFit.Calcular(new AreaEcra(1920, 0, 1280, 720), 960, 640,
+            recentrar: false, esquerdaPedida: 5000, topoPedido: -300);
+
+        Assert.Equal(1920 + 1280 - 960, c.Left);
+        Assert.Equal(0, c.Top);
+    }
+
+    [Fact]
+    public void SemRecentrarNaoMexeQuandoJaCabe()
+    {
+        var c = WindowFit.Calcular(new AreaEcra(0, 0, 1920, 1080), 960, 640,
+            recentrar: false, esquerdaPedida: 10, topoPedido: 10);
+        Assert.Equal(10, c.Left);
+        Assert.Equal(10, c.Top);
+        Assert.Equal(1920, c.MaxWidth);
+    }
+
+    [Fact]
     public void MonitorASDireitaCentraNaAreaDele()
     {
         var c = WindowFit.Calcular(new AreaEcra(1920, 0, 1280, 720), 960, 640);

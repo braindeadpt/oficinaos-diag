@@ -25,8 +25,15 @@ public readonly record struct CaixaJanela(
 /// </summary>
 public static class WindowFit
 {
-    /// <summary>Nunca maior que a área, e centrada dentro dela.</summary>
-    public static CaixaJanela Calcular(AreaEcra? area, double larguraPedida, double alturaPedida)
+    /// <summary>
+    /// Nunca maior que a área. Com <paramref name="recentrar"/> centra-se nela
+    /// (arranque); sem ele fica onde o utilizador a deixou, só **encostada
+    /// para dentro** — arrastar a janela para o segundo ecrã não a pode atirar
+    /// para o centro do ecrã novo.
+    /// </summary>
+    public static CaixaJanela Calcular(
+        AreaEcra? area, double larguraPedida, double alturaPedida,
+        bool recentrar = true, double? esquerdaPedida = null, double? topoPedido = null)
     {
         // Sem área fiável não se corta nada: um P/Invoke que falhou não pode
         // encolher a janela a zero.
@@ -36,12 +43,20 @@ public static class WindowFit
 
         var largura = Math.Min(Math.Max(larguraPedida, 0), a.Width);
         var altura = Math.Min(Math.Max(alturaPedida, 0), a.Height);
-        return new(
-            a.Width, a.Height,
-            largura, altura,
-            a.Left + Math.Max(0, (a.Width - largura) / 2),
-            a.Top + Math.Max(0, (a.Height - altura) / 2));
+
+        if (recentrar)
+            return new(a.Width, a.Height, largura, altura,
+                a.Left + Math.Max(0, (a.Width - largura) / 2),
+                a.Top + Math.Max(0, (a.Height - altura) / 2));
+
+        return new(a.Width, a.Height, largura, altura,
+            Encaixar(esquerdaPedida ?? a.Left, a.Left, a.Width - largura),
+            Encaixar(topoPedido ?? a.Top, a.Top, a.Height - altura));
     }
+
+    /// <summary>Mantém o valor, empurrando-o para dentro se estiver fora.</summary>
+    private static double Encaixar(double valor, double minimo, double folga) =>
+        Math.Clamp(valor, minimo, minimo + Math.Max(0, folga));
 
     /// <summary>
     /// Pixels físicos → DIP. DPI inválido (0 ou negativo) cai para 96 em vez de
@@ -52,8 +67,8 @@ public static class WindowFit
 
     /// <summary>
     /// Costura de teste: quando não é nula, a janela usa esta área em vez de
-    /// perguntar ao monitor. Existe para o harness provar as três escalas numa
-    /// máquina a 100%; em produção é sempre nula.
+    /// perguntar ao monitor. Existe para o harness abrir a janela já com a área
+    /// de 100/125/150% numa máquina a 100%; em produção é sempre nula.
     /// </summary>
     public static AreaEcra? AreaForcada { get; set; }
 }

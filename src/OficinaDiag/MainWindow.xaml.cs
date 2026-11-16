@@ -153,7 +153,10 @@ public partial class MainWindow : Window
         // maior do que o ecrã onde ela nasceu.
         AjustarAoEcra();
         // Mudar a escala com a app aberta (125% → 150%) não passava por aqui.
-        DpiChanged += (_, _) => AjustarAoEcra();
+        // Linha única de propósito: o delegado fica em `_assinaturaDpi`, que só
+        // existe se **esta** linha correr — é o que a prova do harness lê, porque
+        // o WPF não deixa enumerar nem levantar o `DpiChanged` à mão.
+        DpiChanged += (_assinaturaDpi = AoMudarEscala);
         // Dois ecrãs com a mesma escala: o DPI não muda, a área sim.
         LocationChanged += (_, _) => TalvezMudouDeMonitor();
         ApplyStrings();
@@ -996,6 +999,10 @@ public partial class MainWindow : Window
     private const uint MonitorDefaultToNearest = 2;
     private IntPtr _monitorAtual;
     private bool _aAjustar;
+    private DpiChangedEventHandler? _assinaturaDpi;
+
+    /// <summary>A prova do harness lê isto: a assinatura do `DpiChanged` existe?</summary>
+    internal bool DpiLigado => _assinaturaDpi is not null;
 
     [StructLayout(LayoutKind.Sequential)]
     private struct RectNativo { public int Left, Top, Right, Bottom; }
@@ -1053,14 +1060,18 @@ public partial class MainWindow : Window
     /// <summary>
     /// Aplica a área útil à janela. É o único sítio que o faz: o arranque, o
     /// `DpiChanged` e a mudança de monitor passam todos por aqui.
+    /// <paramref name="recentrar"/> falso só limita e encosta para dentro —
+    /// a janela que o técnico arrastou fica onde ele a deixou.
     /// </summary>
-    internal void AjustarAoEcra()
+    internal void AjustarAoEcra(bool recentrar = true)
     {
         if (_aAjustar) return;
         _aAjustar = true;
         try
         {
-            var caixa = WindowFit.Calcular(AreaCorrente(), Pedida(Width, MinWidth), Pedida(Height, MinHeight));
+            var caixa = WindowFit.Calcular(
+                AreaCorrente(), Pedida(Width, MinWidth), Pedida(Height, MinHeight),
+                recentrar, Left, Top);
             MaxWidth = caixa.MaxWidth;
             MaxHeight = caixa.MaxHeight;
             if (double.IsFinite(caixa.Width)) Width = caixa.Width;
@@ -1072,6 +1083,14 @@ public partial class MainWindow : Window
         }
         finally { _aAjustar = false; }
     }
+
+    /// <summary>
+    /// Mudança de escala a meio da sessão (125% → 150%, ou arrastar entre
+    /// ecrãs de escalões diferentes). Não recentra: o técnico já escolheu onde
+    /// quer a janela.
+    /// </summary>
+    private void AoMudarEscala(object? sender, DpiChangedEventArgs e) =>
+        AjustarAoEcra(recentrar: false);
 
     /// <summary>`Width` pode estar a NaN antes do primeiro layout.</summary>
     private static double Pedida(double valor, double minimo) =>
@@ -1091,7 +1110,8 @@ public partial class MainWindow : Window
             var monitor = MonitorFromWindow(hwnd, MonitorDefaultToNearest);
             if (monitor == _monitorAtual) return;
             _monitorAtual = monitor;
-            AjustarAoEcra();
+            // Só limitar e encostar: o utilizador arrastou-a para ali de propósito.
+            AjustarAoEcra(recentrar: false);
         }
         catch { /* sem interop, fica a área anterior */ }
     }
