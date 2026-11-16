@@ -310,6 +310,7 @@ internal static class Program
         ProvarAvisoDeAtualizacao();
         Marcar("botões da barra de acções");
         ProvarBotoes(destino);
+        ProvarDpi();
         Marcar("dois telemóveis no seletor");
         ProvarDoisTelemoveis();
         Marcar("falha repetida na mesma ação");
@@ -934,6 +935,67 @@ internal static class Program
     private static void ChamarMainWindow(MainWindow janela, string metodo, object? arg) =>
         typeof(MainWindow).GetMethod(metodo, BindingFlags.NonPublic | BindingFlags.Instance)!
             .Invoke(janela, [arg]);
+
+    /// <summary>
+    /// A janela cabe na área útil a 100, 125 e 150% — sem mudar a escala do
+    /// sistema. A área, já em DIP, é injectada; o caminho que a aplica é o
+    /// mesmo do arranque e do `DpiChanged` (`AjustarAoEcra`).
+    /// </summary>
+    private static void ProvarDpi()
+    {
+        Console.WriteLine("== a janela cabe na área útil a 100/125/150% ==");
+        ThemeManager.Apply(ThemeManager.Terminal);
+        L10n.Set("pt");
+        var janela = new MainWindow { WindowStartupLocation = WindowStartupLocation.Manual };
+        janela.Show();
+        Respirar();
+        try
+        {
+            foreach (var escala in new double[] { 1.0, 1.25, 1.5 })
+            {
+                // 1920×1080 físicos: em DIP encolhem com a escala.
+                var area = new OficinaDiag.Ui.AreaEcra(0, 0, 1920 / escala, 1080 / escala);
+                OficinaDiag.Ui.WindowFit.AreaForcada = area;
+                AjustarJanela(janela);
+                var pct = (int)Math.Round(escala * 100);
+                Verificar($"dpi: a {pct}% a janela cabe na área útil " +
+                    $"({janela.ActualWidth:0}x{janela.ActualHeight:0} em {area.Width:0}x{area.Height:0})",
+                    janela.ActualWidth <= area.Width + 0.5 && janela.ActualHeight <= area.Height + 0.5);
+                Verificar($"dpi: a {pct}% fica dentro do ecrã (L{janela.Left:0} T{janela.Top:0})",
+                    janela.Left >= area.Left - 0.5 && janela.Top >= area.Top - 0.5
+                    && janela.Left + janela.ActualWidth <= area.Left + area.Width + 0.5
+                    && janela.Top + janela.ActualHeight <= area.Top + area.Height + 0.5);
+            }
+
+            // O caso que a correcção existe para apanhar: portátil 1366×768 à
+            // escala recomendada de 150% — 910×512 DIP, menos que a janela.
+            var pequeno = new OficinaDiag.Ui.AreaEcra(0, 0, 1366 / 1.5, 768 / 1.5);
+            OficinaDiag.Ui.WindowFit.AreaForcada = pequeno;
+            AjustarJanela(janela);
+            Verificar($"dpi: a 150% num 1366×768 encolhe " +
+                $"({janela.ActualWidth:0}x{janela.ActualHeight:0} em {pequeno.Width:0}x{pequeno.Height:0})",
+                janela.ActualWidth <= pequeno.Width + 0.5 && janela.ActualHeight <= pequeno.Height + 0.5);
+            Verificar("dpi: o máximo acompanha a área do monitor",
+                Math.Abs(janela.MaxWidth - pequeno.Width) < 0.5
+                && Math.Abs(janela.MaxHeight - pequeno.Height) < 0.5);
+        }
+        finally
+        {
+            OficinaDiag.Ui.WindowFit.AreaForcada = null;
+            AjustarJanela(janela);
+            Verificar("dpi: sem área injectada volta ao monitor real",
+                janela.MaxWidth > 0 && double.IsFinite(janela.MaxWidth));
+            Fechar(janela);
+        }
+    }
+
+    private static void AjustarJanela(MainWindow janela)
+    {
+        typeof(MainWindow).GetMethod("AjustarAoEcra", BindingFlags.NonPublic | BindingFlags.Instance)!
+            .Invoke(janela, null);
+        janela.UpdateLayout();
+        Respirar();
+    }
 
     /// <summary>O `_current` do `MainWindow`: quem manda na bancada agora.</summary>
     private static DetectedDevice? Ativo(MainWindow janela) =>

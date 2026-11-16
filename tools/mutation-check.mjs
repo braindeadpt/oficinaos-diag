@@ -41,6 +41,17 @@ const so = [...flags]
  */
 const mutantes = [
   {
+    // Geometria: se a conta deixar de encolher para a área útil, a janela volta
+    // a sair do ecrã a 150% — e a prova tem de morrer por isso.
+    nome: "a janela ignora a área útil e fica maior que o ecrã",
+    ficheiro: "src/OficinaDiag.Core/Ui/WindowFit.cs",
+    de: "        var largura = Math.Min(Math.Max(larguraPedida, 0), a.Width);",
+    para: "        var largura = Math.Max(larguraPedida, 0); // mutante: sem teto da área",
+    guarda: "testes",
+    filtro: "WindowFitTests",
+    prova: "ACaixaCabeSempreNaAreaUtil",
+  },
+  {
     // Prazo por prova: sem espera, o aviso tem de falhar **com o motivo** em
     // vez de dar `false` mudo (run 43929190520).
     nome: "o aviso da bancada deixa de ser esperado",
