@@ -90,8 +90,11 @@ jobs:
 
       # O plano tem de continuar verificável: placar a bater com os tickets,
       # [x] com prova, [ ] com motivo, e nenhum teste citado que já não exista.
+      # Corre nos dois sistemas de propósito: o tool lê caminhos, e a mesma
+      # classe de defeito (separador `tests\…` vs `tests/…`) já apareceu duas
+      # vezes — no provas-check (run 43899490840) e no plan-check (PR #17) — e
+      # as duas passaram despercebidas enquanto o passo só corria no Linux.
       - name: Plan criteria
-        if: runner.os == 'Linux'
         run: node tools/plan-check.mjs
 
       # Depois do plano: se as capturas falharem, o plano já está verificado e
