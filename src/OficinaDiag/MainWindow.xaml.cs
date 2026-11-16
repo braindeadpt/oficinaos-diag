@@ -142,6 +142,9 @@ public partial class MainWindow : Window
 
     private void OnLoaded(object sender, RoutedEventArgs e)
     {
+        // Arranque é a melhor altura para escoar envios que ficaram à espera de
+        // rede: o técnico acabou de ligar o PC à net da loja.
+        _ = DrenarFilaAsync();
         // nunca nascer maior que a área útil do ecrã (scaling/ecrãs pequenos)
         var wa = SystemParameters.WorkArea;
         MaxWidth = wa.Width;
@@ -847,8 +850,13 @@ public partial class MainWindow : Window
         {
             var (ok, msg) = await _cloud.SendToShopAsync(
                 dlg.ShopCode, _report, dlg.CustomerName, dlg.CustomerPhone, dlg.CustomerEmail,
-                _lastAiReport, dlg.Purpose);
-            Log(ok ? $"> {msg}" : L10n.F("log.send.fail", msg));
+                _lastAiReport, dlg.Purpose, Fila);
+            // "Ficou em fila" não é um falhanço para o técnico: o relatório sai
+            // quando a rede voltar, e não deve aparecer com um "!" à frente.
+            Log(ok || msg == L10n.T("cloud.send.queued")
+                ? $"> {msg}"
+                : L10n.F("log.send.fail", msg));
+            if (!ok) _ = DrenarFilaAsync();
         }
         finally { SendButton.IsEnabled = true; }
     }
@@ -958,6 +966,26 @@ public partial class MainWindow : Window
             }
         }
         finally { AiButton.IsEnabled = true; }
+    }
+
+    private Cloud.CloudOutbox? _outbox;
+
+    /// <summary>
+    /// Fila durável dos envios que falharam por rede. Criada à primeira
+    /// utilização para não abrir pasta nenhuma em quem nunca envia à loja.
+    /// </summary>
+    private Cloud.CloudOutbox Fila => _outbox ??= new Cloud.CloudOutbox(
+        Cloud.CloudOutbox.PastaPorDefeito,
+        (code, corpo, chave, ct) => _cloud.SendIntakePayloadAsync(code, corpo, chave, ct));
+
+    private async Task DrenarFilaAsync()
+    {
+        try
+        {
+            var enviados = await Fila.DrenarAsync();
+            if (enviados > 0) Log(L10n.F("log.outbox.enviados", enviados));
+        }
+        catch (Exception ex) { Log(L10n.F("log.err", ex.Message)); }
     }
 
     protected override void OnClosing(CancelEventArgs e)
