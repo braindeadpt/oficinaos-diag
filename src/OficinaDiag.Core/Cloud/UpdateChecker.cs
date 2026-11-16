@@ -371,6 +371,12 @@ public sealed class UpdateChecker
             "  if (Test-Path $bak) {",
             "    Remove-Item $appDir -Recurse -Force -ErrorAction SilentlyContinue",
             "    Move-Item $bak $appDir -Force -ErrorAction SilentlyContinue",
+            // Um ficheiro em uso (adb, antivírus) impede apagar e repor a
+            // pasta: copiar por cima repõe tudo o que é possível e deixa o
+            // bloqueado como estava — é o melhor que há sem reiniciar.
+            "    if (-not (Test-Path $exe)) {",
+            "      Copy-Item (Join-Path $bak '*') $appDir -Recurse -Force -ErrorAction SilentlyContinue",
+            "    }",
             "  }",
             // O aviso vem depois de o rollback correr: dentro de appDir, o
             // marcador escrito antes era apagado pela própria restauração.

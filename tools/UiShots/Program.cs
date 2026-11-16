@@ -1429,30 +1429,40 @@ internal static class Program
             && !File.Exists(Path.Combine(appOk, UpdateChecker.UpdateFailureMarkerName))
             && Directory.GetDirectories(Path.GetDirectoryName(appOk)!, "app.bak-*").Length == 0);
 
+        // A falha a meio, pela causa real: um ficheiro em uso (adb/antivírus).
+        // O exe e a DLL já foram copiados (v9) quando a cópia do `zzz.dat`
+        // rebenta — é exatamente a instalação híbrida que se quer evitar.
         var appFalha = Montar("falha");
-        var falha = Correr(appFalha, Zip(a =>
+        File.WriteAllText(Path.Combine(appFalha, "zzz.dat"), "dados-v2");
+        using (var emUso = new FileStream(Path.Combine(appFalha, "zzz.dat"),
+            FileMode.Open, FileAccess.Read, FileShare.None))
         {
-            Escrever(a, PackagePaths.AppExeName, "exe-v9");
-            Escrever(a, "OficinaDiag.Core.dll", "core-v9");
-            Escrever(a, "zzz/quebra.dll", "x");
-        }), "v9.9.9");
-        Verificar("staging: falha a meio repõe o build anterior",
-            falha.Codigo == 1
-            && File.ReadAllText(Path.Combine(appFalha, PackagePaths.AppExeName)) == "exe-v2"
-            && File.ReadAllText(Path.Combine(appFalha, "OficinaDiag.Core.dll")) == "core-v2"
-            && File.ReadAllText(Path.Combine(appFalha, "zzz")) == "era-um-ficheiro"
-            && File.Exists(Path.Combine(appFalha, "Data", "models.json"))
-            && falha.Registo.Contains("a restaurar o build anterior"));
+            var falha = Correr(appFalha, Zip(a =>
+            {
+                Escrever(a, PackagePaths.AppExeName, "exe-v9");
+                Escrever(a, "OficinaDiag.Core.dll", "core-v9");
+                Escrever(a, "zzz.dat", "dados-v9");
+            }), "v9.9.9");
+            var marcador = Path.Combine(appFalha, UpdateChecker.UpdateFailureMarkerName);
+            Console.WriteLine($"  staging falha: exit={falha.Codigo} exe='{LerTexto(Path.Combine(appFalha, PackagePaths.AppExeName))}' "
+                + $"dll='{LerTexto(Path.Combine(appFalha, "OficinaDiag.Core.dll"))}' zzz='{LerTexto(Path.Combine(appFalha, "zzz.dat"))}' "
+                + $"marcador={File.Exists(marcador)}");
+            Verificar("staging: falha a meio repõe o build anterior",
+                falha.Codigo == 1
+                && File.ReadAllText(Path.Combine(appFalha, PackagePaths.AppExeName)) == "exe-v2"
+                && File.ReadAllText(Path.Combine(appFalha, "OficinaDiag.Core.dll")) == "core-v2"
+                && File.ReadAllText(Path.Combine(appFalha, "zzz.dat")) == "dados-v2"
+                && File.Exists(Path.Combine(appFalha, "Data", "models.json"))
+                && falha.Registo.Contains("a restaurar o build anterior"));
 
-        var marcador = Path.Combine(appFalha, UpdateChecker.UpdateFailureMarkerName);
-        Console.WriteLine($"  staging falha: exit={falha.Codigo} exe='{LerTexto(Path.Combine(appFalha, PackagePaths.AppExeName))}' "
-            + $"marcador={File.Exists(marcador)} texto='{(File.Exists(marcador) ? LerTexto(marcador) : "-")}'");
-        var aviso = UpdateChecker.ConsumeUpdateFailure(appFalha);
-        Verificar("staging: a falha fica no marcador que o arranque mostra",
-            aviso is not null
-            && aviso.Contains("v9.9.9")
-            && aviso.Contains("falhou")
-            && !File.Exists(marcador));
+            var aviso = UpdateChecker.ConsumeUpdateFailure(appFalha);
+            Verificar("staging: a falha fica no marcador que o arranque mostra",
+                aviso is not null
+                && aviso.Contains("v9.9.9")
+                && aviso.Contains("falhou")
+                && !File.Exists(marcador));
+        }
+
     }
 
     private static void ProvarDefeitoDaAtualizacao(string destino)

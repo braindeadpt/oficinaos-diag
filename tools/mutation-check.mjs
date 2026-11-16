@@ -77,6 +77,16 @@ const mutantes = [
     prova: "staging: falha a meio repõe o build anterior",
   },
   {
+    // O ficheiro em uso impede apagar e repor a pasta; sem a cópia por cima,
+    // a DLL fica v9 com o exe v2 — a instalação híbrida outra vez.
+    nome: "o rollback desiste do ficheiro em uso",
+    ficheiro: "src/OficinaDiag.Core/Cloud/UpdateChecker.cs",
+    de: `            "      Copy-Item (Join-Path $bak '*') $appDir -Recurse -Force -ErrorAction SilentlyContinue",`,
+    para: `            "      # desistir do que ficou bloqueado",`,
+    guarda: "uishots",
+    prova: "staging: falha a meio repõe o build anterior",
+  },
+  {
     nome: "a falha do staging fica sem aviso",
     ficheiro: "src/OficinaDiag.Core/Cloud/UpdateChecker.cs",
     de: `            "    Avisar-Falha 'a cópia do staging falhou a meio'",`,
