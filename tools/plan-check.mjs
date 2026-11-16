@@ -68,7 +68,11 @@ const RE_TESTE = /`([A-Za-z_]\w*)Tests(?:\.([A-Za-z_]\w*))?`/g;
 for (const c of provados) {
   for (const m of c.texto.matchAll(RE_TESTE)) {
     const [, classe, metodo] = m;
-    const ficheiro = `tests/OficinaDiag.Tests/${classe}Tests.cs`;
+    // join() dos dois lados: o varrimento guarda caminhos com o separador
+    // nativo (tests\…\X.cs no Windows) e a chave tem de nascer da mesma
+    // maneira — com um literal "tests/…" o Map falhava em Windows e toda
+    // a prova citada parecia órfã.
+    const ficheiro = join("tests", "OficinaDiag.Tests", `${classe}Tests.cs`);
     const fonte = fontes.get(ficheiro);
     if (!fonte) {
       erros.push(
