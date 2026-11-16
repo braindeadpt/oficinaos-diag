@@ -132,7 +132,8 @@ public sealed class CloudClient
     /// gated by the shop's diag-intake module).
     /// </summary>
     public async Task<(bool ok, string message)> SendToShopAsync(
-        string shopCode, DeviceReport report, string name, string phone, string? email, string? aiReport, string? purpose)
+        string shopCode, DeviceReport report, string name, string phone, string? email, string? aiReport,
+        string? purpose, CloudOutbox? fila = null)
     {
         // Validação local espelhada da Cloud — erro legível em vez de 400 em bruto.
         if (email is not null && !IntakeRules.IsValidEmail(email))
@@ -143,6 +144,33 @@ public sealed class CloudClient
         // chegou e só a resposta se perdeu, o retry não cria um 2.º pedido.
         var idempotencyKey = IntakeRules.NewIdempotencyKey();
         var json = Reports.ReportBuilder.ToIntakeJson(report, name, phone, email?.Trim(), aiReport, purpose);
+        var (ok, message, falhaDeRede) = await PostIntakeAsync(shopCode, json, idempotencyKey);
+        if (!ok && falhaDeRede && fila is not null)
+        {
+            // Sem rede: guarda-se o corpo já construído (com a chave) para
+            // sair sozinho quando a ligação voltar. O relatório do cliente não
+            // se perde por o Wi-Fi da loja ter caído no segundo do envio.
+            await fila.GuardarAsync(shopCode.Trim().ToUpperInvariant(), json, idempotencyKey);
+            return (false, L10n.T("cloud.send.queued"));
+        }
+        return (ok, message);
+    }
+
+    /// <summary>
+    /// Reenvia um corpo de /intake já construído (o que está na fila), com a
+    /// chave original: a Cloud reconhece o duplicado em vez de criar outro
+    /// pedido na loja.
+    /// </summary>
+    public async Task<(bool ok, string message)> SendIntakePayloadAsync(
+        string shopCode, string json, string idempotencyKey, CancellationToken ct = default)
+    {
+        var (ok, message, _) = await PostIntakeAsync(shopCode, json, idempotencyKey, ct);
+        return (ok, message);
+    }
+
+    private async Task<(bool ok, string message, bool falhaDeRede)> PostIntakeAsync(
+        string shopCode, string json, string idempotencyKey, CancellationToken ct = default)
+    {
         try
         {
             using var res = await SendWithRetryAsync(() => new HttpRequestMessage(
@@ -150,25 +178,30 @@ public sealed class CloudClient
                 new Uri(BaseUri, $"intake/{Uri.EscapeDataString(shopCode.Trim().ToUpperInvariant())}"))
             {
                 Content = new StringContent(json, Encoding.UTF8, "application/json"),
-            }.WithIdempotencyKey(idempotencyKey), _fastAttempt);
+            }.WithIdempotencyKey(idempotencyKey), _fastAttempt, ct: ct);
             if (res.IsSuccessStatusCode)
-                return (true, L10n.T("cloud.send.ok"));
-            var body = await res.Content.ReadAsStringAsync();
+                return (true, L10n.T("cloud.send.ok"), false);
+            var body = await res.Content.ReadAsStringAsync(ct);
             if ((int)res.StatusCode == 402)
-                return (false, L10n.T("cloud.send.nomodule"));
+                return (false, L10n.T("cloud.send.nomodule"), false);
             if ((int)res.StatusCode == 404)
-                return (false, L10n.T("cloud.send.badcode"));
-            return (false, L10n.F("cloud.status", (int)res.StatusCode, body));
+                return (false, L10n.T("cloud.send.badcode"), false);
+            return (false, L10n.F("cloud.status", (int)res.StatusCode, body), false);
+        }
+        // Fechar a app a meio não é falta de rede: não vai para a fila.
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
         }
         catch (TaskCanceledException)
         {
-            return (false, L10n.T("cloud.timeout"));
+            return (false, L10n.T("cloud.timeout"), true);
         }
         catch (HttpRequestException)
         {
-            return (false, L10n.T("cloud.offline"));
+            return (false, L10n.T("cloud.offline"), true);
         }
-        catch (Exception ex) { return (false, ex.Message); }
+        catch (Exception ex) { return (false, ex.Message, false); }
     }
 
     /// <summary>

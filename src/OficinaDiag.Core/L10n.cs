@@ -108,6 +108,7 @@ public static class L10n
             ["log.ins.saved"] = "> relatório de seguradora guardado: {0}",
             ["log.send.start"] = "> a enviar à loja {0}…",
             ["log.send.fail"] = "! envio falhou: {0}",
+            ["log.outbox.enviados"] = "> fila: {0} relatório(s) que esperavam rede seguiram para a loja",
             ["log.log.none"] = "! ainda não há log para enviar",
             ["log.log.truncated"] = "[… início cortado …]",
             ["log.log.sending"] = "> a enviar log de diagnóstico à cloud…",
@@ -226,6 +227,7 @@ public static class L10n
 
             // respostas da cloud (nunca hardcoded — o modo EN tem de as traduzir)
             ["cloud.send.ok"] = "Relatório enviado à loja — eles veem-no na app.",
+            ["cloud.send.queued"] = "Sem rede agora — o relatório ficou em fila e sai quando a ligação voltar.",
             ["cloud.send.nomodule"] = "Esta loja não aceita diagnósticos remotos (módulo inativo).",
             ["cloud.send.badcode"] = "Código de loja inválido — confirma com a loja.",
             ["cloud.status"] = "Servidor respondeu {0} — {1}",
@@ -361,6 +363,7 @@ public static class L10n
             ["log.ins.saved"] = "> insurer report saved: {0}",
             ["log.send.start"] = "> sending to shop {0}…",
             ["log.send.fail"] = "! send failed: {0}",
+            ["log.outbox.enviados"] = "> outbox: {0} report(s) that were waiting for a link went to the shop",
             ["log.log.none"] = "! no log to send yet",
             ["log.log.truncated"] = "[… beginning truncated …]",
             ["log.log.sending"] = "> sending diagnostic log to cloud…",
@@ -474,6 +477,7 @@ public static class L10n
             ["err.test.htmlmissing"] = "device-test.html not found — the install is incomplete; reinstall the app.",
 
             ["cloud.send.ok"] = "Report sent to the shop — they can see it in their app.",
+            ["cloud.send.queued"] = "No connection right now — the report is queued and goes out when the link is back.",
             ["cloud.send.nomodule"] = "This shop doesn't accept remote diagnostics (module inactive).",
             ["cloud.send.badcode"] = "Invalid shop code — check it with the shop.",
             ["cloud.status"] = "Server replied {0} — {1}",
