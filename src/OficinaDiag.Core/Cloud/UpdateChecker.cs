@@ -59,6 +59,31 @@ public sealed class UpdateChecker
     internal const string ReleaseSigningPublicKey =
         "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEXWMC+Ch7bMRfIYBy3PamIFQ2euAADeNuvRPXbYi7dq3AqFVqk32XYNqWINniP2MB31pWTtmmGZhprg6giQT98A==";
 
+    // --- Costuras da prova de instalação ------------------------------------
+    //
+    // A prova tem de correr o caminho que instala — descarregar, validar a
+    // assinatura, conferir o checksum e estagiar — sem rede externa, sem
+    // substituir a app e sem a chave privada do dono. Nada disto muda o
+    // comportamento em produção: os valores por omissão são exactamente os de
+    // antes, e um teste que os troque devolve-os no fim.
+
+    /// <summary>
+    /// Chave pública que valida o `SHA256SUMS`. A prova assina com uma chave de
+    /// teste e injecta a pública correspondente; a app usa a embutida.
+    /// </summary>
+    internal static string ChavePublicaDaRelease = ReleaseSigningPublicKey;
+
+    /// <summary>Transporte dos três pedidos da release. Injectável para o loopback.</summary>
+    internal static Func<string, Task<byte[]>> LerSums = url => Http.GetByteArrayAsync(url);
+    internal static Func<string, Task<string>> LerSig = url => Http.GetStringAsync(url);
+    internal static Func<string, Task<Stream>> AbrirZip = url => DownloadHttp.GetStreamAsync(url);
+
+    /// <summary>
+    /// Último passo: lançar o PowerShell que substitui a app depois de esta
+    /// sair. Injectável porque nenhuma prova pode substituir a app a sério.
+    /// </summary>
+    internal static Func<string, bool> ArrancarAtualizador = LancarAtualizador;
+
     /// <summary>
     /// True só para <c>https://github.com/braindeadpt/oficinaos-diag/releases/download/&lt;tag&gt;/&lt;ficheiro&gt;</c>
     /// (o <c>browser_download_url</c> normal do GitHub). O redirecionamento
@@ -163,16 +188,16 @@ public sealed class UpdateChecker
             // o SUMS declara tem de bater no tag e ser mais nova que a local —
             // senão um SUMS antigo assinado podia ser republicado num tag
             // mais alto (replay) e esta máquina fazia downgrade silencioso.
-            var sumsBytes = await Http.GetByteArrayAsync(info.ChecksumUrl);
-            var sigB64 = (await Http.GetStringAsync(info.SigUrl)).Trim();
-            if (ValidateSums(sumsBytes, sigB64, info.Tag, current) is { } err)
+            var sumsBytes = await LerSums(info.ChecksumUrl);
+            var sigB64 = (await LerSig(info.SigUrl)).Trim();
+            if (ValidateSums(sumsBytes, sigB64, info.Tag, current, ChavePublicaDaRelease) is { } err)
                 return (false, err);
 
             var zipPath = Path.Combine(Path.GetTempPath(), $"oficinaos-diag-{info.Tag}.zip");
 
             // Stream to disk — the self-contained zip is 100+ MB and does not
             // belong in a byte[] on the large-object heap.
-            using (var src = await DownloadHttp.GetStreamAsync(info.ZipUrl))
+            using (var src = await AbrirZip(info.ZipUrl))
             using (var dst = File.Create(zipPath))
                 await src.CopyToAsync(dst);
 
@@ -196,18 +221,24 @@ public sealed class UpdateChecker
             var script = BuildUpdateScript(info.Tag, appDir, zipPath, logPath, Environment.ProcessId);
             await File.WriteAllTextAsync(ps1Path, script, new System.Text.UTF8Encoding(true));
 
-            using var proc = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
-            {
-                FileName = "powershell.exe",
-                Arguments = $"-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File \"{ps1Path}\"",
-                CreateNoWindow = true,
-                UseShellExecute = false,
-            });
-            return proc is null
-                ? (false, "Não consegui arrancar o updater — atualiza manualmente.")
-                : (true, "A atualizar — a app reinicia já.");
+            return ArrancarAtualizador(ps1Path)
+                ? (true, "A atualizar — a app reinicia já.")
+                : (false, "Não consegui arrancar o updater — atualiza manualmente.");
         }
         catch (Exception ex) { return (false, ex.Message); }
+    }
+
+    /// <summary>O valor por omissão de <see cref="ArrancarAtualizador"/>.</summary>
+    private static bool LancarAtualizador(string ps1Path)
+    {
+        using var proc = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+        {
+            FileName = "powershell.exe",
+            Arguments = $"-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File \"{ps1Path}\"",
+            CreateNoWindow = true,
+            UseShellExecute = false,
+        });
+        return proc is not null;
     }
 
     /// <summary>

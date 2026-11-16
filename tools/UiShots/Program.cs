@@ -1,6 +1,9 @@
 using System.IO;
+using System.IO.Compression;
 using System.Net;
+using System.Net.Http;
 using System.Net.Sockets;
+using System.Security.Cryptography;
 using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Text;
@@ -318,6 +321,8 @@ internal static class Program
         VerificarUiSemExcecoes(logUi);
         Console.WriteLine($"capturas em {Path.GetFullPath(destino)}");
 
+        Marcar("instalação da atualização contra o loopback");
+        ProvarInstalacaoDaAtualizacao(destino);
         Marcar("os defeitos por omissão da atualização");
         ProvarDefeitoDaAtualizacao(destino);
 
@@ -1053,6 +1058,237 @@ internal static class Program
                 (janela.FindName("Console") as TextBox)?.Text.Contains("encenado") == true);
         }
         finally { Fechar(janela); }
+    }
+
+    /// <summary>
+    /// O caminho que **instala** a atualização, de ponta a ponta: descarregar o
+    /// zip, validar a assinatura do `SHA256SUMS`, conferir o checksum e deixar
+    /// o script de staging escrito. Até aqui só se provavam as recusas; nunca
+    /// se tinha visto um byte a ser descarregado, um hash a bater certo nem um
+    /// script a apontar para a pasta da app.
+    ///
+    /// Sem rede externa e sem a chave do dono: o transporte vai a um servidor
+    /// HTTP em loopback (TCP à mão, sem `HttpListener` e sem ACL), a chave de
+    /// assinatura é gerada aqui (EC P-256) e injectada em `ChavePublicaDaRelease`,
+    /// e o último passo (`powershell.exe` a substituir a app) é substituído por
+    /// um leitor do script. As costuras são as de produção por omissão.
+    /// </summary>
+    private static void ProvarInstalacaoDaAtualizacao(string destino)
+    {
+        Console.WriteLine("== instalação da atualização: download, checksum e staging ==");
+        ThemeManager.Apply(ThemeManager.Terminal);
+
+        const string tag = "v9.9.9";
+        var actual = new Version(0, 1, 0);
+
+        // O zip de prova: 2 KB com o exe lá dentro, para o staging ter o que
+        // extrair se alguém olhar para ele.
+        byte[] zip;
+        using (var ms = new MemoryStream())
+        {
+            using (var arquivo = new ZipArchive(ms, ZipArchiveMode.Create, leaveOpen: true))
+            using (var entrada = arquivo.CreateEntry(PackagePaths.AppExeName, CompressionLevel.NoCompression)
+                       .Open())
+                entrada.Write(new byte[2048]);
+            zip = ms.ToArray();
+        }
+
+        using var chave = ECDsa.Create(ECCurve.NamedCurves.nistP256);
+        using var servidor = new ServidorDeRelease();
+        using var http = new HttpClient();
+
+        string Hash(byte[] b) => Convert.ToHexString(SHA256.HashData(b)).ToLowerInvariant();
+        byte[] Sums(string hash, string versao) =>
+            Encoding.UTF8.GetBytes($"version {versao}\n{hash}  oficinaos-diag-win-x64.zip\n");
+        string Assinar(byte[] sums) => Convert.ToBase64String(chave.SignData(
+            sums, HashAlgorithmName.SHA256, DSASignatureFormat.IeeeP1363FixedFieldConcatenation));
+
+        var appDir = Path.Combine(Path.GetFullPath(destino), "instalacao", "app");
+        Directory.CreateDirectory(appDir);
+        servidor.Servir("oficinaos-diag-win-x64.zip", zip);
+
+        var pedidos = new List<string>();
+        string Nome(string url) => url.Split('/').Last();
+        var sumOriginal = UpdateChecker.ChavePublicaDaRelease;
+        var lerSumsOriginal = UpdateChecker.LerSums;
+        var lerSigOriginal = UpdateChecker.LerSig;
+        var abrirZipOriginal = UpdateChecker.AbrirZip;
+        var arrancarOriginal = UpdateChecker.ArrancarAtualizador;
+        try
+        {
+            UpdateChecker.ChavePublicaDaRelease = Convert.ToBase64String(chave.ExportSubjectPublicKeyInfo());
+            UpdateChecker.LerSums = url =>
+            {
+                lock (pedidos) pedidos.Add(url);
+                return http.GetByteArrayAsync(servidor.Url(Nome(url)));
+            };
+            UpdateChecker.LerSig = url =>
+            {
+                lock (pedidos) pedidos.Add(url);
+                return http.GetStringAsync(servidor.Url(Nome(url)));
+            };
+            UpdateChecker.AbrirZip = url =>
+            {
+                lock (pedidos) pedidos.Add(url);
+                return http.GetStreamAsync(servidor.Url(Nome(url)));
+            };
+            string? script = null;
+            UpdateChecker.ArrancarAtualizador = ps1 =>
+            {
+                script = File.Exists(ps1) ? File.ReadAllText(ps1) : null;
+                return true;
+            };
+
+            var baseUrl = $"https://github.com/{UpdateChecker.TrustedOwner}/{UpdateChecker.TrustedRepo}" +
+                          $"/releases/download/{tag}/";
+            var info = new UpdateChecker.UpdateInfo(new Version(9, 9, 9), tag,
+                baseUrl + "oficinaos-diag-win-x64.zip", baseUrl + "SHA256SUMS.txt",
+                baseUrl + "SHA256SUMS.sig");
+
+            // 1. O caminho feliz: SUMS assinado com a chave de teste, checksum
+            //    do zip certo. Tem de descarregar, conferir e estagiar.
+            var sumsBom = Sums(Hash(zip), "9.9.9");
+            servidor.Servir("SHA256SUMS.txt", sumsBom);
+            servidor.Servir("SHA256SUMS.sig", Encoding.UTF8.GetBytes(Assinar(sumsBom)));
+            var (ok, msg) = UpdateChecker.DownloadAndStageAsync(info, appDir, actual)
+                .GetAwaiter().GetResult();
+            Verificar($"instalação: o download e o staging correram («{msg}»)",
+                ok && msg.Contains("A atualizar", StringComparison.Ordinal));
+            Verificar($"instalação: os três pedidos vão às URLs do release ({pedidos.Count})",
+                pedidos.Count == 3
+                && pedidos.Contains(info.ChecksumUrl) && pedidos.Contains(info.SigUrl)
+                && pedidos.Contains(info.ZipUrl));
+            Verificar("instalação: o script de staging aponta para a pasta da app",
+                script is not null
+                && script.Contains(appDir.Replace("'", "''"), StringComparison.Ordinal)
+                && script.Contains($"oficinaos-diag-{tag}.zip", StringComparison.Ordinal));
+            Verificar($"instalação: a release de prova tem {zip.Length} B (o zip de 2 KB)",
+                zip.Length is > 1500 and < 4000);
+
+            // 2. Assinatura inválida: recusa antes de o zip ser pedido.
+            var zipAntes = servidor.Pedidos("oficinaos-diag-win-x64.zip");
+            servidor.Servir("SHA256SUMS.sig",
+                Encoding.UTF8.GetBytes(Convert.ToBase64String(RandomNumberGenerator.GetBytes(64))));
+            var (okSig, msgSig) = UpdateChecker.DownloadAndStageAsync(info, appDir, actual)
+                .GetAwaiter().GetResult();
+            Verificar($"instalação: a assinatura inválida é recusada antes do zip («{msgSig}»)",
+                !okSig && msgSig.Contains("Assinatura da release inválida", StringComparison.Ordinal)
+                && servidor.Pedidos("oficinaos-diag-win-x64.zip") == zipAntes);
+
+            // 3. Replay: SUMS assinado a sério, mas a declarar a versão que já
+            //    temos. A assinatura valida; o que recusa é a versão.
+            var sumsReplay = Sums(Hash(zip), "9.9.9");
+            servidor.Servir("SHA256SUMS.txt", sumsReplay);
+            servidor.Servir("SHA256SUMS.sig", Encoding.UTF8.GetBytes(Assinar(sumsReplay)));
+            var (okReplay, msgReplay) = UpdateChecker.DownloadAndStageAsync(
+                    info, appDir, new Version(9, 9, 9)).GetAwaiter().GetResult();
+            Verificar($"instalação: o replay de um SUMS assinado é recusado («{msgReplay}»)",
+                !okReplay && msgReplay.Contains("não é mais recente", StringComparison.Ordinal)
+                && servidor.Pedidos("oficinaos-diag-win-x64.zip") == zipAntes);
+
+            // 4. Checksum: SUMS assinado com o hash de outros bytes. O download
+            //    acontece e é o checksum que trava.
+            var sumsMau = Sums(Hash(Encoding.UTF8.GetBytes("outro build")), "9.9.9");
+            servidor.Servir("SHA256SUMS.txt", sumsMau);
+            servidor.Servir("SHA256SUMS.sig", Encoding.UTF8.GetBytes(Assinar(sumsMau)));
+            var (okHash, msgHash) = UpdateChecker.DownloadAndStageAsync(info, appDir, actual)
+                .GetAwaiter().GetResult();
+            Verificar($"instalação: o checksum do zip não confere («{msgHash}»)",
+                !okHash && msgHash.Contains("Checksum do download não confere", StringComparison.Ordinal)
+                && servidor.Pedidos("oficinaos-diag-win-x64.zip") == zipAntes + 1);
+        }
+        finally
+        {
+            UpdateChecker.ChavePublicaDaRelease = sumOriginal;
+            UpdateChecker.LerSums = lerSumsOriginal;
+            UpdateChecker.LerSig = lerSigOriginal;
+            UpdateChecker.AbrirZip = abrirZipOriginal;
+            UpdateChecker.ArrancarAtualizador = arrancarOriginal;
+            try { File.Delete(Path.Combine(Path.GetTempPath(), $"oficinaos-diag-{tag}.zip")); }
+            catch { }
+        }
+    }
+
+    /// <summary>
+    /// Um servidor HTTP em loopback para a prova da instalação: `TcpListener` e
+    /// uma resposta `HTTP/1.1` escrita à mão. `HttpListener` exigia reserva de
+    /// URL (ACL) no Windows, e um `TcpListener` em `127.0.0.1:0` não: fica numa
+    /// porta livre, só acessível desta máquina, e nunca sai para a rede.
+    /// </summary>
+    private sealed class ServidorDeRelease : IDisposable
+    {
+        private readonly TcpListener _ouvido = new(IPAddress.Loopback, 0);
+        private readonly Dictionary<string, byte[]> _ficheiros = new(StringComparer.Ordinal);
+        private readonly Dictionary<string, int> _pedidos = new(StringComparer.Ordinal);
+        private readonly CancellationTokenSource _fim = new();
+
+        public ServidorDeRelease()
+        {
+            _ouvido.Start();
+            Porta = ((IPEndPoint)_ouvido.LocalEndpoint).Port;
+            _ = Task.Run(Atender);
+        }
+
+        public int Porta { get; }
+
+        public void Servir(string caminho, byte[] corpo)
+        {
+            lock (_ficheiros) _ficheiros[caminho] = corpo;
+        }
+
+        public int Pedidos(string caminho)
+        {
+            lock (_pedidos) return _pedidos.TryGetValue(caminho, out var n) ? n : 0;
+        }
+
+        public string Url(string caminho) => $"http://127.0.0.1:{Porta}/{caminho}";
+
+        private async Task Atender()
+        {
+            while (!_fim.IsCancellationRequested)
+            {
+                TcpClient cliente;
+                try { cliente = await _ouvido.AcceptTcpClientAsync(_fim.Token); }
+                catch { return; }
+                _ = Task.Run(() => Responder(cliente));
+            }
+        }
+
+        private async Task Responder(TcpClient cliente)
+        {
+            using (cliente)
+            {
+                try
+                {
+                    var fluxo = cliente.GetStream();
+                    using var leitor = new StreamReader(fluxo, Encoding.ASCII, false, 1024, leaveOpen: true);
+                    var linha = await leitor.ReadLineAsync() ?? "";
+                    while (!string.IsNullOrEmpty(await leitor.ReadLineAsync())) { }
+                    var partes = linha.Split(' ');
+                    var caminho = partes.Length >= 2 ? partes[1].TrimStart('/') : "";
+                    byte[]? achado = null;
+                    lock (_ficheiros) _ficheiros.TryGetValue(caminho, out achado);
+                    var corpo = achado ?? Encoding.UTF8.GetBytes("não encontrado");
+                    lock (_pedidos)
+                        _pedidos[caminho] = (_pedidos.TryGetValue(caminho, out var n) ? n : 0) + 1;
+                    var achou = achado is not null;
+                    var cabecalho = $"HTTP/1.1 {(achou ? "200 OK" : "404 Not Found")}\r\n" +
+                                    $"Content-Length: {corpo.Length}\r\n" +
+                                    "Content-Type: application/octet-stream\r\nConnection: close\r\n\r\n";
+                    await fluxo.WriteAsync(Encoding.ASCII.GetBytes(cabecalho));
+                    await fluxo.WriteAsync(corpo);
+                    await fluxo.FlushAsync();
+                }
+                catch { } // cliente que desiste não interessa a ninguém
+            }
+        }
+
+        public void Dispose()
+        {
+            _fim.Cancel();
+            _ouvido.Stop();
+            _fim.Dispose();
+        }
     }
 
     /// <summary>

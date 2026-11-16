@@ -155,6 +155,38 @@ const mutantes = [
     guarda: "uishots",
     prova: "produção: o Baixar por omissão é o BaixarDeProducao",
   },
+  {
+    nome: "a assinatura da release deixa de ser verificada",
+    ficheiro: "src/OficinaDiag.Core/Cloud/UpdateChecker.cs",
+    de: "        if (!VerifySumsSignature(sumsBytes, sigB64, publicKeyB64))",
+    para: "        if (false && !VerifySumsSignature(sumsBytes, sigB64, publicKeyB64)) // mutante: aceita tudo",
+    guarda: "uishots",
+    prova: "instalação: a assinatura inválida é recusada antes do zip",
+  },
+  {
+    nome: "o replay de um SUMS antigo deixa de ser recusado",
+    ficheiro: "src/OficinaDiag.Core/Cloud/UpdateChecker.cs",
+    de: "        if (declared <= current)",
+    para: "        if (false && declared <= current) // mutante: aceita replay",
+    guarda: "uishots",
+    prova: "instalação: o replay de um SUMS assinado é recusado",
+  },
+  {
+    nome: "o checksum do zip deixa de ser conferido",
+    ficheiro: "src/OficinaDiag.Core/Cloud/UpdateChecker.cs",
+    de: "            if (!string.Equals(expected, actual, StringComparison.OrdinalIgnoreCase))",
+    para: "            if (false && !string.Equals(expected, actual, StringComparison.OrdinalIgnoreCase)) // mutante: aceita o zip errado",
+    guarda: "uishots",
+    prova: "instalação: o checksum do zip não confere",
+  },
+  {
+    nome: "a verificação ignora a chave injectada",
+    ficheiro: "src/OficinaDiag.Core/Cloud/UpdateChecker.cs",
+    de: "            if (ValidateSums(sumsBytes, sigB64, info.Tag, current, ChavePublicaDaRelease) is { } err)",
+    para: "            if (ValidateSums(sumsBytes, sigB64, info.Tag, current, ReleaseSigningPublicKey) is { } err) // mutante: chave embutida",
+    guarda: "uishots",
+    prova: "instalação: o download e o staging correram",
+  },
 ];
 
 const mundo = (cmd, args, opts = {}) => {
