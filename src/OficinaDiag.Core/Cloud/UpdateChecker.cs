@@ -190,7 +190,7 @@ public sealed class UpdateChecker
             // mais alto (replay) e esta máquina fazia downgrade silencioso.
             var sumsBytes = await LerSums(info.ChecksumUrl);
             var sigB64 = (await LerSig(info.SigUrl)).Trim();
-            if (ValidateSums(sumsBytes, sigB64, info.Tag, current, ReleaseSigningPublicKey) is { } err) // SONDA
+            if (ValidateSums(sumsBytes, sigB64, info.Tag, current, ChavePublicaDaRelease) is { } err)
                 return (false, err);
 
             var zipPath = Path.Combine(Path.GetTempPath(), $"oficinaos-diag-{info.Tag}.zip");
@@ -207,7 +207,7 @@ public sealed class UpdateChecker
                 actual = Convert.ToHexString(await SHA256.HashDataAsync(fs)).ToLowerInvariant();
             if (expected is null)
                 return (false, "A release não traz checksum — atualização recusada.");
-            if (false && !string.Equals(expected, actual, StringComparison.OrdinalIgnoreCase)) // SONDA
+            if (!string.Equals(expected, actual, StringComparison.OrdinalIgnoreCase))
             {
                 File.Delete(zipPath);
                 return (false, "Checksum do download não confere — atualização cancelada.");
@@ -359,14 +359,14 @@ public sealed class UpdateChecker
     internal static string? ValidateSums(
         byte[] sumsBytes, string sigB64, string tag, Version current, string? publicKeyB64 = null)
     {
-        if (false && !VerifySumsSignature(sumsBytes, sigB64, publicKeyB64)) // SONDA
+        if (!VerifySumsSignature(sumsBytes, sigB64, publicKeyB64))
             return "Assinatura da release inválida — atualização recusada.";
         if (!Version.TryParse(tag.TrimStart('v'), out var tagVer))
             return "Tag da release inválida — atualização recusada.";
         var declared = DeclaredVersion(sumsBytes);
         if (declared is null || declared != tagVer)
             return "A release não declara a versão do tag — atualização recusada.";
-        if (false && declared <= current) // SONDA
+        if (declared <= current)
             return "A release não é mais recente — atualização recusada.";
         return null;
     }
