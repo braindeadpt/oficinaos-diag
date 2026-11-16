@@ -12,3 +12,5 @@ out-store/
 # GitHub Actions secret). generate-release-key.ps1 writes it here.
 release-signing-key.pem
 *.sig
+# Vídeo promocional: material alheio ao build, nunca versionado.
+promo-video/

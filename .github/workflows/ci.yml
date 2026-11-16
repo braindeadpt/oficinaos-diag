@@ -9,6 +9,10 @@ on:
   push:
     branches: ["main"]
   pull_request:
+  # Segundas, 04:00 UTC: os mutantes de UI correm sozinhos. A garantia não
+  # pode depender de alguém se lembrar de carregar num botão.
+  schedule:
+    - cron: "0 4 * * 1"
   # Manual, para investigar falhas que só aparecem de vez em quando: com
   # `stress` a matriz repete os testes de árvore de processos 10x e o log da
   # primeira falha traz o diagnóstico do lançador (started/pid/erro).
@@ -128,7 +132,7 @@ jobs:
   # Fica fora do push porque cada mutante é uma compilação do harness mais uma
   # execução completa dele (~45 min no total).
   mutantes-ui:
-    if: github.event_name == 'workflow_dispatch' && inputs.mutantes_ui
+    if: github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.mutantes_ui)
     runs-on: windows-2022
     timeout-minutes: 120
     steps:
