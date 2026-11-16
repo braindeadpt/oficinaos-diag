@@ -1145,13 +1145,20 @@ internal static class Program
                 baseUrl + "oficinaos-diag-win-x64.zip", baseUrl + "SHA256SUMS.txt",
                 baseUrl + "SHA256SUMS.sig");
 
+            // O harness corre no dispatcher. Um `GetResult()` aqui em cima
+            // bloqueava a thread onde as continuações dos `await` do
+            // `DownloadAndStageAsync` iam ser postas — deadlock, e o vigia de
+            // 180 s é que o contava. No thread pool não há contexto a capturar.
+            (bool ok, string message) Descarregar(Version de) =>
+                Task.Run(() => UpdateChecker.DownloadAndStageAsync(info, appDir, de))
+                    .GetAwaiter().GetResult();
+
             // 1. O caminho feliz: SUMS assinado com a chave de teste, checksum
             //    do zip certo. Tem de descarregar, conferir e estagiar.
             var sumsBom = Sums(Hash(zip), "9.9.9");
             servidor.Servir("SHA256SUMS.txt", sumsBom);
             servidor.Servir("SHA256SUMS.sig", Encoding.UTF8.GetBytes(Assinar(sumsBom)));
-            var (ok, msg) = UpdateChecker.DownloadAndStageAsync(info, appDir, actual)
-                .GetAwaiter().GetResult();
+            var (ok, msg) = Descarregar(actual);
             Verificar($"instalação: o download e o staging correram («{msg}»)",
                 ok && msg.Contains("A atualizar", StringComparison.Ordinal));
             Verificar($"instalação: os três pedidos vão às URLs do release ({pedidos.Count})",
@@ -1169,8 +1176,7 @@ internal static class Program
             var zipAntes = servidor.Pedidos("oficinaos-diag-win-x64.zip");
             servidor.Servir("SHA256SUMS.sig",
                 Encoding.UTF8.GetBytes(Convert.ToBase64String(RandomNumberGenerator.GetBytes(64))));
-            var (okSig, msgSig) = UpdateChecker.DownloadAndStageAsync(info, appDir, actual)
-                .GetAwaiter().GetResult();
+            var (okSig, msgSig) = Descarregar(actual);
             Verificar($"instalação: a assinatura inválida é recusada antes do zip («{msgSig}»)",
                 !okSig && msgSig.Contains("Assinatura da release inválida", StringComparison.Ordinal)
                 && servidor.Pedidos("oficinaos-diag-win-x64.zip") == zipAntes);
@@ -1180,8 +1186,7 @@ internal static class Program
             var sumsReplay = Sums(Hash(zip), "9.9.9");
             servidor.Servir("SHA256SUMS.txt", sumsReplay);
             servidor.Servir("SHA256SUMS.sig", Encoding.UTF8.GetBytes(Assinar(sumsReplay)));
-            var (okReplay, msgReplay) = UpdateChecker.DownloadAndStageAsync(
-                    info, appDir, new Version(9, 9, 9)).GetAwaiter().GetResult();
+            var (okReplay, msgReplay) = Descarregar(new Version(9, 9, 9));
             Verificar($"instalação: o replay de um SUMS assinado é recusado («{msgReplay}»)",
                 !okReplay && msgReplay.Contains("não é mais recente", StringComparison.Ordinal)
                 && servidor.Pedidos("oficinaos-diag-win-x64.zip") == zipAntes);
@@ -1191,8 +1196,7 @@ internal static class Program
             var sumsMau = Sums(Hash(Encoding.UTF8.GetBytes("outro build")), "9.9.9");
             servidor.Servir("SHA256SUMS.txt", sumsMau);
             servidor.Servir("SHA256SUMS.sig", Encoding.UTF8.GetBytes(Assinar(sumsMau)));
-            var (okHash, msgHash) = UpdateChecker.DownloadAndStageAsync(info, appDir, actual)
-                .GetAwaiter().GetResult();
+            var (okHash, msgHash) = Descarregar(actual);
             Verificar($"instalação: o checksum do zip não confere («{msgHash}»)",
                 !okHash && msgHash.Contains("Checksum do download não confere", StringComparison.Ordinal)
                 && servidor.Pedidos("oficinaos-diag-win-x64.zip") == zipAntes + 1);
