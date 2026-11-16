@@ -25,13 +25,13 @@ const flags = new Set(process.argv.slice(2));
 const comUi = flags.has("--uishots");
 const seco = flags.has("--seco");
 const completo = flags.has("--completo");
-// `--so=<trecho>` corre só os mutantes cujo nome contém o trecho: um job de UI
-// completo são ~40 min, e triagem de um mutante não pode custar isso.
+// `--so=a,b` corre só os mutantes cujo nome contém um dos trechos: um job de
+// UI completo são ~40 min, e triagem de um mutante não pode custar isso.
 const so = [...flags]
   .filter((f) => f.startsWith("--so="))
-  .map((f) => f.slice(5))
-  .join(" ")
-  .trim();
+  .flatMap((f) => f.slice(5).split(","))
+  .map((s) => s.trim())
+  .filter(Boolean);
 
 /**
  * Cada entrada é um defeito **real** — todos já estiveram no código ou foram
@@ -251,6 +251,7 @@ function correrGuarda(m) {
       ? "harness continuou verde"
       : falha ? `[FALHA] ${m.prova}` : "harness vermelho, mas sem a verificação esperada",
     falhas: r.saida.split("\n").filter((l) => l.includes("[FALHA]")),
+    cauda: r.saida.split("\n").filter((l) => l.trim().length > 0),
   };
 }
 
@@ -261,8 +262,8 @@ const podeUi = process.platform === "win32";
 const alvoBase = seco
   ? mutantes
   : mutantes.filter((m) => m.guarda === "testes" || (comUi && podeUi));
-const alvo = so
-  ? alvoBase.filter((m) => m.nome.toLowerCase().includes(so.toLowerCase()))
+const alvo = so.length > 0
+  ? alvoBase.filter((m) => so.some((t) => m.nome.toLowerCase().includes(t.toLowerCase())))
   : alvoBase;
 const saltados = mutantes.filter((m) => !alvo.includes(m));
 
@@ -324,7 +325,7 @@ for (const m of alvo) {
 }
 
 const largura = Math.max(...resultados.map((r) => r.m.nome.length));
-for (const { m, estado, motivo, falhas } of resultados) {
+for (const { m, estado, motivo, falhas, cauda } of resultados) {
   const marca = estado === "morto" || estado === "aplicaria" ? "✔" : "✘";
   console.log(`${marca} ${m.nome.padEnd(largura)}  ${estado} — ${motivo}`);
   // Um mutante que só deixa o harness vermelho por um caminho genérico é o
@@ -332,6 +333,11 @@ for (const { m, estado, motivo, falhas } of resultados) {
   // em vez de obrigar a outra sonda de 40 minutos para descobrir.
   if (estado === "sobreviveu" && falhas?.length) {
     for (const f of falhas.slice(0, 5)) console.log(`      ${f.trim()}`);
+  } else if (estado === "sobreviveu" && cauda?.length) {
+    // Sem `[FALHA]` nenhuma: o harness rebentou ou foi o vigia. As últimas
+    // linhas dizem qual dos dois, e poupam outra sonda.
+    console.log("      (sem [FALHA] — fim da saída do harness)");
+    for (const l of cauda.slice(-6)) console.log(`      ${l.trim()}`);
   }
 }
 for (const m of saltados) {
