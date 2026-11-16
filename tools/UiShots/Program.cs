@@ -324,7 +324,11 @@ internal static class Program
         using (var gen = new QRCodeGenerator())
         {
             var qr = gen.CreateQrCode("http://192.168.1.50:8099/test", QRCodeGenerator.ECCLevel.M);
-            Capturar(() => new QrWindow(qr), Path.Combine(destino, "qr.png"), 340, 420);
+            // O cartão do QR é branco e cobre a janela toda: o fundo do tema
+            // não aparece, de propósito — a captura continua a exigir tamanho,
+            // cores e variância.
+            Capturar(() => new QrWindow(qr), Path.Combine(destino, "qr.png"), 340, 420,
+                fundoDoTema: false);
         }
 
         VerificarUiSemExcecoes(logUi);
@@ -2290,7 +2294,8 @@ internal static class Program
     /// imagens — havia dois e só um pintava o fundo opaco.
     /// </summary>
     private static (int W, int H) Gravar(
-        FrameworkElement raiz, string ficheiro, double? esperadoLargura = null, double? esperadoAltura = null)
+        FrameworkElement raiz, string ficheiro, double? esperadoLargura = null,
+        double? esperadoAltura = null, bool fundoDoTema = false)
     {
         var w = Math.Max(1, (int)Math.Ceiling(raiz.ActualWidth));
         var h = Math.Max(1, (int)Math.Ceiling(raiz.ActualHeight));
@@ -2309,7 +2314,8 @@ internal static class Program
         // que não estão vazias: um `RenderTargetBitmap` de um elemento sem
         // filhos pintados dá um PNG de uma só cor, que ninguém abre e que
         // «prova» tudo — foi o que aconteceu à barra do Win95 em 2026-11-15.
-        ConferirCaptura(ficheiro, bmp.PixelWidth, bmp.PixelHeight, esperadoLargura, esperadoAltura);
+        ConferirCaptura(ficheiro, bmp.PixelWidth, bmp.PixelHeight, esperadoLargura, esperadoAltura,
+            fundoDoTema);
         return (bmp.PixelWidth, bmp.PixelHeight);
     }
 
@@ -2324,7 +2330,7 @@ internal static class Program
     /// fundo do tema), para uma falha dizer o que viu e não só que falhou.
     /// </summary>
     private static void ConferirCaptura(
-        string ficheiro, int w, int h, double? esperadoLargura, double? esperadoAltura)
+        string ficheiro, int w, int h, double? esperadoLargura, double? esperadoAltura, bool fundoDoTema)
     {
         var nome = Path.GetFileName(ficheiro);
         try
@@ -2365,16 +2371,20 @@ internal static class Program
                         ?? Colors.Black;
             var corFundo = fundo.B | (fundo.G << 8) | (fundo.R << 16);
             var pesoFundo = contagem.TryGetValue(corFundo, out var daCor) ? (double)daCor / total : 0.0;
+            var corDoTema = !fundoDoTema || pesoFundo >= 0.02;
 
-            // O que sai é a **área cliente**: sem moldura nem barra de título,
-            // por isso é sempre uns 16 px mais estreita que o pedido, e os
-            // diálogos com `SizeToContent` ficam mais baixos do que o `Height`
-            // pedido. Exigir igualdade era uma expectativa inventada (run
-            // 43903982912 reprovou as 59 por isso); o que se exige é que a
-            // captura tenha a largura pedida (menos a moldura) e não seja uma
-            // tira: um render cortado ou de 1 px não passa.
-            var dimensao = esperadoLargura is not { } el || esperadoAltura is not { } ea
-                           || (w >= el - 40 && w <= el + 2 && h >= 120 && h <= ea + 2);
+            // O que sai é a **área cliente**: sem moldura nem barra de título
+            // (~16 px a menos), a janela encolhe-se à work area, e os diálogos
+            // com `SizeToContent` ficam mais altos do que o `Height` pedido.
+            // Exigir igualdade ao pedido reprovou as 59 (run 43903982912) por
+            // uma expectativa inventada; o que se exige é a largura pedida (já
+            // limitada pela work area, menos a moldura) e que não seja uma
+            // tira: um render cortado ou de 1 px não passa, e a altura só tem
+            // chão.
+            var dimensao = esperadoLargura is not { } el
+                           || (w >= Math.Min(el, SystemParameters.WorkArea.Width) - 40
+                               && w <= Math.Min(el, SystemParameters.WorkArea.Width) + 2
+                               && h >= 120);
             var esperado = esperadoLargura is { } l && esperadoAltura is { } a
                 ? $" (pedido {l:0}x{a:0})"
                 : "";
@@ -2382,7 +2392,7 @@ internal static class Program
             Verificar($"captura {nome}: {w}x{h}{esperado}, {cores.Count} cores, " +
                       $"variância {variancia:0.0}, fundo do tema {pesoFundo:P0}, {dominante:P0} na dominante",
                 dimensao && w >= 40 && h >= 40 && cores.Count >= 6
-                && variancia >= 8 && pesoFundo >= 0.02 && dominante <= 0.98);
+                && variancia >= 8 && corDoTema && dominante <= 0.98);
         }
         catch (Exception ex)
         {
@@ -2505,7 +2515,8 @@ internal static class Program
     };
 
     private static void Capturar(Func<Window> criar, string ficheiro, double largura, double altura,
-        Action<Window>? ajustar = null, double? workArea = null, string[]? acoes = null)
+        Action<Window>? ajustar = null, double? workArea = null, string[]? acoes = null,
+        bool fundoDoTema = true)
     {
         Window? janela = null;
         try
@@ -2552,7 +2563,8 @@ internal static class Program
             // O tamanho pedido é o esperado; com work area simulada, o `clamp`
             // da app (`Min`) pode encolher a janela, e esse é o esperado.
             var (w, h) = Gravar(raiz, ficheiro, largura,
-                workArea is { } teto ? Math.Min(altura, teto) : altura);
+                workArea is { } teto ? Math.Min(altura, teto) : altura,
+                fundoDoTema: fundoDoTema);
             // Diagnóstico: se o fundo de um descendente passar da altura do
             // conteúdo *e ele não estiver dentro de uma área rolável*, é a app
             // que arruma fora da janela — defeito. O que fica atrás de um
