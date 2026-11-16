@@ -1389,7 +1389,7 @@ internal static class Program
             var ps1 = Path.Combine(dir, "update.ps1");
             // Só o relançar fica desligado: um Start-Process sobre um ficheiro
             // de texto chamado .exe não é a app, e a prova não quer processos.
-            File.WriteAllText(ps1, UpdateChecker.BuildUpdateScript(tag, app, caminhoZip, log, pid)
+            UpdateChecker.WriteUpdateScript(ps1, UpdateChecker.BuildUpdateScript(tag, app, caminhoZip, log, pid)
                 .Replace("Start-Process $exe", "# relançar desligado na prova"));
             using var p = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("powershell.exe",
                 $"-NoProfile -ExecutionPolicy Bypass -File \"{ps1}\"")
