@@ -190,7 +190,7 @@ public sealed class UpdateChecker
             // mais alto (replay) e esta máquina fazia downgrade silencioso.
             var sumsBytes = await LerSums(info.ChecksumUrl);
             var sigB64 = (await LerSig(info.SigUrl)).Trim();
-            if (ValidateSums(sumsBytes, sigB64, info.Tag, current, ChavePublicaDaRelease) is { } err && false) // SONDA
+            if (ValidateSums(sumsBytes, sigB64, info.Tag, current, ChavePublicaDaRelease) is { } err)
                 return (false, err);
 
             var zipPath = Path.Combine(Path.GetTempPath(), $"oficinaos-diag-{info.Tag}.zip");
@@ -207,7 +207,7 @@ public sealed class UpdateChecker
                 actual = Convert.ToHexString(await SHA256.HashDataAsync(fs)).ToLowerInvariant();
             if (expected is null)
                 return (false, "A release não traz checksum — atualização recusada.");
-            if (false && !string.Equals(expected, actual, StringComparison.OrdinalIgnoreCase)) // SONDA
+            if (!string.Equals(expected, actual, StringComparison.OrdinalIgnoreCase))
             {
                 File.Delete(zipPath);
                 return (false, "Checksum do download não confere — atualização cancelada.");
