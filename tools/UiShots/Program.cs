@@ -173,10 +173,16 @@ internal static class Program
         {
             try { codigo = Corpo(destino, logUi); }
             catch (Exception ex) { Anotar("UI", ex); codigo = 1; }
-            // No caminho normal quem fecha é o `Terminar` de produção; aqui só
-            // se fecha o que ficou aberto (corpo que rebentou antes de lá
-            // chegar, ou vigia que teve de intervir).
-            finally { if (!app.Dispatcher.HasShutdownStarted) app.Shutdown(); }
+            // Se o `Terminar` de produção chegou a correr, quem fecha é ele —
+            // ou o vigia, que marca `_fimForcado`. Fechar aqui escondia o
+            // defeito que a prova procura: um `Terminar` inerte nunca chegava
+            // a fazer disparar o vigia, e a app fechava-se por fora com todos
+            // os sinais a dizer «fechou bem». Aqui só se fecha o que ficou
+            // aberto por o corpo ter rebentado antes do último passo.
+            finally
+            {
+                if (!_terminouPorProducao && !app.Dispatcher.HasShutdownStarted) app.Shutdown();
+            }
         }));
         app.Run();
         // Só se o `Terminar` de produção chegou a correr: se o corpo rebentou
