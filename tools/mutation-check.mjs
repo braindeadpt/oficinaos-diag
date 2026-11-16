@@ -160,16 +160,21 @@ const mutantes = [
     ficheiro: "src/OficinaDiag.Core/Cloud/UpdateChecker.cs",
     de: "        if (!VerifySumsSignature(sumsBytes, sigB64, publicKeyB64))",
     para: "        if (false && !VerifySumsSignature(sumsBytes, sigB64, publicKeyB64)) // mutante: aceita tudo",
-    guarda: "uishots",
-    prova: "instalação: a assinatura inválida é recusada antes do zip",
+    // `ValidateSums` tem testes unitários: o mutante morre aí, antes de o
+    // harness correr. O que o harness apanha é o `DownloadAndStageAsync` a
+    // ignorar o `ValidateSums` (sonda do run 43896607750).
+    guarda: "testes",
+    filtro: "UpdateCheckerTests.RejectsGarbageSignature",
+    prova: "UpdateCheckerTests",
   },
   {
     nome: "o replay de um SUMS antigo deixa de ser recusado",
     ficheiro: "src/OficinaDiag.Core/Cloud/UpdateChecker.cs",
     de: "        if (declared <= current)",
     para: "        if (false && declared <= current) // mutante: aceita replay",
-    guarda: "uishots",
-    prova: "instalação: o replay de um SUMS assinado é recusado",
+    guarda: "testes",
+    filtro: "UpdateCheckerTests.RejectsSignedSumsNotNewerThanLocal",
+    prova: "UpdateCheckerTests",
   },
   {
     nome: "o checksum do zip deixa de ser conferido",
