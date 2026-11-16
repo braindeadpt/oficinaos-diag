@@ -1341,6 +1341,7 @@ internal static class Program
     private static void ProvarAplicacaoDoStaging(string destino)
     {
         Console.WriteLine("== aplicação do staging: rollback e aviso no arranque ==");
+        static string LerTexto(string caminho) => File.Exists(caminho) ? File.ReadAllText(caminho) : "(falta)";
         var raiz = Path.Combine(Path.GetFullPath(destino), "staging");
         if (Directory.Exists(raiz)) Directory.Delete(raiz, true);
 
@@ -1412,6 +1413,12 @@ internal static class Program
             // Subdiretório no zip sem colidir com o ficheiro `zzz` do disco.
             Escrever(a, "sub/novo.dll", "novo-v3");
         }), "v9.9.8");
+        // As medidas no log: sem elas uma falha desta prova obriga a outra
+        // corrida inteira só para saber qual das condições caiu.
+        Console.WriteLine($"  staging sucesso: exit={ok.Codigo} exe='{LerTexto(Path.Combine(appOk, PackagePaths.AppExeName))}' "
+            + $"dll='{LerTexto(Path.Combine(appOk, "OficinaDiag.Core.dll"))}' sub={Directory.Exists(Path.Combine(appOk, "sub"))} "
+            + $"bak={Directory.GetDirectories(Path.GetDirectoryName(appOk)!, "app.bak-*").Length} "
+            + $"log='{ok.Registo.Replace(Environment.NewLine, " | ").Trim()}'");
         Verificar("staging: sucesso troca a árvore e limpa o staging",
             ok.Codigo == 0
             && File.ReadAllText(Path.Combine(appOk, PackagePaths.AppExeName)) == "exe-v3"
@@ -1436,6 +1443,8 @@ internal static class Program
             && falha.Registo.Contains("a restaurar o build anterior"));
 
         var marcador = Path.Combine(appFalha, UpdateChecker.UpdateFailureMarkerName);
+        Console.WriteLine($"  staging falha: exit={falha.Codigo} exe='{LerTexto(Path.Combine(appFalha, PackagePaths.AppExeName))}' "
+            + $"marcador={File.Exists(marcador)} texto='{(File.Exists(marcador) ? LerTexto(marcador) : "-")}'");
         var aviso = UpdateChecker.ConsumeUpdateFailure(appFalha);
         Verificar("staging: a falha fica no marcador que o arranque mostra",
             aviso is not null
