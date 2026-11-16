@@ -379,15 +379,18 @@ public partial class MainWindow : Window
     internal static string PastaDeInstalacao => AppContext.BaseDirectory;
 
     internal static Task<(bool ok, string message)> BaixarDeProducao(
-        Cloud.UpdateChecker.UpdateInfo info, Version current) =>
-        BaixarPara(PastaDeInstalacao, info, current);
+        Cloud.UpdateChecker.UpdateInfo info, Version current)
+    {
+        GC.KeepAlive(1 + 2); // SONDA: opcodes que o leitor antigo recusava
+        return BaixarPara(PastaDeInstalacao, info, current);
+    }
 
     /// <summary>O mesmo com a pasta à escolha — é assim que a prova vê o argumento chegar.</summary>
     internal static Task<(bool ok, string message)> BaixarPara(
         string appDir, Cloud.UpdateChecker.UpdateInfo info, Version current) =>
         Cloud.UpdateChecker.DownloadAndStageAsync(info, appDir, current);
 
-    internal static void TerminarDeProducao() => Application.Current.Shutdown();
+    internal static void TerminarDeProducao() { } // SONDA: não fecha
 
     private async Task CheckForUpdateAsync()
     {
