@@ -193,14 +193,22 @@ const mutantes = [
     prova: "setas: as duas setas têm glifo",
   },
   {
-    // A barra horizontal é outra peça do tema: se o trigger não casar, o WPF
-    // desenha a barra por omissão e nada do 95 fica lá.
-    nome: "a barra horizontal do 95 volta ao tema por omissão",
+    // Um valor inválido no trigger não serve de mutante: rebenta o XAML com
+    // `XamlParseException` e o harness fica vermelho pela razão errada (run
+    // 43934235588). A regressão realista é a zona de página pintar como o
+    // track — a barra fica um bloco liso e ninguém distingue onde carregar.
+    nome: "a zona de página horizontal pinta como o track",
     ficheiro: "src/OficinaDiag/Themes/Win95.xaml",
-    de: '            <Trigger Property="Orientation" Value="Horizontal">',
-    para: '            <Trigger Property="Orientation" Value="NuncaCasa">',
+    de: `                                        <RepeatButton Command="ScrollBar.PageLeftCommand" Focusable="False">
+                                            <RepeatButton.Template>
+                                                <ControlTemplate TargetType="RepeatButton">
+                                                    <Border Background="#DFDFDF"/>`,
+    para: `                                        <RepeatButton Command="ScrollBar.PageLeftCommand" Focusable="False">
+                                            <RepeatButton.Template>
+                                                <ControlTemplate TargetType="RepeatButton">
+                                                    <Border Background="#C0C0C0"/>`,
     guarda: "uishots",
-    prova: "setas-h: a zona de página é o cinza claro do 95",
+    prova: "setas-h: a zona de página distingue-se do track",
   },
   {
     nome: "a seta esquerda do 95 perde o glifo",
