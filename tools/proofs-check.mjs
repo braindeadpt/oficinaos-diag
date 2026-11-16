@@ -77,17 +77,56 @@ function padraoDe(bruto, interpolada) {
   return (v) => regex.test(v);
 }
 
+/**
+ * Lê a mensagem de um `Verificar(`, juntando literais concatenados com `+`.
+ * Uma mensagem partida em duas linhas (`"…" + "…"`) é uma mensagem só: ler
+ * apenas a primeira parte dava um padrão que nunca casava (run 43904930317).
+ * Devolve `null` quando o argumento não é um literal (uma variável).
+ */
+function lerMensagem(src, inicio) {
+  let interpolada = false;
+  let out = "";
+  let j = inicio;
+  for (;;) {
+    while (j < src.length && /\s/.test(src[j])) j++;
+    if (src[j] === "$") {
+      interpolada = true;
+      j++;
+    }
+    if (src[j] !== '"') return null;
+    j++;
+    while (j < src.length && src[j] !== '"') {
+      if (src[j] === "\\") {
+        out += src[j] + src[j + 1];
+        j += 2;
+        continue;
+      }
+      out += src[j++];
+    }
+    if (j >= src.length) return null;
+    j++; // fecha as aspas
+    let k = j;
+    while (k < src.length && /\s/.test(src[k])) k++;
+    if (src[k] === "+") {
+      j = k + 1;
+      continue;
+    }
+    return { texto: out, interpolada };
+  }
+}
+
 /** Verificações declaradas no código, na ordem em que aparecem. */
 const declaradas = [];
-for (const m of texto.matchAll(/Verificar\(\s*(\$?)"((?:[^"\\]|\\.)*)"/g)) {
-  const interpolada = m[1] === "$";
-  const bruto = m[2]
+for (const m of texto.matchAll(/Verificar\(/g)) {
+  const lida = lerMensagem(texto, m.index + m[0].length);
+  if (lida === null) continue; // argumento que não é literal: não é declarada
+  const bruto = lida.texto
     .replace(/\\"/g, '"')
     .replace(/\\\\/g, "\\")
     .replace(/\\n/g, "\n");
   declaradas.push({
     texto: bruto,
-    reconhece: padraoDe(bruto, interpolada),
+    reconhece: padraoDe(bruto, lida.interpolada),
     linha: texto.slice(0, m.index).split("\n").length,
   });
 }
