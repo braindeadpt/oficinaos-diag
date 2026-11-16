@@ -14,15 +14,29 @@ public class WindowFitTests
     [InlineData(1.5)]
     public void ACaixaCabeSempreNaAreaUtil(double escala)
     {
+        // Pedido maior que a área nos três escalões (2000×1200 > 1920×1080,
+        // 1536×864 e 1280×720): é o único formato em que a conta do `Math.Min`
+        // é obrigatória em todas as linhas. Com 960×640 a teoria passava mesmo
+        // sem teto a 150%, e o mutante do `mutation-check` sobrevivia a citá-la.
         var area = FullHd(escala);
-        var c = WindowFit.Calcular(area, 960, 640);
+        var c = WindowFit.Calcular(area, 2000, 1200);
 
-        Assert.True(c.Width <= area.Width);
-        Assert.True(c.Height <= area.Height);
+        Assert.Equal(area.Width, c.Width, 6);
+        Assert.Equal(area.Height, c.Height, 6);
         Assert.Equal(area.Width, c.MaxWidth);
         Assert.Equal(area.Height, c.MaxHeight);
         Assert.InRange(c.Left!.Value, area.Left, area.Left + area.Width - c.Width);
         Assert.InRange(c.Top!.Value, area.Top, area.Top + area.Height - c.Height);
+    }
+
+    [Fact]
+    public void JanelaQueJaCabeFicaComOTamanhoPedido()
+    {
+        var area = FullHd(1.0);
+        var c = WindowFit.Calcular(area, 960, 640);
+        Assert.Equal(960, c.Width);
+        Assert.Equal(640, c.Height);
+        Assert.True(c.Width <= area.Width && c.Height <= area.Height);
     }
 
     [Fact]

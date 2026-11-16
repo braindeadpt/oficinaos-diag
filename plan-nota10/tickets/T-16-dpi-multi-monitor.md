@@ -42,7 +42,7 @@ Faltava também a conta em DIP: a 150%, 1920 px são **1280 DIP**, e é isso que
 
 ## Critérios
 
-- [x] A geometria da janela vive numa função pura, testada a 100/125/150% e num portátil 1366×768 a 150%, sem WPF e sem PInvoke. *(prova: `WindowFitTests` — os três escalões, o centro por escalão, o portátil pequeno, a janela pequena que não é esticada, o segundo monitor à direita, os quatro casos de área inválida e a conversão px→DIP; `dotnet test` a 342 verdes)*
+- [x] A geometria da janela vive numa função pura, testada a 100/125/150% e num portátil 1366×768 a 150%, sem WPF e sem PInvoke. *(prova: `WindowFitTests` — os três escalões, o centro por escalão, o portátil pequeno, a janela pequena que não é esticada, o segundo monitor à direita, os quatro casos de área inválida e a conversão px→DIP; `dotnet test` a 343 verdes)*
 - [x] A janela aplica a área útil do monitor onde está e volta a caber quando o escalão ou o monitor mudam — com prova no harness a 100/125/150%. *(prova: secção `dpi:` do `tools/UiShots`, que injecta a área em DIP e passa pelo mesmo `AjustarAoEcra` do arranque e do `DpiChanged`: «a {pct}% cabe na área útil», «a {pct}% fica dentro do ecrã», «a 150% num 1366×768 encolhe», «o máximo acompanha a área do monitor» e «sem área injectada volta ao monitor real»)*
 - [x] Um mutante que ignora a área útil (largura pedida sem `Math.Min`) é morto pelos testes, para a prova não passar a verde se a conta desaparecer. *(prova: entrada «a janela ignora a área útil» do `tools/mutation-check.mjs`, guarda `testes`, filtro `WindowFitTests`, a citar `ACaixaCabeSempreNaAreaUtil`)*
 
