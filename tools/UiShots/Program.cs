@@ -184,7 +184,17 @@ internal static class Program
         app.Dispatcher.BeginInvoke(DispatcherPriority.Background, new Action(() =>
         {
             try { codigo = Corpo(destino, logUi); }
-            catch (Exception ex) { Anotar("UI", ex); codigo = 1; }
+            catch (Exception ex)
+            {
+                // Um corpo que rebenta saía com exit 1 e **nenhuma** linha
+                // `[FALHA]` — ficava um vermelho sem dono, e um mutante que só
+                // mata o harness não se distinguia de um verde. Diz-se o que
+                // rebentou e corre-se a verificação que disto é dona.
+                Anotar("UI", ex);
+                Console.WriteLine($"  [FALHA] o corpo do harness rebentou: {ex.GetType().Name}: {ex.Message}");
+                try { VerificarUiSemExcecoes(logUi); } catch { }
+                codigo = 1;
+            }
             // Se o `Terminar` de produção chegou a correr, quem fecha é ele —
             // ou o vigia, que marca `_fimForcado`. Fechar aqui escondia o
             // defeito que a prova procura: um `Terminar` inerte nunca chegava
