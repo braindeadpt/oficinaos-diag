@@ -2289,7 +2289,8 @@ internal static class Program
     /// Grava um elemento em PNG sobre o fundo do tema. Único sítio que escreve
     /// imagens — havia dois e só um pintava o fundo opaco.
     /// </summary>
-    private static (int W, int H) Gravar(FrameworkElement raiz, string ficheiro)
+    private static (int W, int H) Gravar(
+        FrameworkElement raiz, string ficheiro, double? esperadoLargura = null, double? esperadoAltura = null)
     {
         var w = Math.Max(1, (int)Math.Ceiling(raiz.ActualWidth));
         var h = Math.Max(1, (int)Math.Ceiling(raiz.ActualHeight));
@@ -2308,17 +2309,22 @@ internal static class Program
         // que não estão vazias: um `RenderTargetBitmap` de um elemento sem
         // filhos pintados dá um PNG de uma só cor, que ninguém abre e que
         // «prova» tudo — foi o que aconteceu à barra do Win95 em 2026-11-15.
-        ConferirCaptura(ficheiro, bmp.PixelWidth, bmp.PixelHeight);
+        ConferirCaptura(ficheiro, bmp.PixelWidth, bmp.PixelHeight, esperadoLargura, esperadoAltura);
         return (bmp.PixelWidth, bmp.PixelHeight);
     }
 
     /// <summary>
-    /// Uma captura vazia não é prova. Mede o que distingue uma janela
-    /// desenhada de um retângulo de fundo: cores distintas e quanto pesa a cor
-    /// dominante. Um render sem filhos tem 1 cor a 100%; uma janela a sério
-    /// tem dezenas e nenhuma a ocupar quase tudo.
+    /// Cada PNG verifica-se a si mesmo, e não só a barra do Win95: o que
+    /// distingue uma janela desenhada de um retângulo de fundo é o tamanho
+    /// pedido, a variedade de cores e a cor do tema lá dentro. Um
+    /// `RenderTargetBitmap` sem os filhos pintados dá um PNG de uma cor —
+    /// passa por captura e não prova nada.
+    ///
+    /// Devolve as razões medidas no log (dimensão, cores, variância, peso do
+    /// fundo do tema), para uma falha dizer o que viu e não só que falhou.
     /// </summary>
-    private static void ConferirCaptura(string ficheiro, int w, int h)
+    private static void ConferirCaptura(
+        string ficheiro, int w, int h, double? esperadoLargura, double? esperadoAltura)
     {
         var nome = Path.GetFileName(ficheiro);
         try
@@ -2330,18 +2336,46 @@ internal static class Program
             var stride = bgra.PixelWidth * 4;
             var pixels = new byte[stride * bgra.PixelHeight];
             bgra.CopyPixels(pixels, stride, 0);
+            var total = bgra.PixelWidth * bgra.PixelHeight;
 
             var cores = new HashSet<int>();
             var contagem = new Dictionary<int, int>();
+            double soma = 0, somaQuadrados = 0;
             for (var i = 0; i < pixels.Length; i += 4)
             {
-                var rgb = pixels[i] | (pixels[i + 1] << 8) | (pixels[i + 2] << 16);
+                var b = pixels[i];
+                var g = pixels[i + 1];
+                var r = pixels[i + 2];
+                var rgb = b | (g << 8) | (r << 16);
                 cores.Add(rgb);
                 contagem[rgb] = (contagem.TryGetValue(rgb, out var n) ? n : 0) + 1;
+                var luz = 0.299 * r + 0.587 * g + 0.114 * b;
+                soma += luz;
+                somaQuadrados += luz * luz;
             }
-            var dominante = contagem.Count == 0 ? 0.0 : (double)contagem.Values.Max() / (pixels.Length / 4);
-            Verificar($"captura {nome}: {w}x{h}, desenhada ({cores.Count} cores, {dominante:P0} na dominante)",
-                w >= 40 && h >= 40 && cores.Count >= 6 && dominante <= 0.98);
+
+            var dominante = contagem.Count == 0 ? 0.0 : (double)contagem.Values.Max() / total;
+            var media = total == 0 ? 0 : soma / total;
+            // Variância da luminância numa escala 0–255: um PNG uniforme dá 0.
+            var variancia = total == 0 ? 0 : Math.Max(0, somaQuadrados / total - media * media);
+
+            // A cor de fundo do tema tem de estar lá: é o que o `Fundo(w, h)`
+            // pinta por baixo, e um render que não pintou nada tem-na a 100%.
+            var fundo = (Application.Current.TryFindResource("BgBrush") as SolidColorBrush)?.Color
+                        ?? Colors.Black;
+            var corFundo = fundo.B | (fundo.G << 8) | (fundo.R << 16);
+            var pesoFundo = contagem.TryGetValue(corFundo, out var daCor) ? (double)daCor / total : 0.0;
+
+            var dimensao = esperadoLargura is not { } el || esperadoAltura is not { } ea
+                           || (Math.Abs(w - el) <= 2 && Math.Abs(h - ea) <= 2);
+            var esperado = esperadoLargura is { } l && esperadoAltura is { } a
+                ? $" (pedido {l:0}x{a:0})"
+                : "";
+
+            Verificar($"captura {nome}: {w}x{h}{esperado}, {cores.Count} cores, " +
+                      $"variância {variancia:0.0}, fundo do tema {pesoFundo:P0}, {dominante:P0} na dominante",
+                dimensao && w >= 40 && h >= 40 && cores.Count >= 6
+                && variancia >= 8 && pesoFundo >= 0.02 && dominante <= 0.98);
         }
         catch (Exception ex)
         {
@@ -2508,7 +2542,10 @@ internal static class Program
                 VerificarAcoes(janela, raiz, Path.GetFileNameWithoutExtension(ficheiro), workArea, acoes);
 
             var foco = mostrou ? TentarFoco(janela) : "não";
-            var (w, h) = Gravar(raiz, ficheiro);
+            // O tamanho pedido é o esperado; com work area simulada, o `clamp`
+            // da app (`Min`) pode encolher a janela, e esse é o esperado.
+            var (w, h) = Gravar(raiz, ficheiro, largura,
+                workArea is { } teto ? Math.Min(altura, teto) : altura);
             // Diagnóstico: se o fundo de um descendente passar da altura do
             // conteúdo *e ele não estiver dentro de uma área rolável*, é a app
             // que arruma fora da janela — defeito. O que fica atrás de um
