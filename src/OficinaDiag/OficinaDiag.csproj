@@ -7,7 +7,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <UseWPF>true</UseWPF>
     <AssemblyName>OficinaDiag</AssemblyName>
-    <Version>0.2.1</Version>
+    <Version>0.3.0</Version>
     <Description>USB phone diagnostics — free local scan, Pro reports via oficinaos-cloud</Description>
     <ApplicationIcon>Assets\app.ico</ApplicationIcon>
     <Product>OficinaOS</Product>
@@ -29,7 +29,7 @@
 
   <ItemGroup>
     <!-- QRCoder fica na app: só a janela do QR o usa. -->
-    <PackageReference Include="QRCoder" Version="1.8.0" />
+    <PackageReference Include="QRCoder" Version="1.8.1" />
   </ItemGroup>
 
   <!-- bundled adb, copied to output; Data/models.json + Tests/wwwroot vêm do Core -->
