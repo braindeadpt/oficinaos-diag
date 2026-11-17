@@ -12,7 +12,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <RootNamespace>OficinaDiag</RootNamespace>
     <AssemblyName>OficinaDiag.Core</AssemblyName>
-    <Version>0.3.0</Version>
+    <Version>0.3.1</Version>
     <Description>OficinaOS Diag — core (coletores, relatórios, cloud)</Description>
     <Company>Oficina de Sistemas</Company>
   </PropertyGroup>
