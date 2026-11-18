@@ -41,10 +41,10 @@ public sealed class WaStoreTests : IDisposable
         Assert.Equal(WaStoreVariant.IosChatStorage, info.Variant);
         Assert.True(info.IntegrityOk);
         Assert.Equal("2.12.14", info.ModelVersion);
-        Assert.Equal(3, info.MessageCount);
-        Assert.Equal(1, info.ChatCount);
+        Assert.Equal(4, info.MessageCount);
+        Assert.Equal(2, info.ChatCount);
         Assert.Equal(1, info.MediaItemCount);
-        Assert.Equal(2, info.MessageTypes[0]);
+        Assert.Equal(3, info.MessageTypes[0]);
         Assert.Equal(1, info.MessageTypes[1]);
     }
 
@@ -65,10 +65,16 @@ public sealed class WaStoreTests : IDisposable
     {
         var chats = WaIosReader.Chats(_db);
 
-        var chat = Assert.Single(chats);
+        Assert.Equal(2, chats.Count);
+        var chat = chats.First(c => c.Pk == 1);
         Assert.Equal("351912345678@s.whatsapp.net", chat.Jid);
         Assert.Equal("Cliente Teste", chat.PartnerName);
         Assert.False(chat.IsGroup);
+
+        // Sessão cujo ZPARTNERNAME é só o número — como 1/3 da BD real.
+        var digitChat = chats.First(c => c.Pk == 2);
+        Assert.Equal("351987654321", digitChat.PartnerName);
+        Assert.Equal("Maria Silva", digitChat.PushName);
 
         var msgs = WaIosReader.Messages(_db, chat.Pk).ToList();
         Assert.Equal(3, msgs.Count);
@@ -85,12 +91,24 @@ public sealed class WaStoreTests : IDisposable
         var outDir = Path.Combine(_dir, "out");
         var count = WaHtmlExport.Export(_db, outDir);
 
-        Assert.Equal(1, count);
+        Assert.Equal(2, count);
         var html = File.ReadAllText(Path.Combine(outDir, "chat-1.html"));
         Assert.Contains("olá &lt;mundo&gt;", html); // HTML escaped
         Assert.Contains("Cliente Teste", html);
         Assert.Contains("📷 imagem", html);
         Assert.True(File.Exists(Path.Combine(outDir, "index.html")));
+    }
+
+    [Fact]
+    public void Export_DigitOnlyPartnerName_UsesPushName()
+    {
+        var outDir = Path.Combine(_dir, "out2");
+        WaHtmlExport.Export(_db, outDir);
+
+        // chat-2 = sessão com ZPARTNERNAME só dígitos → título vem do
+        // ZWAPROFILEPUSHNAME, não do número.
+        var html = File.ReadAllText(Path.Combine(outDir, "chat-2.html"));
+        Assert.Contains("Maria Silva", html);
     }
 
     [Fact]
@@ -134,12 +152,22 @@ public sealed class WaStoreTests : IDisposable
             CREATE TABLE ZWAMEDIAITEM (Z_PK INTEGER PRIMARY KEY, Z_ENT INTEGER, Z_OPT INTEGER,
                 ZFILESIZE INTEGER, ZMOVIEDURATION INTEGER, ZMESSAGE INTEGER,
                 ZMEDIALOCALPATH VARCHAR, ZMEDIAURL VARCHAR, ZTITLE VARCHAR, ZMEDIAKEY BLOB);
+            CREATE TABLE ZWAPROFILEPUSHNAME (Z_PK INTEGER PRIMARY KEY, Z_ENT INTEGER, Z_OPT INTEGER,
+                ZJID VARCHAR, ZPUSHNAME VARCHAR);
             """);
         Exec(db, "INSERT INTO Z_METADATA VALUES (1,'u',$plist)",
             ("$plist", System.Text.Encoding.UTF8.GetBytes(
                 "bplist00NSStoreModelVersionIdentifiersX2.12.14")));
 
-        Exec(db, "INSERT INTO ZWACHATSESSION (Z_PK,Z_ENT,Z_OPT,ZMESSAGECOUNTER,ZREMOVED,ZSESSIONTYPE,ZUNREADCOUNT,ZGROUPINFO,ZCONTACTJID,ZPARTNERNAME) VALUES (1,4,2,3,0,0,0,NULL,'351912345678@s.whatsapp.net','Cliente Teste')");
+        Exec(db, """
+            INSERT INTO ZWACHATSESSION (Z_PK,Z_ENT,Z_OPT,ZMESSAGECOUNTER,ZREMOVED,ZSESSIONTYPE,ZUNREADCOUNT,ZGROUPINFO,ZCONTACTJID,ZPARTNERNAME) VALUES
+             (1,4,2,3,0,0,0,NULL,'351912345678@s.whatsapp.net','Cliente Teste'),
+             (2,4,2,1,0,0,0,NULL,'351987654321@s.whatsapp.net','351987654321');
+            INSERT INTO ZWAPROFILEPUSHNAME (Z_PK,Z_ENT,Z_OPT,ZJID,ZPUSHNAME) VALUES
+             (1,13,1,'351987654321@s.whatsapp.net','Maria Silva');
+            INSERT INTO ZWAMESSAGE (Z_PK,Z_ENT,Z_OPT,ZISFROMME,ZMESSAGESTATUS,ZMESSAGETYPE,ZSORT,ZCHATSESSION,ZMEDIAITEM,ZMESSAGEDATE,ZFROMJID,ZTEXT,ZTOJID) VALUES
+             (4,7,1,0,0,0,1,2,NULL,725796000,'351987654321@s.whatsapp.net','oi','me@s.whatsapp.net');
+            """);
 
         const double d1 = 725_796_000; // 2024-01-01 10:00 UTC (Core Data epoch)
         const double d2 = 725_882_400; // 2024-01-02 10:00 UTC

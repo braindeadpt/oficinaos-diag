@@ -8,6 +8,9 @@ internal sealed record WaChat
     internal required long Pk { get; init; }
     internal required string Jid { get; init; }
     internal string? PartnerName { get; init; }
+
+    /// <summary>Nome que o contacto anuncia (ZWAPROFILEPUSHNAME).</summary>
+    internal string? PushName { get; init; }
     internal bool IsGroup { get; init; }
     internal long MessageCount { get; init; }
     internal DateTimeOffset? LastMessageUtc { get; init; }
@@ -48,9 +51,10 @@ internal static class WaIosReader
         cmd.CommandText = """
             SELECT s.Z_PK, s.ZCONTACTJID, s.ZPARTNERNAME,
                    CASE WHEN g.Z_PK IS NOT NULL THEN 1 ELSE 0 END,
-                   s.ZMESSAGECOUNTER, s.ZLASTMESSAGEDATE
+                   s.ZMESSAGECOUNTER, s.ZLASTMESSAGEDATE, p.ZPUSHNAME
             FROM ZWACHATSESSION s
             LEFT JOIN ZWAGROUPINFO g ON g.ZCHATSESSION = s.Z_PK
+            LEFT JOIN ZWAPROFILEPUSHNAME p ON p.ZJID = s.ZCONTACTJID
             WHERE s.ZCONTACTJID IS NOT NULL AND s.ZREMOVED = 0
             ORDER BY s.ZLASTMESSAGEDATE DESC
             """;
@@ -66,6 +70,7 @@ internal static class WaIosReader
                 IsGroup = r.GetInt64(3) == 1,
                 MessageCount = r.IsDBNull(4) ? 0 : r.GetInt64(4),
                 LastMessageUtc = r.IsDBNull(5) ? null : FromCoreData(r.GetDouble(5)),
+                PushName = r.IsDBNull(6) ? null : r.GetString(6),
             });
         }
         return chats;
@@ -81,10 +86,12 @@ internal static class WaIosReader
         using var cmd = db.CreateCommand();
         cmd.CommandText = """
             SELECT m.Z_PK, m.ZMESSAGEDATE, m.ZMESSAGETYPE, m.ZISFROMME,
-                   m.ZTEXT, gm.ZMEMBERJID, m.ZPUSHNAME,
+                   m.ZTEXT, gm.ZMEMBERJID,
+                   COALESCE(m.ZPUSHNAME, ppn.ZPUSHNAME),
                    mi.ZMEDIALOCALPATH, mi.ZFILESIZE, mi.ZTITLE
             FROM ZWAMESSAGE m
             LEFT JOIN ZWAGROUPMEMBER gm ON gm.Z_PK = m.ZGROUPMEMBER
+            LEFT JOIN ZWAPROFILEPUSHNAME ppn ON ppn.ZJID = gm.ZMEMBERJID
             LEFT JOIN ZWAMEDIAITEM mi ON mi.Z_PK = m.ZMEDIAITEM
             WHERE m.ZCHATSESSION = $chat
             ORDER BY m.ZSORT, m.Z_PK

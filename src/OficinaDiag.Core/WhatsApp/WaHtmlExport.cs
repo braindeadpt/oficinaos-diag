@@ -106,8 +106,20 @@ internal static class WaHtmlExport
     private static string SenderLabel(WaMessage m) =>
         m.SenderJid?.Split('@')[0] ?? "?";
 
-    private static string DisplayName(WaChat chat) =>
-        chat.PartnerName ?? chat.Jid.Split('@')[0];
+    /// <summary>
+    /// Nome de exibição: o ZPARTNERNAME da sessão quando é um nome; se for
+    /// só dígitos (BD real: 1/3 das conversas) usa o nome anunciado do
+    /// contacto (ZWAPROFILEPUSHNAME); último recurso, o número do JID.
+    /// </summary>
+    private static string DisplayName(WaChat chat)
+    {
+        if (chat.PartnerName is { } name &&
+            name.Any(c => char.IsLetter(c)))
+            return name;
+        return chat.PushName
+            ?? chat.PartnerName
+            ?? chat.Jid.Split('@')[0];
+    }
 
     /// <summary>
     /// Escapa só os 5 caracteres HTML — o ficheiro é UTF-8 e o texto PT
