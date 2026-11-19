@@ -12,8 +12,13 @@ namespace OficinaDiag.WhatsApp;
 /// </summary>
 internal static class WaHtmlExport
 {
-    /// <summary>Nomes de ficheiro previsíveis: chat-1.html, chat-2.html…</summary>
-    internal static int Export(SqliteConnection db, string outputDir)
+    /// <summary>
+    /// Nomes de ficheiro previsíveis: chat-1.html, chat-2.html…
+    /// <paramref name="contacts"/> (dígitos→nome, de <see cref="WaContacts"/>)
+    /// resolve números que nem a agenda do WhatsApp conhece.
+    /// </summary>
+    internal static int Export(SqliteConnection db, string outputDir,
+        IReadOnlyDictionary<string, string>? contacts = null)
     {
         Directory.CreateDirectory(outputDir);
         var chats = WaIosReader.Chats(db);
@@ -28,9 +33,10 @@ internal static class WaHtmlExport
         {
             var chat = chats[i];
             var file = $"chat-{i + 1}.html";
-            File.WriteAllText(Path.Combine(outputDir, file), RenderChat(db, chat));
+            File.WriteAllText(Path.Combine(outputDir, file),
+                RenderChat(db, chat, contacts));
 
-            var name = E(DisplayName(chat));
+            var name = E(DisplayName(chat, contacts));
             index.Append($"""<li><a href="{file}">{name}</a> <small>({chat.MessageCount} mensagens)</small></li>""");
         }
 
@@ -39,15 +45,17 @@ internal static class WaHtmlExport
         return chats.Count;
     }
 
-    private static string RenderChat(SqliteConnection db, WaChat chat)
+    private static string RenderChat(SqliteConnection db, WaChat chat,
+        IReadOnlyDictionary<string, string>? contacts)
     {
         var sb = new StringBuilder();
+        var title = E(DisplayName(chat, contacts));
         sb.Append("""
             <!DOCTYPE html><html lang="pt"><head><meta charset="utf-8">
             <title>
-            """).Append(E(DisplayName(chat))).Append("</title>")
+            """).Append(title).Append("</title>")
             .Append(Style).Append("</head><body><h1>")
-            .Append(E(DisplayName(chat))).Append("</h1><div class=\"chat\">");
+            .Append(title).Append("</h1><div class=\"chat\">");
 
         string? lastDay = null;
         foreach (var m in WaIosReader.Messages(db, chat.Pk))
@@ -111,12 +119,17 @@ internal static class WaHtmlExport
     /// só dígitos (BD real: 1/3 das conversas) usa o nome anunciado do
     /// contacto (ZWAPROFILEPUSHNAME); último recurso, o número do JID.
     /// </summary>
-    private static string DisplayName(WaChat chat)
+    private static string DisplayName(WaChat chat,
+        IReadOnlyDictionary<string, string>? contacts)
     {
         if (chat.PartnerName is { } name &&
             name.Any(c => char.IsLetter(c)))
             return name;
-        return chat.PushName
+        // Agenda iOS primeiro (nome que o dono escolheu), depois o nome
+        // que o contacto anuncia, depois o número cru.
+        return (contacts is not null
+                    ? WaContacts.Lookup(contacts, chat.Jid) : null)
+            ?? chat.PushName
             ?? chat.PartnerName
             ?? chat.Jid.Split('@')[0];
     }

@@ -112,6 +112,56 @@ public sealed class WaStoreTests : IDisposable
     }
 
     [Fact]
+    public void Contacts_ReadAndNormalize()
+    {
+        var abPath = Path.Combine(_dir, "AddressBook.sqlitedb");
+        using (var ab = new SqliteConnection($"Data Source={abPath}"))
+        {
+            ab.Open();
+            Exec(ab, """
+                CREATE TABLE ABPerson (ROWID INTEGER PRIMARY KEY, First VARCHAR, Last VARCHAR, Organization VARCHAR);
+                CREATE TABLE ABMultiValue (UID INTEGER PRIMARY KEY, record_id INTEGER, property INTEGER, value VARCHAR);
+                INSERT INTO ABPerson VALUES (1,'João','Silva',NULL),(2,NULL,NULL,'Oficina X');
+                INSERT INTO ABMultiValue VALUES (1,1,3,'+351 987 654 321'),(2,2,3,'912 345 678'),(3,1,3,'*123');
+                """);
+        }
+
+        var map = WaContacts.Read(abPath);
+        Assert.Equal("João Silva", map["351987654321"]);
+        Assert.Equal("Oficina X", map["912345678"]);
+        Assert.False(map.ContainsKey("123")); // curto demais para JID
+    }
+
+    [Fact]
+    public void Lookup_TriesFullThenLast9Digits()
+    {
+        var map = new Dictionary<string, string>
+        {
+            ["912345678"] = "Local",
+            ["351987654321"] = "Completo",
+        };
+        Assert.Equal("Completo",
+            WaContacts.Lookup(map, "351987654321@s.whatsapp.net"));
+        // Gravado sem indicativo: JID completo não bate, últimos 9 sim.
+        Assert.Equal("Local",
+            WaContacts.Lookup(map, "351912345678@s.whatsapp.net"));
+    }
+
+    [Fact]
+    public void Export_ContactsBeatPushName()
+    {
+        var outDir = Path.Combine(_dir, "out3");
+        var contacts = new Dictionary<string, string>
+        {
+            ["351987654321"] = "Maria da Agenda",
+        };
+        WaHtmlExport.Export(_db, outDir, contacts);
+
+        var html = File.ReadAllText(Path.Combine(outDir, "chat-2.html"));
+        Assert.Contains("Maria da Agenda", html);
+    }
+
+    [Fact]
     public void Inspect_UnknownDatabase_ReturnsUnknown()
     {
         var other = Path.Combine(_dir, "other.sqlite");
