@@ -526,9 +526,12 @@ public partial class MainWindow : Window
                 return;
             }
             _lastAiReport = null;
+            // Os WaitForExit dentro dos coletores são síncronos — sem o
+            // Task.Run cada chamada adb bloqueava a UI thread e a janela
+            // congelava durante o scan inteiro.
             _report = _current.Kind == DeviceKind.Android
-                ? await new AndroidCollector(_adbPath).CollectAsync(_current.Id.TrimEnd('!'))
-                : await new IosCollector().CollectAsync(_current.Id);
+                ? await Task.Run(() => new AndroidCollector(_adbPath).CollectAsync(_current.Id.TrimEnd('!')))
+                : await Task.Run(() => new IosCollector().CollectAsync(_current.Id));
 
             // iOS: o serial da célula não se repete — se mudou desde a última
             // visita, a bateria foi trocada e isso tem de ficar no relatório.
