@@ -5,6 +5,21 @@ Versões seguem o tag `v*` do release.
 
 ## Unreleased
 
+- Relatórios: o HTML exportado segue agora o tema escolhido em Opções —
+  Moderno (claro, Segoe UI, acentos azuis), Terminal (verde-fósforo) ou
+  Windows 95 (claro, Tahoma). Aplica-se ao relatório normal e ao relatório
+  IA; os relatórios de cliente e seguradora mantêm o layout próprio.
+- Tema: **Moderno é o novo defeito** numa instalação limpa (antes:
+  Terminal). A escolha guardada continua a ser respeitada.
+- Scan: a janela deixava de responder durante a coleta — os `WaitForExit`
+  síncronos dos coletores corriam na UI thread; a coleta passou para o
+  thread-pool.
+- Relatório IA: os logs do scan passam a ir limitados (80 linhas/14KB
+  Android, 14KB iOS) — a Groq devolvia 413 (tokens/pedido) e o relatório
+  falhava com 502.
+- Emparelhamento: "guardar neste PC" vem ligado por defeito no diálogo do
+  código — sem isto o token só vivia em memória e o código (uso único) não
+  o repunha ao fechar a app.
 - Scan USB: o detetor Android **nunca viu um device em Windows** — o
   `adb.exe` emite CRLF e o regex `(\w+)$` multiline não casa (`$` ancora
   antes do `\n`). Fix `\r?` + `ParseAdbDevices` extraído e provado com

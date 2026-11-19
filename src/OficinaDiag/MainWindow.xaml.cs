@@ -814,7 +814,8 @@ public partial class MainWindow : Window
         try
         {
             File.WriteAllText(dlg.FileName,
-                isHtml ? ReportBuilder.ToHtml(_report) : ReportBuilder.ToJson(_report));
+                isHtml ? ReportBuilder.ToHtml(_report, ThemeManager.Current)
+                       : ReportBuilder.ToJson(_report));
         }
         catch (Exception ex) { Log(L10n.F("log.err", ex.Message)); return; }
         Log(L10n.F("log.export.saved", dlg.FileName));
@@ -967,7 +968,7 @@ public partial class MainWindow : Window
             {
                 try
                 {
-                    File.WriteAllText(dlg.FileName, ReportBuilder.AiReportToHtml(_report, text));
+                    File.WriteAllText(dlg.FileName, ReportBuilder.AiReportToHtml(_report, text, ThemeManager.Current));
                 }
                 catch (Exception ex) { Log(L10n.F("log.err", ex.Message)); return; }
                 Log(L10n.F("log.ai.saved", dlg.FileName));

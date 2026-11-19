@@ -11,7 +11,7 @@ public partial class App : Application
     {
         // tema + idioma antes de qualquer janela — DynamicResource resolve no load
         var cfg = Cloud.DiagConfig.Load();
-        ThemeManager.Apply(cfg.Theme ?? ThemeManager.Terminal);
+        ThemeManager.Apply(cfg.Theme ?? ThemeManager.Fluent);
         L10n.Set(cfg.Language ?? L10n.AutoDetect());
 
         Log.AppLog.Write("> oficinaos-diag arrancou");

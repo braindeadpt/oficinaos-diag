@@ -92,6 +92,33 @@ public class ReportBuilderTests
         }
     }
 
+    [Theory]
+    // O relatório sai no look do tema escolhido em Opções — tokens de CSS que
+    // só existem num tema provam que o stylesheet certo foi emitido.
+    [InlineData("fluent", "Segoe UI", "#0f6cbd")]
+    [InlineData("win95", "Tahoma", "ridge")]
+    [InlineData("terminal", "Cascadia Mono", "#0a0f0a")]
+    public void HtmlSegueOTemaEscolhido(string theme, string fonte, string cor)
+    {
+        var html = ReportBuilder.ToHtml(Sample(), theme);
+        Assert.Contains(fonte, html);
+        Assert.Contains(cor, html);
+        var ai = ReportBuilder.AiReportToHtml(Sample(), "# ok", theme);
+        Assert.Contains(fonte, ai);
+        Assert.Contains(cor, ai);
+    }
+
+    [Theory]
+    // Quem não passa tema (callers antigos, testes) fica com o retro —
+    // a app WPF passa sempre ThemeManager.Current explicitamente.
+    [InlineData(null)]
+    [InlineData("tema-que-nao-existe")]
+    public void HtmlSemTemaCaiNoTerminal(string? theme)
+    {
+        Assert.Contains("#0a0f0a", ReportBuilder.ToHtml(Sample(), theme));
+        Assert.Contains("#0a0f0a", ReportBuilder.AiReportToHtml(Sample(), "# ok", theme));
+    }
+
     [Fact]
     public void SafeFileToken_SanitizaSerialComPorta()
     {

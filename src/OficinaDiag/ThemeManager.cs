@@ -14,7 +14,7 @@ public static class ThemeManager
 
     public static readonly string[] All = { Terminal, Win95, Fluent };
 
-    public static string Current { get; private set; } = Terminal;
+    public static string Current { get; private set; } = Fluent;
 
     /// <summary>Tema mudou — janelas re-aplicam textos (as decorações [ ]/── dependem do tema).</summary>
     public static event Action? Changed;
@@ -23,7 +23,7 @@ public static class ThemeManager
 
     public static void Apply(string name)
     {
-        if (!All.Contains(name)) name = Terminal;
+        if (!All.Contains(name)) name = Fluent;
         // Assembly-qualified: um pack URI sem `;component` resolve contra o
         // assembly de entrada, o que só por acaso é a app (o tools/UiShots
         // hospeda as janelas noutro processo para tirar capturas).

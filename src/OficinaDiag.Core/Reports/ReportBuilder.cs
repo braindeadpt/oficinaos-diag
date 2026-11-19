@@ -128,21 +128,61 @@ public static class ReportBuilder
         return JsonSerializer.Serialize(payload, JsonOpts);
     }
 
-    public static string ToHtml(DeviceReport r)
+    /// <summary>
+    /// CSS do relatório por tema da app — o documento entregue ao cliente sai
+    /// no look que a loja escolheu em Opções (terminal=retro, win95=clássico
+    /// claro, fluent=moderno). As regras cobrem os dois renderers (local+IA):
+    /// o que cada um não usa é inócuo.
+    /// </summary>
+    private static string CssFor(string? theme) => theme switch
     {
-        var sb = new StringBuilder();
-        sb.AppendLine("""
-        <!DOCTYPE html><html lang="pt"><head><meta charset="utf-8">
-        <title>OficinaDiag — relatório</title><style>
+        "win95" => """
+        body{background:#fff;color:#000;font-family:Tahoma,'MS Sans Serif',sans-serif;max-width:760px;margin:2em auto;padding:0 1em}
+        h1{border-bottom:2px ridge #808080;padding-bottom:.4em;color:#000080;font-size:1.4em}
+        h2,h3{color:#000080;font-size:1em;margin-top:1.6em}
+        .meta{color:#404040;font-size:.85em;margin-bottom:2em}
+        table{width:100%;border-collapse:collapse}
+        td,th{border:2px ridge #c0c0c0;padding:.4em .7em;text-align:left;font-size:.9em}
+        th{background:#c0c0c0}
+        .pass{color:#008000}.warn{color:#808000}.fail{color:#800000}.info{color:#404040}.skipped{color:#808080}
+        li{margin:.3em 0}
+        .footer{margin-top:3em;font-size:.75em;color:#808080}
+        """,
+        "fluent" => """
+        body{background:#f6f7f9;color:#1f2328;font-family:'Segoe UI',system-ui,sans-serif;max-width:760px;margin:2em auto;padding:0 1em}
+        h1{border-bottom:2px solid #0f6cbd;padding-bottom:.4em;font-size:1.5em}
+        h2,h3{color:#0f6cbd;font-size:1.05em;margin-top:1.6em}
+        .meta{color:#5b6169;font-size:.85em;margin-bottom:2em}
+        table{width:100%;border-collapse:collapse;background:#fff}
+        td,th{border:1px solid #d9dde3;padding:.45em .7em;text-align:left;font-size:.9em}
+        th{background:#eef1f5}
+        .pass{color:#107c10}.warn{color:#946500}.fail{color:#c42b1c}.info{color:#5b6169}.skipped{color:#9aa0a6}
+        li{margin:.3em 0}
+        .footer{margin-top:3em;font-size:.75em;color:#8a9199}
+        @media print{body{background:#fff}}
+        """,
+        _ => """
         body{background:#0a0f0a;color:#33ff33;font-family:'Cascadia Mono',Consolas,monospace;max-width:760px;margin:2em auto;padding:0 1em}
         h1{border-bottom:1px solid #33ff33;padding-bottom:.4em}
+        h2,h3{color:#7fd77f;font-size:1em;margin-top:1.6em}
         .meta{color:#7fd77f;font-size:.85em;margin-bottom:2em}
         table{width:100%;border-collapse:collapse}
         td,th{border:1px solid #1d4a1d;padding:.4em .7em;text-align:left;font-size:.9em}
         th{background:#0d1f0d}
         .pass{color:#33ff33}.warn{color:#ffd23f}.fail{color:#ff5555}.info{color:#7fd77f}.skipped{color:#666}
+        li{margin:.3em 0}
         .footer{margin-top:3em;font-size:.75em;color:#4a7a4a}
-        @media print{body{background:#fff;color:#000}.meta,.footer{color:#555}th{background:#eee}.pass,.info{color:#000}.warn{color:#a60}.fail{color:#c00}}
+        @media print{body{background:#fff;color:#000}.meta,.footer,h2,h3{color:#555}th{background:#eee}.pass,.info{color:#000}.warn{color:#a60}.fail{color:#c00}}
+        """,
+    };
+
+    public static string ToHtml(DeviceReport r, string? theme = null)
+    {
+        var sb = new StringBuilder();
+        sb.AppendLine("""
+        <!DOCTYPE html><html lang="pt"><head><meta charset="utf-8">
+        <title>OficinaDiag — relatório</title><style>
+        """ + CssFor(theme) + """
         </style></head><body>
         """);
 
@@ -222,7 +262,7 @@ public static class ReportBuilder
     /// Renders the AI-generated markdown report as a self-contained HTML file
     /// with the same retro style — printable/handable to the customer.
     /// </summary>
-    public static string AiReportToHtml(DeviceReport r, string markdown)
+    public static string AiReportToHtml(DeviceReport r, string markdown, string? theme = null)
     {
         // O texto vem de um LLM alimentado por dados do dispositivo (nome,
         // crash logs) → possível prompt injection. Sem HTML em bruto: tags
@@ -236,16 +276,7 @@ public static class ReportBuilder
         return $$"""
         <!DOCTYPE html><html lang="pt"><head><meta charset="utf-8">
         <title>OficinaDiag — relatório IA</title><style>
-        body{background:#0a0f0a;color:#33ff33;font-family:'Cascadia Mono',Consolas,monospace;max-width:760px;margin:2em auto;padding:0 1em}
-        h1{border-bottom:1px solid #33ff33;padding-bottom:.4em}
-        h2,h3{color:#7fd77f;font-size:1em;margin-top:1.6em}
-        .meta{color:#7fd77f;font-size:.85em;margin-bottom:2em}
-        table{width:100%;border-collapse:collapse}
-        td,th{border:1px solid #1d4a1d;padding:.4em .7em;text-align:left;font-size:.9em}
-        th{background:#0d1f0d}
-        li{margin:.3em 0}
-        .footer{margin-top:3em;font-size:.75em;color:#4a7a4a}
-        @media print{body{background:#fff;color:#000}.meta,.footer,h2,h3{color:#555}th{background:#eee} }
+        {{CssFor(theme)}}
         </style></head><body>
         <h1>OFICINA-OS // RELATÓRIO IA</h1>
         <div class="meta">{{System.Net.WebUtility.HtmlEncode(r.Device.Brand)}} {{System.Net.WebUtility.HtmlEncode(r.Device.Model)}} · {{System.Net.WebUtility.HtmlEncode(r.Device.Os)}} {{System.Net.WebUtility.HtmlEncode(r.Device.OsVersion)}} · s/n {{System.Net.WebUtility.HtmlEncode(r.Device.Serial)}}<br>
