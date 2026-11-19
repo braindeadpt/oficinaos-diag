@@ -576,7 +576,7 @@ public sealed class IosCollector
                 else if (isJetsam) jetsam++;
                 else crashes++;
 
-                if (sb.Length < 40_000)
+                if (sb.Length < 14_000)
                     sb.AppendLine($"--- {name} ---\n{(text.Length > 600 ? text[..600] : text)}");
             }
             r.LogsText = sb.Length > 0 ? sb.ToString() : null;

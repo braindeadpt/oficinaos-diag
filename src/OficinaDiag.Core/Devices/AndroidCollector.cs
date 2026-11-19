@@ -466,7 +466,7 @@ public sealed class AndroidCollector
 
     private async Task CollectLogsAsync(DeviceReport r, string serial)
     {
-        var crashBuf = await AdbAsync(serial, "logcat -d -b crash -t 150", 10000);
+        var crashBuf = await AdbAsync(serial, "logcat -d -b crash -t 80", 10000);
         var appCrashes = crashBuf?.Split('\n')
             .Count(l => l.Contains("FATAL EXCEPTION")) ?? 0;
 
@@ -484,7 +484,7 @@ public sealed class AndroidCollector
         }
 
         if (crashBuf is not null && crashBuf.Length > 0)
-            r.LogsText = crashBuf.Length > 40_000 ? crashBuf[^40_000..] : crashBuf;
+            r.LogsText = crashBuf.Length > 14_000 ? crashBuf[^14_000..] : crashBuf;
 
         r.Set("logs.crashes",
             sysCrashes > 3 ? "warn" : "info",
