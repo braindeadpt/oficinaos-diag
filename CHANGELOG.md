@@ -5,6 +5,14 @@ Versões seguem o tag `v*` do release.
 
 ## Unreleased
 
+- Scan USB: o detetor Android **nunca viu um device em Windows** — o
+  `adb.exe` emite CRLF e o regex `(\w+)$` multiline não casa (`$` ancora
+  antes do `\n`). Fix `\r?` + `ParseAdbDevices` extraído e provado com
+  bytes reais do adb (CRLF e LF).
+- Release/dev: o iMobileDevice-net copia natives de ~21 RIDs para o
+  output; o novo target `StripForeignNativeRuntimes` deixa só `win-*` —
+  menos ~20 dirs de peso morto e fim dos alertas Defender
+  `Exploit:MacOS/LimeRain` (libirecovery macOS) nas máquinas dos clientes.
 - WhatsApp: primeiro incremento do módulo de migração/resgate
   (`OficinaDiag.WhatsApp`) — inspetor read-only que deteta a variante da BD
   (ChatStorage iOS vs msgstore Android), versão do modelo Core Data,

@@ -166,4 +166,36 @@ public sealed class DeviceDetectorTests
         Assert.True(det.BeginPoll());
         det.EndPoll();
     }
+
+    // --- parse do stdout real do adb ------------------------------------
+
+    [Fact]
+    public void AdbDevicesOutput_CrlfWindows_Parse()
+    {
+        // Bytes reais do adb.exe Windows: CRLF, não LF — o regex sem \r?
+        // nunca casava e o detetor ignorava todos os Androids.
+        const string output =
+            "List of devices attached\r\n" +
+            "R58MA4TCE5M\tdevice\r\n" +
+            "emulator-5554\tunauthorized\r\n\r\n";
+
+        var found = DeviceDetector.ParseAdbDevices(output);
+
+        Assert.Equal(2, found.Count);
+        Assert.Equal("R58MA4TCE5M", found[0].Id);
+        Assert.Equal("ready", found[0].State);
+        Assert.Equal("unauthorized", found[1].State);
+        Assert.EndsWith("!", found[1].Id);
+    }
+
+    [Fact]
+    public void AdbDevicesOutput_LfUnix_TambemParse()
+    {
+        const string output =
+            "List of devices attached\nABCD1234\tdevice\n";
+
+        var found = DeviceDetector.ParseAdbDevices(output);
+        Assert.Single(found);
+        Assert.Equal("ABCD1234", found[0].Id);
+    }
 }

@@ -37,4 +37,19 @@
     <Content Include="..\..\tools\platform-tools\**" LinkBase="tools/platform-tools" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" ExcludeFromSingleFile="true" Condition="Exists('..\..\tools\platform-tools')" />
   </ItemGroup>
 
+  <!--
+    O iMobileDevice-net copia natives de ~21 RIDs (osx, linux, wasm…) para o
+    output mesmo com -r win-x64. Só win-* serve: o resto é peso morto e o
+    Defender marca os libirecovery macOS como Exploit:MacOS/LimeRain —
+    falso positivo mas alarme real no PC do cliente.
+  -->
+  <Target Name="StripForeignNativeRuntimes" AfterTargets="Build;Publish">
+    <!-- PublishDir está sempre definido mas só existe com publish real;
+         testam-se os dois caminhos. -->
+    <Exec Condition="Exists('$(PublishDir)runtimes')"
+          Command="powershell -NoProfile -Command &quot;Get-ChildItem '$(PublishDir)runtimes' -Directory | Where-Object Name -notlike 'win-*' | Remove-Item -Recurse -Force&quot;" />
+    <Exec Condition="Exists('$(OutDir)runtimes')"
+          Command="powershell -NoProfile -Command &quot;Get-ChildItem '$(OutDir)runtimes' -Directory | Where-Object Name -notlike 'win-*' | Remove-Item -Recurse -Force&quot;" />
+  </Target>
+
 </Project>

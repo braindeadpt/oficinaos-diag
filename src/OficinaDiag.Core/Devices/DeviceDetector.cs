@@ -71,25 +71,7 @@ public sealed class DeviceDetector : IDisposable
                         return found;
                     }
                     var output = readTask.GetAwaiter().GetResult();
-                    // O estado importa: `recovery`/`sideload`/`unauthorized` não
-                    // têm OS completo, por isso o scan tem de os tratar à parte.
-                    foreach (Match m in Regex.Matches(output, @"^([\w.:@-]+)\t(\w+)$", RegexOptions.Multiline))
-                    {
-                        var id = m.Groups[1].Value;
-                        var state = m.Groups[2].Value;
-                        found.Add(state switch
-                        {
-                            "device" => new DetectedDevice(DeviceKind.Android, id, "Android"),
-                            "unauthorized" => new DetectedDevice(DeviceKind.Android, id + "!",
-                                "Android (autorizar no telefone)", "unauthorized"),
-                            "recovery" => new DetectedDevice(DeviceKind.Android, id + "!",
-                                "Android em recovery", "recovery"),
-                            "sideload" => new DetectedDevice(DeviceKind.Android, id + "!",
-                                "Android em sideload", "sideload"),
-                            _ => new DetectedDevice(DeviceKind.Android, id + "!",
-                                $"Android ({state})", state),
-                        });
-                    }
+                    found.AddRange(ParseAdbDevices(output));
                     // `fastboot devices` custa um processo: só vale a pena
                     // quando nenhum Android chegou a `ready` (bootloader/recovery).
                     if (!found.Any(d => d.State == "ready")) found.AddRange(FastbootDevices());
@@ -105,6 +87,36 @@ public sealed class DeviceDetector : IDisposable
         }
         catch { /* usbmuxd indisponível */ }
 
+        return found;
+    }
+
+    /// <summary>
+    /// Parse do stdout do `adb devices`. O estado importa: `recovery`/
+    /// `sideload`/`unauthorized` não têm OS completo, por isso o scan trata-os
+    /// à parte. O adb.exe do Windows emite CRLF — sem o `\r?` o `$` multiline
+    /// não casa e o detetor ignora todos os Androids (bug: só descoberto com
+    /// um telefone real ligado).
+    /// </summary>
+    internal static List<DetectedDevice> ParseAdbDevices(string output)
+    {
+        var found = new List<DetectedDevice>();
+        foreach (Match m in Regex.Matches(output, @"^([\w.:@-]+)\t(\w+)\r?$", RegexOptions.Multiline))
+        {
+            var id = m.Groups[1].Value;
+            var state = m.Groups[2].Value;
+            found.Add(state switch
+            {
+                "device" => new DetectedDevice(DeviceKind.Android, id, "Android"),
+                "unauthorized" => new DetectedDevice(DeviceKind.Android, id + "!",
+                    "Android (autorizar no telefone)", "unauthorized"),
+                "recovery" => new DetectedDevice(DeviceKind.Android, id + "!",
+                    "Android em recovery", "recovery"),
+                "sideload" => new DetectedDevice(DeviceKind.Android, id + "!",
+                    "Android em sideload", "sideload"),
+                _ => new DetectedDevice(DeviceKind.Android, id + "!",
+                    $"Android ({state})", state),
+            });
+        }
         return found;
     }
 
@@ -124,7 +136,7 @@ public sealed class DeviceDetector : IDisposable
         if (!File.Exists(exe)) yield break;
         var output = RunFastboot(exe);
         if (output is null) yield break;
-        foreach (Match m in Regex.Matches(output, @"^([\w.:@-]+)\tfastboot$", RegexOptions.Multiline))
+        foreach (Match m in Regex.Matches(output, @"^([\w.:@-]+)\tfastboot\r?$", RegexOptions.Multiline))
             yield return new DetectedDevice(DeviceKind.Android, m.Groups[1].Value + "!",
                 "Android em fastboot", "fastboot");
     }
