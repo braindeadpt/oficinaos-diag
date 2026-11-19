@@ -14,6 +14,9 @@ public partial class TokenDialog : Window
         Title = L10n.T("dlg.ai.token.title");
         TokenLabel.Text = L10n.T("dlg.ai.token");
         RememberBox.Content = L10n.T("dlg.token.remember");
+        // Default ON: um token só-em-memória morre ao fechar a app e o código
+        // (uso único) já não o repõe — a loja teria de gerar outro.
+        RememberBox.IsChecked = true;
         LangLabel.Text = L10n.T("dlg.ai.lang");
         LangBox.Text = L10n.Current; // arranca no idioma da app, não sempre "pt"
         OkBtn.Content = "OK";
