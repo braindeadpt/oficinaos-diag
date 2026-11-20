@@ -35,20 +35,21 @@ public partial class MainWindow : Window
 
     private async void LogSend_Click(object sender, RoutedEventArgs e)
     {
-        const int maxChars = 150_000; // servidor aceita até 200k — enviamos só a cauda
         try
         {
             var path = OficinaDiag.Log.AppLog.FilePath;
             if (!File.Exists(path)) { Log(L10n.T("log.log.none")); return; }
             string tail;
             using (var fs = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
+            using (var sr = new StreamReader(fs))
             {
-                var skip = Math.Max(0, fs.Length - maxChars);
-                fs.Seek(skip, SeekOrigin.Begin);
-                using var sr = new StreamReader(fs);
                 tail = await sr.ReadToEndAsync();
-                if (skip > 0) tail = L10n.T("log.log.truncated") + "\n" + tail;
             }
+            // A Cloud recusa logs vazios ou acima de 200k — corta para a
+            // cauda (com marcador) ou devolve null quando não há nada.
+            var preparado = Cloud.IntakeRules.PrepareLogForUpload(tail);
+            if (preparado is null) { Log(L10n.T("log.log.none")); return; }
+            tail = preparado;
             var hint = _report is not null
                 ? $"{_report.Platform} {_report.Device.Brand} {_report.Device.Model} {_report.Device.Os} {_report.Device.OsVersion}".Trim()
                 : _current?.Label;

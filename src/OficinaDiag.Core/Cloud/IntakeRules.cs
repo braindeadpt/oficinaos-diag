@@ -18,6 +18,30 @@ public static partial class IntakeRules
     /// <summary>Máximo de <c>customerEmail</c> aceite pela Cloud (<c>.max(200)</c>).</summary>
     public const int EmailMaxLength = 200;
 
+    /// <summary>Máximo de <c>log</c> aceite pela Cloud em POST /diag-logs (<c>z.string().min(1).max(200_000)</c>).</summary>
+    public const int LogMaxChars = 200_000;
+
+    /// <summary>
+    /// Prepara o texto do diag.log para POST /diag-logs: a Cloud recusa logs
+    /// vazios (min 1) ou acima de <see cref="LogMaxChars"/>. Devolve null
+    /// quando não há nada para enviar; quando passa do limite fica a cauda
+    /// com o marcador "início cortado" — o fim é onde estão os erros novos.
+    /// </summary>
+    public static string? PrepareLogForUpload(string? log)
+    {
+        if (string.IsNullOrWhiteSpace(log)) return null;
+        var marker = L10n.T("log.log.truncated") + "\n";
+        if (log.Length <= LogMaxChars) return log;
+        var room = LogMaxChars - marker.Length;
+        var start = log.Length - room;
+        // Não partir um par surrogate nem começar a meio de uma linha: salta
+        // para depois do primeiro '\n', como o corte do próprio ficheiro.
+        if (char.IsLowSurrogate(log[start])) start++;
+        var nl = log.IndexOf('\n', start, Math.Min(4096, log.Length - start));
+        if (nl >= 0) start = nl + 1;
+        return marker + log[start..];
+    }
+
     /// <summary>Cabeçalho que a Cloud usa para deduplicar POST /intake repetidos.</summary>
     public const string IdempotencyHeader = "Idempotency-Key";
 
