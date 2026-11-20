@@ -20,10 +20,12 @@ function encontraCobertura(dir) {
     for (const entrada of readdirSync(atual)) {
       const caminho = join(atual, entrada);
       if (statSync(caminho).isDirectory()) pilha.push(caminho);
-      else if (entrada === "coverage.cobertura.xml") encontrados.push(caminho);
+      else if (entrada === "coverage.cobertura.xml")
+        encontrados.push({ caminho, mtime: statSync(caminho).mtimeMs });
     }
   }
-  return encontrados.sort();
+  // Os diretórios têm nomes GUID — a ordem alfabética não é a das execuções.
+  return encontrados.sort((a, b) => a.mtime - b.mtime).map((e) => e.caminho);
 }
 
 const dir = process.argv[2] ?? "tests/OficinaDiag.Tests/TestResults";
