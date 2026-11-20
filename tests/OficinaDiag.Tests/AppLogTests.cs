@@ -5,11 +5,9 @@ using Xunit;
 namespace OficinaDiag.Tests;
 
 /// <summary>
-/// `AppLog` roda o log acima de 1 MB cortando os últimos ~500 KB. O corte cai
-/// a meio de um caractere multi-byte ("ç", "—", "€") sempre que o ficheiro tem
-/// acentos — e a app escrevia essa cauda tal e qual, deixando a primeira linha
-/// com �. Agora salta até ao fim da linha; aqui prova-se com um ficheiro cujo
-/// corte cai dentro de um "€" de 3 bytes.
+/// `AppLog` roda o log acima de 1 MB: o ficheiro inteiro passa para
+/// `diag.log.1` (sem cortes, por isso nenhum caractere multi-byte fica partido)
+/// e o `diag.log` recomeça com a linha nova.
 /// </summary>
 /// O destino do `AppLog` é estático: em paralelo com outro teste que o
 /// redirecione (ou que provoque um log), as escritas caem no ficheiro errado.
@@ -34,11 +32,9 @@ public sealed class AppLogTests : IDisposable
     }
 
     [Fact]
-    public void RotacaoNaoDeixaUtf8OrfaoNoTopo()
+    public void RotacaoPassaFicheiroInteiroParaPontoUm()
     {
-        // 400 000 'x' + 200 000 '€' (600 000 bytes) + quebras + linhas finais.
-        // O corte de 500 000 bytes cai 112 001 bytes dentro da série de '€',
-        // ou seja, a meio do segundo byte de um caractere — o caso que parte.
+        // 400 000 'x' + 200 000 '€' (600 000 bytes) + quebra + linhas finais.
         var conteudo = new StringBuilder()
             .Append('x', 400_000)
             .Append('€', 200_000)
@@ -48,20 +44,29 @@ public sealed class AppLogTests : IDisposable
 
         var antes = File.ReadAllBytes(_file);
         Assert.True(antes.Length > LogFile.MaxBytes, $"ficheiro com {antes.Length} bytes");
-        var corte = antes.Length - (int)(LogFile.MaxBytes / 2);
-        Assert.True((antes[corte] & 0b1100_0000) == 0b1000_0000,
-            $"o corte em {corte} não caiu a meio de um caractere (byte 0x{antes[corte]:X2})");
 
         AppLog.Write("rotação depois");
 
+        // O ficheiro rodado é o original byte a byte — nenhum corte.
+        Assert.Equal(antes, File.ReadAllBytes(_file + ".1"));
+
         var depois = File.ReadAllBytes(_file);
-        // Primeiro a decodificação estrita — lança se houver sequência partida,
-        // que é o defeito. O tamanho só é verificado depois.
         var texto = new UTF8Encoding(false, throwOnInvalidBytes: true).GetString(depois);
-        Assert.DoesNotContain('\uFFFD', texto);
-        Assert.True(depois.Length < 200_000, $"ficheiro com {depois.Length} bytes depois da poda");
-        Assert.Contains("recente €", texto);
+        Assert.True(depois.Length < 200_000, $"ficheiro com {depois.Length} bytes depois da rotação");
+        Assert.DoesNotContain("recente €", texto);
         Assert.Contains("rotação depois", texto);
+    }
+
+    [Fact]
+    public void SegundaRotacaoSobrescrevePontoUm()
+    {
+        File.WriteAllText(_file + ".1", "rotação velha\n");
+        File.WriteAllText(_file, new string('x', (int)LogFile.MaxBytes + 1));
+
+        AppLog.Write("linha nova");
+
+        Assert.DoesNotContain("rotação velha", File.ReadAllText(_file + ".1"));
+        Assert.Contains("linha nova", File.ReadAllText(_file));
     }
 
     [Fact]

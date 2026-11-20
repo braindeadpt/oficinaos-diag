@@ -45,6 +45,14 @@ public partial class MainWindow : Window
             {
                 tail = await sr.ReadToEndAsync();
             }
+            // Após uma rotação o histórico recente está em diag.log.1 —
+            // juntar antes do corte para o suporte não perder os erros.
+            if (File.Exists(path + ".1"))
+            {
+                using var fsPrev = new FileStream(path + ".1", FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+                using var srPrev = new StreamReader(fsPrev);
+                tail = await srPrev.ReadToEndAsync() + tail;
+            }
             // A Cloud recusa logs vazios ou acima de 200k — corta para a
             // cauda (com marcador) ou devolve null quando não há nada.
             var preparado = Cloud.IntakeRules.PrepareLogForUpload(tail);

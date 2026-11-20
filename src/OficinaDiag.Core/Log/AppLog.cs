@@ -10,7 +10,9 @@ namespace OficinaDiag.Log;
 public sealed class LogFile
 {
     // Sem teto o log crescia para sempre — uploads de suporte iam cada vez
-    // maiores e a cauda útil ficava enterrada. Mantém os últimos ~1 MB.
+    // maiores e a cauda útil ficava enterrada. Acima de ~1 MB o ficheiro roda
+    // para `diag.log.1` e o atual recomeça vazio: guarda-se sempre ~2 MB no
+    // máximo (atual + anterior) e cada escrita fica O(linha), sem reescritas.
     public const long MaxBytes = 1_000_000;
 
     private readonly object _gate = new();
@@ -26,32 +28,19 @@ public sealed class LogFile
             lock (_gate)
             {
                 Directory.CreateDirectory(Path.GetDirectoryName(FilePath)!);
-                TrimIfNeeded();
+                RotateIfNeeded();
                 File.AppendAllText(FilePath, $"{DateTime.Now:yyyy-MM-dd HH:mm:ss} {line}{Environment.NewLine}");
             }
         }
         catch { /* logging nunca derruba a app */ }
     }
 
-    private void TrimIfNeeded()
+    private void RotateIfNeeded()
     {
         var info = new FileInfo(FilePath);
         if (!info.Exists || info.Length <= MaxBytes) return;
-        // Ainda raro — corre uma vez por ~1 MB de linhas.
-        using var fs = new FileStream(FilePath, FileMode.Open, FileAccess.ReadWrite, FileShare.Read);
-        var keep = (int)Math.Min(fs.Length, MaxBytes / 2);
-        fs.Seek(-keep, SeekOrigin.End);
-        var buf = new byte[keep];
-        var read = fs.Read(buf, 0, keep);
-        // Começar na linha seguinte: cortar a meio deixa um caractere
-        // multi-byte partido ("ã", "ç", "—") e a primeira linha sai com �.
-        // O '\n' nunca cai dentro de uma sequência UTF-8, por isso saltar até
-        // ele (e não só "até ao próximo byte válido") garante linha inteira.
-        var start = 0;
-        var nl = Array.IndexOf(buf, (byte)'\n', 0, read);
-        if (nl >= 0 && nl + 1 < read) start = nl + 1;
-        fs.SetLength(0);
-        fs.Write(buf, start, read - start);
+        // Uma vez por ~1 MB de linhas: rename atómico em vez de copiar a cauda.
+        File.Move(FilePath, FilePath + ".1", overwrite: true);
     }
 }
 
