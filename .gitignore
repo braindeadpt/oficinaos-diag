@@ -14,3 +14,4 @@ release-signing-key.pem
 *.sig
 # Vídeo promocional: material alheio ao build, nunca versionado.
 promo-video/
+TestResults/
