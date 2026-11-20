@@ -31,7 +31,7 @@ Copia e cola este prompt em qualquer ferramenta ou agente de código apontado pa
    - Testes unitários: `tests/OficinaDiag.Tests/OficinaDiag.Tests.csproj` (`net10.0` puro — **tem de compilar e correr em Linux, macOS e Windows** porque o CI GitHub Actions corre em `ubuntu-latest`). Nunca introduzas `System.Windows` em código partilhado com `OficinaDiag.Tests` / `OficinaDiag.Core`.
    - Em macOS/Linux sem Windows Desktop SDK, `dotnet test tests/OficinaDiag.Tests` compila e corre todos os testes; apenas `src/OficinaDiag` (WPF) exige Windows ou `EnableWindowsTargeting=true` para compilar.
 2. **Estilo e Convenções do Código:**
-   - C# 12 com `Nullable=enable`, `ImplicitUsings=enable`, namespaces file-scoped (`namespace OficinaDiag...;`).
+   - C# 14 com `Nullable=enable`, `ImplicitUsings=enable`, namespaces file-scoped (`namespace OficinaDiag...;`).
    - Comentários explicativos do *porquê* em **Português Europeu** (`pt-PT`), diretos e sem jargão desnecessário.
    - Commits seguem Conventional Commits em português (ex.: `fix(ios): preserva chaves de topo em ParsePlistDict e unifica battery.capacity`).
    - As versões das GitHub Actions em `.github/workflows/*.yml` (`actions/checkout@v7`, `actions/setup-dotnet@v6`, `softprops/action-gh-release@v3`) são **intencionais** (Node 24 runtime, PR #9) — **NÃO reverter** para v4/v2.
