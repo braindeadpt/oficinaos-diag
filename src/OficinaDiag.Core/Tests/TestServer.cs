@@ -60,8 +60,9 @@ public sealed class TestServer : IDisposable
     /// </summary>
     public bool IsLoopbackOnly => _bindAddress.Equals(IPAddress.Loopback);
 
-    /// <summary>Endereço do bind real — nunca Any: prova de que a porta não está aberta noutras NICs.</summary>
-    internal IPAddress BindAddress => _bindAddress;
+    /// <summary>Endereço do bind real do socket — nunca Any: prova de que a porta não está aberta noutras NICs.</summary>
+    internal IPAddress BindAddress =>
+        _listener.LocalEndpoint is IPEndPoint ep ? ep.Address : _bindAddress;
 
     public TestServer()
     {
