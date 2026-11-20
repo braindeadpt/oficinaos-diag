@@ -36,6 +36,9 @@ public sealed class TestServer : IDisposable
     private readonly object _rateLock = new();
 
     private readonly IPAddress _bindAddress;
+    // Quando o IP escolhido é LAN (não loopback), um segundo listener serve
+    // 127.0.0.1 no mesmo porto — o caminho do `adb reverse`. Criado no Start.
+    private TcpListener? _loopbackListener;
 
     public int Port =>
         _listener.LocalEndpoint is IPEndPoint ep ? ep.Port : 0;
@@ -57,15 +60,18 @@ public sealed class TestServer : IDisposable
     /// </summary>
     public bool IsLoopbackOnly => _bindAddress.Equals(IPAddress.Loopback);
 
+    /// <summary>Endereço do bind real do socket — nunca Any: prova de que a porta não está aberta noutras NICs.</summary>
+    internal IPAddress BindAddress =>
+        _listener.LocalEndpoint is IPEndPoint ep ? ep.Address : _bindAddress;
+
     public TestServer()
     {
-        // Escuta em Any para servir os dois caminhos na mesma sessão:
-        // 127.0.0.1 (túnel `adb reverse`, com Secure Context para o microfone)
-        // e o IP LAN do QR (iPhone/Wi-Fi). O que não é loopback nem RFC1918 é
-        // rejeitado em AllowClient — a página nunca fica exposta na NIC
-        // pública nem numa VPN.
+        // Liga só aos dois endpoints que servem a sessão — o IP LAN do QR
+        // (iPhone/Wi-Fi) e o loopback do `adb reverse` (Secure Context para
+        // o microfone) — nunca em Any: enquanto o filtro de origem não corre,
+        // uma NIC pública ou VPN ficava com a porta aberta.
         _bindAddress = ResolveLanAddress() ?? IPAddress.Loopback;
-        _listener = new TcpListener(IPAddress.Any, 0);
+        _listener = new TcpListener(_bindAddress, 0);
     }
 
     /// <summary>URL do túnel USB (`adb reverse tcp:<port>`) — sem Wi-Fi nenhum.</summary>
@@ -182,6 +188,23 @@ public sealed class TestServer : IDisposable
         if (!File.Exists(PagePath) || !File.Exists(DecisionsPath))
             return false;
         _listener.Start();
+        // Loopback noutro listener, mesmo porto: TcpListener já ligado não
+        // aceita novo bind, por isso reserva-se um porto e tenta-se o 127.0.0.1
+        // (umas tentativas para a corrida benigna de porto tomado entretanto).
+        // Se falhar, a LAN continua a servir o QR — só o túnel USB fica fora.
+        if (!_bindAddress.Equals(IPAddress.Loopback))
+        {
+            for (var attempt = 0; attempt < 5 && _loopbackListener is null; attempt++)
+            {
+                try
+                {
+                    var l = new TcpListener(IPAddress.Loopback, Port);
+                    l.Start();
+                    _loopbackListener = l;
+                }
+                catch (SocketException) { /* porto tomado — tenta de novo */ }
+            }
+        }
         _loop = Task.Run(LoopAsync);
         return true;
     }
@@ -193,10 +216,18 @@ public sealed class TestServer : IDisposable
         // browser corta a barra final do token).
         var page = InlineDecisions(
             File.ReadAllText(PagePath), File.ReadAllText(DecisionsPath));
+        var loops = new List<Task> { AcceptLoopAsync(_listener, page) };
+        if (_loopbackListener is not null)
+            loops.Add(AcceptLoopAsync(_loopbackListener, page));
+        await Task.WhenAll(loops);
+    }
+
+    private async Task AcceptLoopAsync(TcpListener listener, string page)
+    {
         while (!_cts.IsCancellationRequested && !_done)
         {
             TcpClient client;
-            try { client = await _listener.AcceptTcpClientAsync(_cts.Token); }
+            try { client = await listener.AcceptTcpClientAsync(_cts.Token); }
             catch { break; }
 
             _ = Task.Run(() => HandleClient(client, page));
@@ -243,6 +274,7 @@ public sealed class TestServer : IDisposable
         if (_done) return;
         _done = true;
         try { _listener.Stop(); } catch { }
+        try { _loopbackListener?.Stop(); } catch { }
         // Dispose() pode já ter feito dispose do _cts — a corrida é benigna.
         try { _cts.Cancel(); } catch (ObjectDisposedException) { }
     }
@@ -387,6 +419,7 @@ public sealed class TestServer : IDisposable
         _disposed = true;
         _cts.Cancel();
         try { _listener.Stop(); } catch { }
+        try { _loopbackListener?.Stop(); } catch { }
         _cts.Dispose();
     }
 }
