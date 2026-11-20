@@ -1126,7 +1126,9 @@ internal static class Program
         }, "commit: token OK");
         Verificar("commit: token OK devolveu OK", leuToken == true);
         Verificar("commit: o token devolvido é o que foi escrito", token.Token == "ABCD-1234");
-        Verificar("commit: «lembrar» ficou desligado por omissão", !token.Remember);
+        // d1e6161: «guardar neste PC» vem marcado por omissão — um token
+        // só-em-memória morria ao fechar e o código de uso único não o repunha.
+        Verificar("commit: «lembrar» vem ligado por omissão", token.Remember);
 
         // 5. Seguro GERAR: com os três campos obrigatórios, produz formulário.
         var seguro = new InsuranceDialog(DiagConfig.Load());
