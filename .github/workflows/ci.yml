@@ -139,7 +139,7 @@ jobs:
       # com um passo anterior vermelho — uma imagem a menos é melhor que zero.
       - name: Capturas da UI (3 temas + combo por teclado)
         if: runner.os == 'Windows'
-        run: dotnet run --project tools/UiShots/UiShots.csproj -c Release -- out-store/ui-shots
+        run: dotnet run --project tools/UiShots/UiShots.csproj -c Release -- out-store/ui-shots --baselines tools/UiShots/baselines
 
       # O harness diz `[OK]` a cada verificação que corre; este passo compara
       # isso com as que o código **declara**. Uma prova que deixa de correr
