@@ -399,13 +399,20 @@ public sealed class AndroidCollector
         }
         string? Sysfs(string node)
             => sysfs.TryGetValue(node, out var v) && v.Length > 0 ? v : null;
+        // Primeiro nó com um número positivo — um valor inválido não vazio
+        // num nó não bloqueia o seguinte (a lógica de antes do batch).
+        string? FirstNumeric(params string[] nodes)
+        {
+            foreach (var node in nodes)
+                if (AdbParsing.TryDouble(Sysfs(node), out var d) && d > 0)
+                    return Sysfs(node);
+            return null;
+        }
         var cycles = Sysfs("battery/cycle_count");
-        var chargeFull = Sysfs("battery/charge_full");
-        var chargeDesign = Sysfs("battery/charge_full_design");
-        if (!AdbParsing.TryDouble(chargeFull, out _))
-            chargeFull = Sysfs("bms/charge_full") ?? Sysfs("max170xx_battery/charge_full");
-        if (!AdbParsing.TryDouble(chargeDesign, out _))
-            chargeDesign = Sysfs("bms/charge_full_design") ?? Sysfs("max170xx_battery/charge_full_design");
+        var chargeFull = FirstNumeric("battery/charge_full",
+            "bms/charge_full", "max170xx_battery/charge_full");
+        var chargeDesign = FirstNumeric("battery/charge_full_design",
+            "bms/charge_full_design", "max170xx_battery/charge_full_design");
         if (AdbParsing.TryInt(cycles?.Trim(), out var c))
             r.Set("battery.cycles", c > 800 ? "warn" : "info",
                 c.ToString(CultureInfo.InvariantCulture),
