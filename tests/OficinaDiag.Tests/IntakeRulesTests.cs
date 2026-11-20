@@ -155,7 +155,7 @@ public class IntakeRulesTests
         // Sem a proteção o upload começava com um caractere inválido.
         var marcador = L10n.T("log.log.truncated") + "\n";
         var room = IntakeRules.LogMaxChars - marcador.Length;
-        var log = new string('p', 10) + "\U0001F600" + new string('b', room - 1);
+        var log = new string('p', marcador.Length) + "\U0001F600" + new string('b', room - 1);
         var preparado = IntakeRules.PrepareLogForUpload(log)!;
         Assert.Equal('b', preparado[marcador.Length]);
         Assert.DoesNotContain("\uFFFD", preparado);
