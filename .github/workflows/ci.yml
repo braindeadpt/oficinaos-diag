@@ -48,7 +48,26 @@ jobs:
         with:
           dotnet-version: "10.0.x"
 
+      # Cobertura só no Linux: os testes medem o Core, que é igual nos dois
+      # sistemas, e correr o coletor duas vezes só duplicava o mesmo número.
+      - name: Test (com cobertura)
+        if: runner.os == 'Linux'
+        run: dotnet test tests/OficinaDiag.Tests -c Release --collect:"XPlat Code Coverage"
+
+      - name: Coverage (limiar ratchet + resumo)
+        if: runner.os == 'Linux'
+        run: node tools/coverage-check.mjs
+
+      - name: Publicar cobertura
+        if: runner.os == 'Linux' && always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage
+          path: tests/OficinaDiag.Tests/TestResults
+          if-no-files-found: warn
+
       - name: Test
+        if: runner.os == 'Windows'
         run: dotnet test tests/OficinaDiag.Tests -c Release
 
       - name: Mutation check (a suite morde onde diz morder?)
