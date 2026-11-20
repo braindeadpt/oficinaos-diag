@@ -55,19 +55,22 @@ public partial class MainWindow : Window
         if (_update is null) return;
         UpdateButton.IsEnabled = false;
         Log(L10n.F("log.update.dl", _update.Tag));
-        var current = System.Reflection.Assembly.GetExecutingAssembly().GetName().Version
-            ?? new Version(0, 0, 0);
-        var (ok, msg) = await Baixar(_update, current);
-        Log(ok ? $"> {msg}" : L10n.F("log.update.fail", msg));
-        if (ok)
+        try
         {
-            // Antes a janela desaparecia sem explicação — a meio de uma sessão
-            // de bancada parecia uma falha da app.
-            MessageBox.Show(this, L10n.T("log.update.ready"), Title,
-                MessageBoxButton.OK, MessageBoxImage.Information);
-            Terminar();
+            var current = System.Reflection.Assembly.GetExecutingAssembly().GetName().Version
+                ?? new Version(0, 0, 0);
+            var (ok, msg) = await Baixar(_update, current);
+            Log(ok ? $"> {msg}" : L10n.F("log.update.fail", msg));
+            if (ok)
+            {
+                // Antes a janela desaparecia sem explicação — a meio de uma sessão
+                // de bancada parecia uma falha da app.
+                MessageBox.Show(this, L10n.T("log.update.ready"), Title,
+                    MessageBoxButton.OK, MessageBoxImage.Information);
+                Terminar();
+            }
         }
-        else
-            UpdateButton.IsEnabled = true;
+        catch (Exception ex) { Log(L10n.F("log.err", ex.Message)); }
+        finally { UpdateButton.IsEnabled = true; }
     }
 }
