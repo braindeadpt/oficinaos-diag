@@ -45,11 +45,17 @@
   -->
   <Target Name="StripForeignNativeRuntimes" AfterTargets="Build;Publish">
     <!-- PublishDir está sempre definido mas só existe com publish real;
-         testam-se os dois caminhos. -->
-    <Exec Condition="Exists('$(PublishDir)runtimes')"
+         testam-se os dois caminhos. `powershell` não existe fora do
+         Windows (o CI ubuntu-24.04 falhava com exit 127); em Unix a mesma
+         limpeza corre com `find`+`rm`. -->
+    <Exec Condition="Exists('$(PublishDir)runtimes') AND '$(OS)' == 'Windows_NT'"
           Command="powershell -NoProfile -Command &quot;Get-ChildItem '$(PublishDir)runtimes' -Directory | Where-Object Name -notlike 'win-*' | Remove-Item -Recurse -Force&quot;" />
-    <Exec Condition="Exists('$(OutDir)runtimes')"
+    <Exec Condition="Exists('$(PublishDir)runtimes') AND '$(OS)' != 'Windows_NT'"
+          Command="find '$(PublishDir)runtimes' -mindepth 1 -maxdepth 1 -type d ! -name 'win-*' -exec rm -rf {} +" />
+    <Exec Condition="Exists('$(OutDir)runtimes') AND '$(OS)' == 'Windows_NT'"
           Command="powershell -NoProfile -Command &quot;Get-ChildItem '$(OutDir)runtimes' -Directory | Where-Object Name -notlike 'win-*' | Remove-Item -Recurse -Force&quot;" />
+    <Exec Condition="Exists('$(OutDir)runtimes') AND '$(OS)' != 'Windows_NT'"
+          Command="find '$(OutDir)runtimes' -mindepth 1 -maxdepth 1 -type d ! -name 'win-*' -exec rm -rf {} +" />
   </Target>
 
 </Project>
