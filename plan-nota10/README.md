@@ -15,8 +15,8 @@ Copia e cola este prompt em qualquer ferramenta ou agente de código apontado pa
 1. Lê `plan-nota10/STATUS.md` para veres quais os tickets já concluídos e qual é o próximo pendente.
 2. Lê apenas o ficheiro do ticket alvo em `plan-nota10/tickets/T-XX-*.md` e os ficheiros de código nele listados (não desperdices tokens a explorar o resto do repositório).
 3. Antes de editar, confirma cada âncora `ficheiro:linha` do ticket com `rg -n '<símbolo>' <ficheiro>`. Se o ficheiro já mudou, localiza o bloco pela descrição do ticket e corrige o número no próprio ticket.
-4. Implementa o ticket respeitando rigorosamente o estilo do projeto (.NET 8, C# 12, comentários e commits concisos em português europeu).
-5. Corre os testes aplicáveis (`dotnet test tests/OficinaDiag.Tests`) se o .NET 8 SDK estiver instalado na máquina.
+4. Implementa o ticket respeitando rigorosamente o estilo do projeto (.NET 10, C# 14, comentários e commits concisos em português europeu).
+5. Corre os testes aplicáveis (`dotnet test tests/OficinaDiag.Tests`) se o .NET 10 SDK estiver instalado na máquina.
 6. Atualiza `plan-nota10/STATUS.md` marcando o ticket e os respetivos bugs `B-xx` como `[x]` e regista notas curtas de handoff para o próximo agente.
 ```
 
@@ -27,8 +27,8 @@ Copia e cola este prompt em qualquer ferramenta ou agente de código apontado pa
 ## Regras de Ouro do Repositório (Contexto para Agentes)
 
 1. **Stack & Compatibilidade Multi-OS dos Testes:**
-   - Aplicação desktop: `src/OficinaDiag/OficinaDiag.csproj` (`net8.0-windows`, WPF, `PublishSingleFile=true`).
-   - Testes unitários: `tests/OficinaDiag.Tests/OficinaDiag.Tests.csproj` (`net8.0` puro — **tem de compilar e correr em Linux, macOS e Windows** porque o CI GitHub Actions corre em `ubuntu-latest`). Nunca introduzas `System.Windows` em código partilhado com `OficinaDiag.Tests` / `OficinaDiag.Core`.
+   - Aplicação desktop: `src/OficinaDiag/OficinaDiag.csproj` (`net10.0-windows`, WPF, `PublishSingleFile=true`).
+   - Testes unitários: `tests/OficinaDiag.Tests/OficinaDiag.Tests.csproj` (`net10.0` puro — **tem de compilar e correr em Linux, macOS e Windows** porque o CI GitHub Actions corre em `ubuntu-latest`). Nunca introduzas `System.Windows` em código partilhado com `OficinaDiag.Tests` / `OficinaDiag.Core`.
    - Em macOS/Linux sem Windows Desktop SDK, `dotnet test tests/OficinaDiag.Tests` compila e corre todos os testes; apenas `src/OficinaDiag` (WPF) exige Windows ou `EnableWindowsTargeting=true` para compilar.
 2. **Estilo e Convenções do Código:**
    - C# 12 com `Nullable=enable`, `ImplicitUsings=enable`, namespaces file-scoped (`namespace OficinaDiag...;`).

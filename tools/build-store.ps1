@@ -1,6 +1,6 @@
 ﻿# build-store.ps1 — builds the MSIX package for Microsoft Store submission.
 #
-# Prereqs: .NET 8 SDK, Windows SDK (makeappx.exe — found automatically below),
+# Prereqs: .NET 10 SDK, Windows SDK (makeappx.exe — found automatically below),
 # tools\fetch-tools.ps1 already run (platform-tools present), and the two
 # REPLACE_ values in packaging\store\AppxManifest.xml filled from Partner
 # Center (see docs\microsoft-store.md).

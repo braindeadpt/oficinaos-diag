@@ -4,7 +4,7 @@
     <OutputType>Exe</OutputType>
     <!-- WPF é Windows-only: este projeto não entra na solução de testes nem
          no build do macOS — só o CI windows-2022 o corre. -->
-    <TargetFramework>net8.0-windows</TargetFramework>
+    <TargetFramework>net10.0-windows</TargetFramework>
     <UseWPF>true</UseWPF>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>

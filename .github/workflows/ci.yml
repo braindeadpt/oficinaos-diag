@@ -46,7 +46,7 @@ jobs:
 
       - uses: actions/setup-dotnet@v6
         with:
-          dotnet-version: "8.0.x"
+          dotnet-version: "10.0.x"
 
       - name: Test
         run: dotnet test tests/OficinaDiag.Tests -c Release
@@ -143,7 +143,7 @@ jobs:
 
       - uses: actions/setup-dotnet@v6
         with:
-          dotnet-version: "8.0.x"
+          dotnet-version: "10.0.x"
 
       # `--uishots` acrescenta os 15 da UI aos 4 de suite; a janela só existe
       # no Windows e o script recusa correr os de UI noutro sistema.
