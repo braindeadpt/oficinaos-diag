@@ -42,9 +42,10 @@ const condicionais = [
   { trecho: "{tema}: combo encontrado", porque: "só corre quando a janela não tem ComboBox" },
   { trecho: "{rotulo}: {nome} ligado à árvore", porque: "só corre quando o `TransformToAncestor` rebenta" },
   { trecho: "captura {nome}: legível", porque: "só corre quando o PNG não abre para leitura" },
-  { trecho: "baselines: a pasta", porque: "só corre com --baselines e a pasta não existe" },
-  { trecho: "baselines: {comparadas} capturas comparadas", porque: "só corre com --baselines e a pasta existe" },
-  { trecho: "baselines: nenhuma baseline órfã", porque: "só corre com --baselines e a pasta existe" },
+  // As três verificações `baselines:` (pasta, comparadas, órfãs) são
+  // obrigatórias: o CI corre sempre com --baselines, por isso um run sem elas
+  // no log é um run que saltou a comparação. Só a comparação por captura fica
+  // condicional, porque depende de a captura ter baseline.
   { trecho: "baseline {nome}:", porque: "só corre quando a captura tem baseline na pasta" },
 ];
 

@@ -6,6 +6,10 @@ $raiz = Split-Path -Parent $PSScriptRoot
 $destino = Join-Path $raiz "out-store\ui-shots"
 $baselines = Join-Path $PSScriptRoot "UiShots\baselines"
 
+# Limpar PNGs de um run anterior: uma captura removida/renomeada ficava na
+# pasta e era aprovada outra vez como baseline.
+Get-ChildItem $destino -Filter *.png -ErrorAction SilentlyContinue | Remove-Item
+
 dotnet run --project (Join-Path $PSScriptRoot "UiShots\UiShots.csproj") -c Release -- $destino
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
