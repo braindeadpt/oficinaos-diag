@@ -35,35 +35,29 @@ public partial class MainWindow : Window
 
     private async void LogSend_Click(object sender, RoutedEventArgs e)
     {
-        const int maxChars = 150_000; // servidor aceita até 200k — enviamos só a cauda
         try
         {
             var path = OficinaDiag.Log.AppLog.FilePath;
             if (!File.Exists(path)) { Log(L10n.T("log.log.none")); return; }
             string tail;
-            bool truncado;
             using (var fs = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
+            using (var sr = new StreamReader(fs))
             {
-                var skip = Math.Max(0, fs.Length - maxChars);
-                truncado = skip > 0;
-                fs.Seek(skip, SeekOrigin.Begin);
-                using var sr = new StreamReader(fs);
                 tail = await sr.ReadToEndAsync();
-                if (truncado) tail = L10n.T("log.log.truncated") + "\n" + tail;
             }
             // Após uma rotação o histórico recente está em diag.log.1 —
-            // completar a cauda com ele para o suporte não perder os erros.
-            // Só quando o atual coube inteiro: se foi truncado, juntar o .1
-            // deixaria lacunas entre os registos antigos e os recentes.
-            if (!truncado && File.Exists(path + ".1"))
+            // juntar antes do corte para o suporte não perder os erros.
+            if (File.Exists(path + ".1"))
             {
                 using var fsPrev = new FileStream(path + ".1", FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
-                var skipPrev = Math.Max(0, fsPrev.Length - (maxChars - tail.Length));
-                fsPrev.Seek(skipPrev, SeekOrigin.Begin);
                 using var srPrev = new StreamReader(fsPrev);
-                var prev = await srPrev.ReadToEndAsync();
-                tail = (skipPrev > 0 ? L10n.T("log.log.truncated") + "\n" : "") + prev + tail;
+                tail = await srPrev.ReadToEndAsync() + tail;
             }
+            // A Cloud recusa logs vazios ou acima de 200k — corta para a
+            // cauda (com marcador) ou devolve null quando não há nada.
+            var preparado = Cloud.IntakeRules.PrepareLogForUpload(tail);
+            if (preparado is null) { Log(L10n.T("log.log.none")); return; }
+            tail = preparado;
             var hint = _report is not null
                 ? $"{_report.Platform} {_report.Device.Brand} {_report.Device.Model} {_report.Device.Os} {_report.Device.OsVersion}".Trim()
                 : _current?.Label;

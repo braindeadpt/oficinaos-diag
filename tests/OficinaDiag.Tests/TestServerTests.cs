@@ -107,6 +107,21 @@ public sealed class TestServerTests
     }
 
     [Fact]
+    public async Task OuvinteNaoEstaEmAny_ELoopbackContinuaASerServido()
+    {
+        // O bind é o IP LAN escolhido (+ loopback para o adb reverse),
+        // nunca Any — e o caminho do túnel USB continua a responder.
+        using var server = new TestServer();
+        Assert.True(server.Start());
+        Assert.NotEqual(IPAddress.Any, server.BindAddress);
+        var uri = new Uri(server.LanUrl);
+        var token = uri.AbsolutePath.Trim('/');
+        using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(10) };
+        var res = await http.GetAsync($"http://127.0.0.1:{uri.Port}/{token}/");
+        Assert.Equal(HttpStatusCode.OK, res.StatusCode);
+    }
+
+    [Fact]
     public async Task LigacaoAutorizadaContinuaASerServidaDepoisDeUmaRejeitada()
     {
         using var server = new TestServer();

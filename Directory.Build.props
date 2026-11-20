@@ -1,0 +1,18 @@
+<Project>
+
+  <!--
+    Em Release um aviso é um erro: o CI já corre `dotnet test`/`dotnet build`
+    com `-c Release`, por isso nenhum warning entra em main sem alguém ver.
+    Debug continua tolerante para não atrapalhar o trabalho em curso.
+
+    NETSDK1206 fica de fora: o iMobileDevice-net traz RIDs específicos de
+    versão (ubuntu.16.04-x64) que não escolhemos nem usamos — só os win-*
+    chegam ao pacote — e o aviso volta a cada restore sem apontar nada
+    accionável no nosso código. Continua visível no log, só não falha.
+  -->
+  <PropertyGroup Condition="'$(Configuration)' == 'Release'">
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <WarningsNotAsErrors>$(WarningsNotAsErrors);NETSDK1206</WarningsNotAsErrors>
+  </PropertyGroup>
+
+</Project>

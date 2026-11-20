@@ -48,7 +48,26 @@ jobs:
         with:
           dotnet-version: "10.0.x"
 
+      # Cobertura só no Linux: os testes medem o Core, que é igual nos dois
+      # sistemas, e correr o coletor duas vezes só duplicava o mesmo número.
+      - name: Test (com cobertura)
+        if: runner.os == 'Linux'
+        run: dotnet test tests/OficinaDiag.Tests -c Release --collect:"XPlat Code Coverage"
+
+      - name: Coverage (limiar ratchet + resumo)
+        if: runner.os == 'Linux'
+        run: node tools/coverage-check.mjs
+
+      - name: Publicar cobertura
+        if: runner.os == 'Linux' && always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage
+          path: tests/OficinaDiag.Tests/TestResults
+          if-no-files-found: warn
+
       - name: Test
+        if: runner.os == 'Windows'
         run: dotnet test tests/OficinaDiag.Tests -c Release
 
       - name: Mutation check (a suite morde onde diz morder?)
@@ -88,6 +107,24 @@ jobs:
       - name: Build WPF app
         run: dotnet build src/OficinaDiag/OficinaDiag.csproj -c Release -p:EnableWindowsTargeting=true
 
+      # Falha o CI quando um pacote NuGet tem CVE conhecida — no Linux chega:
+      # a lista de pacotes é a mesma nos dois sistemas e o audit consulta a
+      # mesma base de vulnerabilidades. `EnableWindowsTargeting` vai em env
+      # porque `dotnet list package` não aceita `-p:` na sua própria avaliação.
+      # O comando sai com código 0 mesmo quando lista vulnerabilidades, por
+      # isso o passo falha no texto («has the following vulnerable»); as
+      # transitivas entram porque uma CVE indireta não é menos grave.
+      - name: Pacotes com vulnerabilidades conhecidas
+        if: runner.os == 'Linux'
+        env:
+          EnableWindowsTargeting: "true"
+        run: |
+          saida=$(dotnet list OficinaDiag.sln package --vulnerable --include-transitive 2>&1)
+          echo "$saida"
+          if echo "$saida" | grep -q "has the following vulnerable"; then
+            exit 1
+          fi
+
       # O plano tem de continuar verificável: placar a bater com os tickets,
       # [x] com prova, [ ] com motivo, e nenhum teste citado que já não exista.
       # Corre nos dois sistemas de propósito: o tool lê caminhos, e a mesma
@@ -102,7 +139,7 @@ jobs:
       # com um passo anterior vermelho — uma imagem a menos é melhor que zero.
       - name: Capturas da UI (3 temas + combo por teclado)
         if: runner.os == 'Windows'
-        run: dotnet run --project tools/UiShots/UiShots.csproj -c Release -- out-store/ui-shots
+        run: dotnet run --project tools/UiShots/UiShots.csproj -c Release -- out-store/ui-shots --baselines tools/UiShots/baselines
 
       # O harness diz `[OK]` a cada verificação que corre; este passo compara
       # isso com as que o código **declara**. Uma prova que deixa de correr
