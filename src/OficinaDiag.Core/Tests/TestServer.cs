@@ -323,7 +323,14 @@ public sealed class TestServer : IDisposable
                         for (var i = 0; i < n; i++) buf.Add(b[i]);
                         have += n;
                     }
-                    var body = Encoding.UTF8.GetString(raw, bodyStart, Math.Min(contentLen, have));
+                    // O body é lido de `buf` — `raw` é a foto tirada antes do
+                    // loop e não tem os bytes que chegaram depois: um POST
+                    // dividido em vários segmentos TCP decodificava bytes fora
+                    // do array (ArgumentOutOfRangeException → sem resposta) ou
+                    // JSON truncado → resultado da sessão perdido.
+                    var final = buf.ToArray();
+                    var body = Encoding.UTF8.GetString(final, bodyStart,
+                        Math.Min(contentLen, final.Length - bodyStart));
                     var data = JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(body);
                     // Shape check antes de fechar: a página envia sempre
                     // touchHit/touchTotal/colorsViewed. Um JSON qualquer de

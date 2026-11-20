@@ -152,9 +152,13 @@ internal static class WaStore
 
     private static DateTimeOffset? EdgeDateIos(SqliteConnection db, string fn)
     {
-        var v = ScalarLong(db,
+        // MIN/MAX sobre zero linhas devolve NULL: ScalarLong convertia-o para
+        // 0 e a conversa mais antiga aparecia como 2001-01-01 (epoch Core
+        // Data). Null aqui = «sem mensagens com data», não uma data.
+        var v = ScalarLongNullable(db,
             $"SELECT {fn}(ZMESSAGEDATE) FROM ZWAMESSAGE WHERE ZMESSAGEDATE IS NOT NULL");
-        var unix = v + CoreDataEpochOffset;
+        if (v is not { } core) return null;
+        var unix = core + CoreDataEpochOffset;
         if (unix is < -62135596800 or > 253402300799) return null;
         return DateTimeOffset.FromUnixTimeSeconds(unix);
     }
@@ -175,6 +179,14 @@ internal static class WaStore
         using var cmd = db.CreateCommand();
         cmd.CommandText = sql;
         return Convert.ToInt64(cmd.ExecuteScalar());
+    }
+
+    private static long? ScalarLongNullable(SqliteConnection db, string sql)
+    {
+        using var cmd = db.CreateCommand();
+        cmd.CommandText = sql;
+        var v = cmd.ExecuteScalar();
+        return v is null or DBNull ? null : Convert.ToInt64(v);
     }
 
     private static string? ScalarString(SqliteConnection db, string sql)
