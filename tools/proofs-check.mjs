@@ -42,6 +42,10 @@ const condicionais = [
   { trecho: "{tema}: combo encontrado", porque: "só corre quando a janela não tem ComboBox" },
   { trecho: "{rotulo}: {nome} ligado à árvore", porque: "só corre quando o `TransformToAncestor` rebenta" },
   { trecho: "captura {nome}: legível", porque: "só corre quando o PNG não abre para leitura" },
+  { trecho: "baselines: a pasta", porque: "só corre com --baselines e a pasta não existe" },
+  { trecho: "baselines: {comparadas} capturas comparadas", porque: "só corre com --baselines e a pasta existe" },
+  { trecho: "baselines: nenhuma baseline órfã", porque: "só corre com --baselines e a pasta existe" },
+  { trecho: "baseline {nome}:", porque: "só corre quando a captura tem baseline na pasta" },
 ];
 
 const texto = readFileSync(fonte, "utf8");
