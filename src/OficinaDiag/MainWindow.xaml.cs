@@ -887,6 +887,17 @@ public partial class MainWindow : Window
                 tail = await sr.ReadToEndAsync();
                 if (skip > 0) tail = L10n.T("log.log.truncated") + "\n" + tail;
             }
+            // Após uma rotação o histórico recente está em diag.log.1 —
+            // completar a cauda com ele para o suporte não perder os erros.
+            if (tail.Length < maxChars && File.Exists(path + ".1"))
+            {
+                using var fsPrev = new FileStream(path + ".1", FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+                var skipPrev = Math.Max(0, fsPrev.Length - (maxChars - tail.Length));
+                fsPrev.Seek(skipPrev, SeekOrigin.Begin);
+                using var srPrev = new StreamReader(fsPrev);
+                var prev = await srPrev.ReadToEndAsync();
+                tail = (skipPrev > 0 ? L10n.T("log.log.truncated") + "\n" : "") + prev + tail;
+            }
             var hint = _report is not null
                 ? $"{_report.Platform} {_report.Device.Brand} {_report.Device.Model} {_report.Device.Os} {_report.Device.OsVersion}".Trim()
                 : _current?.Label;
