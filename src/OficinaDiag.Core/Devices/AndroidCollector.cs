@@ -59,13 +59,22 @@ public sealed class AndroidCollector
     }
 
     /// <summary>
-    /// Prop do Android. Vazio → null: o `getprop` de prop inexistente imprime
-    /// só uma linha vazia, e um "" a jusante virava check `warn` sem valor.
+    /// Todas as props do Android numa só chamada: `getprop` sem argumentos
+    /// imprime `[chave]: [valor]` para cada prop — ~20 roundtrips adb viram 1.
+    /// Props inexistentes ou vazias ficam fora do dicionário (→ null, nunca
+    /// "" — um "" a jusante virava check `warn` sem valor).
     /// </summary>
-    private async Task<string?> PropAsync(string serial, string name)
+    private async Task<Dictionary<string, string>> PropsAsync(string serial)
     {
-        var v = (await AdbAsync(serial, $"shell getprop {name}"))?.Trim();
-        return string.IsNullOrEmpty(v) ? null : v;
+        var props = new Dictionary<string, string>(StringComparer.Ordinal);
+        var dump = await AdbAsync(serial, "shell getprop");
+        foreach (var line in (dump ?? "").Split('\n'))
+        {
+            var m = Regex.Match(line.Trim(), @"^\[([^\]]+)\]: \[(.*)\]$");
+            if (m.Success && m.Groups[2].Value.Trim().Length > 0)
+                props.TryAdd(m.Groups[1].Value, m.Groups[2].Value.Trim());
+        }
+        return props;
     }
 
     /// <summary>Grupo 1 do regex, ou null quando não casa — "" nunca é dado.</summary>
@@ -95,15 +104,17 @@ public sealed class AndroidCollector
     {
         var r = new DeviceReport { Platform = "android" };
         r.Device.Serial = serial;
-        r.Device.Brand = await PropAsync(serial, "ro.product.brand");
-        r.Device.Model = await PropAsync(serial, "ro.product.model");
+        var props = await PropsAsync(serial);
+        string? Prop(string name) => props.TryGetValue(name, out var v) ? v : null;
+        r.Device.Brand = Prop("ro.product.brand");
+        r.Device.Model = Prop("ro.product.model");
         r.Device.Os = "Android";
-        r.Device.OsVersion = await PropAsync(serial, "ro.build.version.release");
+        r.Device.OsVersion = Prop("ro.build.version.release");
 
         // Nome comercial — prop de marketing do fabricante, senão tabela de códigos
         foreach (var prop in ModelNameTable.MarketingProps)
         {
-            var name = ModelNameTable.Clean(await PropAsync(serial, prop), r.Device.Model);
+            var name = ModelNameTable.Clean(Prop(prop), r.Device.Model);
             if (name is not null) { r.Device.MarketingName = name; break; }
         }
         r.Device.MarketingName ??= ModelNameTable.Lookup(r.Device.Model);
@@ -115,19 +126,19 @@ public sealed class AndroidCollector
                 : "modelo por código — sem nome comercial conhecido");
         r.Set("identity.serial", "info", serial);
         r.Set("os.version", "info", $"{r.Device.Os} {r.Device.OsVersion}",
-            $"SDK {await PropAsync(serial, "ro.build.version.sdk")}, patch {await PropAsync(serial, "ro.build.version.security_patch")}");
+            $"SDK {Prop("ro.build.version.sdk")}, patch {Prop("ro.build.version.security_patch")}");
         // Props ausentes não viram linha em branco no relatório.
-        if (await PropAsync(serial, "ro.build.fingerprint") is { } fingerprint)
+        if (Prop("ro.build.fingerprint") is { } fingerprint)
             r.Set("identity.fingerprint", "info", fingerprint,
                 "build exata do firmware — útil para confirmar stock vs ROM modificado");
-        if (await PropAsync(serial, "gsm.version.baseband") is { } baseband)
+        if (Prop("gsm.version.baseband") is { } baseband)
             r.Set("device.baseband", "info", baseband, "firmware do modem — afeta rede/SIM");
 
         // SIM/carrier — PIN/PUK do cartão e lock de operadora saltam aqui
         // (NETWORK_LOCKED/PERM_DISABLED = telemóvel preso a uma operadora —
         // decisivo para retoma; PIN_REQUIRED = PIN do cartão do cliente).
-        var simState = await PropAsync(serial, "gsm.sim.state");
-        var carrier = await PropAsync(serial, "gsm.operator.alpha");
+        var simState = Prop("gsm.sim.state");
+        var carrier = Prop("gsm.operator.alpha");
         var simLocked = simState?.Split(',')
             .Any(s => s.Trim() is "PIN_REQUIRED" or "PUK_REQUIRED"
                 or "NETWORK_LOCKED" or "PERM_DISABLED") == true;
@@ -150,8 +161,8 @@ public sealed class AndroidCollector
             r.Set("identity.imei", "info", imei);
 
         // Bootloader / tamper indicators
-        var vbState = await PropAsync(serial, "ro.boot.verifiedbootstate");
-        var buildTags = await PropAsync(serial, "ro.build.tags");
+        var vbState = Prop("ro.boot.verifiedbootstate");
+        var buildTags = Prop("ro.build.tags");
         var bootloader = AndroidDecisions.Bootloader(vbState);
         r.Set("security.bootloader", bootloader.Status, bootloader.Value, bootloader.Note);
         if (buildTags?.Contains("test-keys") == true)
@@ -167,7 +178,7 @@ public sealed class AndroidCollector
         if (!string.IsNullOrWhiteSpace(selinux))
             r.Set("security.selinux", selinux == "Enforcing" ? "pass" : "warn", selinux,
                 selinux == "Enforcing" ? "proteção de kernel ativa" : "SELinux desativado — software modificado");
-        var crypto = await PropAsync(serial, "ro.crypto.state");
+        var crypto = Prop("ro.crypto.state");
         if (!string.IsNullOrWhiteSpace(crypto))
             r.Set("security.crypto", crypto == "encrypted" ? "pass" : "info", crypto,
                 "dados do utilizador encriptados em repouso");
@@ -207,16 +218,15 @@ public sealed class AndroidCollector
 
         // Knox / warranty bit + OEM unlock — o que o fabricante usa para
         // recusar garantia numa retoma.
-        var warrantyBit = (await PropAsync(serial, "ro.boot.warranty_bit"))
-            ?? await PropAsync(serial, "ro.warranty_bit");
+        var warrantyBit = Prop("ro.boot.warranty_bit") ?? Prop("ro.warranty_bit");
         if (warrantyBit is "0" or "1")
             r.Set("security.warranty", warrantyBit == "1" ? "fail" : "pass",
                 warrantyBit == "1" ? "Knox queimado (0x1)" : "intacto",
                 warrantyBit == "1"
                     ? "garantia oficial perdida — o fabricante recusa reparação"
                     : null);
-        var flashLocked = await PropAsync(serial, "ro.boot.flash.locked"); // 1 = bloqueado
-        var oemUnlock = await PropAsync(serial, "sys.oem_unlock_allowed"); // 1 = permitido
+        var flashLocked = Prop("ro.boot.flash.locked"); // 1 = bloqueado
+        var oemUnlock = Prop("sys.oem_unlock_allowed"); // 1 = permitido
         if (flashLocked == "0" || oemUnlock == "1")
             r.Set("security.oemunlock", "warn",
                 flashLocked == "0" ? "bootloader desbloqueado" : "desbloqueio OEM permitido",
@@ -366,21 +376,43 @@ public sealed class AndroidCollector
         // Carga restante medida pelo fuel gauge (µAh) — dado bruto, serve de
         // referência para degradacao entre scans (histórico local).
         var chargeCounter = Match(batt, @"Charge counter: (\d+)");
+
         if (AdbParsing.TryLong(chargeCounter, out var cc) && cc > 0)
             r.Set("battery.charge_now", "info", $"{cc / 1000} mAh",
                 "carga atual medida pelo fuel gauge");
 
         // Ciclos + capacidade real onde o fabricante expõe (Samsung, Pixel…).
-        var cycles = await AdbAsync(serial, "shell cat /sys/class/power_supply/battery/cycle_count");
-        var chargeFull = await AdbAsync(serial, "shell cat /sys/class/power_supply/battery/charge_full");
-        var chargeDesign = await AdbAsync(serial, "shell cat /sys/class/power_supply/battery/charge_full_design");
-        // Xiaomi/Qualcomm expõem a capacidade no nó `bms` (alguns no max170xx)
-        // em vez de `battery` — sem isto ficavam sem saúde nenhuma.
-        if (!AdbParsing.TryDouble(chargeFull?.Trim(), out _))
-            chargeFull = await FirstSysfsAsync(serial, "bms/charge_full", "max170xx_battery/charge_full");
-        if (!AdbParsing.TryDouble(chargeDesign?.Trim(), out _))
-            chargeDesign = await FirstSysfsAsync(serial,
-                "bms/charge_full_design", "max170xx_battery/charge_full_design");
+        // Um só shell para todos os nós sysfs — cada `adb shell cat` custava
+        // um roundtrip inteiro. Xiaomi/Qualcomm expõem a capacidade no nó
+        // `bms` (alguns no max170xx) em vez de `battery`.
+        var sysfsDump = await AdbAsync(serial,
+            "shell for f in battery/cycle_count battery/charge_full " +
+            "battery/charge_full_design bms/charge_full bms/charge_full_design " +
+            "max170xx_battery/charge_full max170xx_battery/charge_full_design; " +
+            "do echo \"$f: $(cat /sys/class/power_supply/$f 2>/dev/null)\"; done");
+        var sysfs = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (var line in (sysfsDump ?? "").Split('\n'))
+        {
+            var sep = line.IndexOf(':');
+            if (sep > 0 && !sysfs.ContainsKey(line[..sep].Trim()))
+                sysfs[line[..sep].Trim()] = line[(sep + 1)..].Trim();
+        }
+        string? Sysfs(string node)
+            => sysfs.TryGetValue(node, out var v) && v.Length > 0 ? v : null;
+        // Primeiro nó com um número positivo — um valor inválido não vazio
+        // num nó não bloqueia o seguinte (a lógica de antes do batch).
+        string? FirstNumeric(params string[] nodes)
+        {
+            foreach (var node in nodes)
+                if (AdbParsing.TryDouble(Sysfs(node), out var d) && d > 0)
+                    return Sysfs(node);
+            return null;
+        }
+        var cycles = Sysfs("battery/cycle_count");
+        var chargeFull = FirstNumeric("battery/charge_full",
+            "bms/charge_full", "max170xx_battery/charge_full");
+        var chargeDesign = FirstNumeric("battery/charge_full_design",
+            "bms/charge_full_design", "max170xx_battery/charge_full_design");
         if (AdbParsing.TryInt(cycles?.Trim(), out var c))
             r.Set("battery.cycles", c > 800 ? "warn" : "info",
                 c.ToString(CultureInfo.InvariantCulture),
@@ -419,17 +451,6 @@ public sealed class AndroidCollector
             r.Set("battery.capacity_learned", "info", $"{learnedMah:0} mAh",
                 "estimativa aprendida pelo Android — compara com a capacidade de design");
         }
-    }
-
-    /// <summary>Primeiro nó sysfs com um valor numérico positivo entre os candidatos.</summary>
-    private async Task<string?> FirstSysfsAsync(string serial, params string[] nodes)
-    {
-        foreach (var node in nodes)
-        {
-            var v = await AdbAsync(serial, $"shell cat /sys/class/power_supply/{node}");
-            if (AdbParsing.TryDouble(v?.Trim(), out var d) && d > 0) return v;
-        }
-        return null;
     }
 
     /// <summary>Shell livre — usado pela bancada para aplicar/retirar carga (ecrã, brilho).</summary>
