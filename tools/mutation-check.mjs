@@ -168,7 +168,7 @@ const mutantes = [
   },
   {
     nome: "o 2.º telemóvel rouba a bancada",
-    ficheiro: "src/OficinaDiag/MainWindow.xaml.cs",
+    ficheiro: "src/OficinaDiag/MainWindow.Devices.cs",
     de: "        if (_current is null) SelectDevice(d, announce: false);",
     para: "        SelectDevice(d, announce: false); // mutante: rouba a bancada",
     guarda: "uishots",
@@ -176,7 +176,7 @@ const mutantes = [
   },
   {
     nome: "o aviso de reinício mostra outra mensagem",
-    ficheiro: "src/OficinaDiag/MainWindow.xaml.cs",
+    ficheiro: "src/OficinaDiag/MainWindow.Update.cs",
     de: 'MessageBox.Show(this, L10n.T("log.update.ready"), Title,',
     para: 'MessageBox.Show(this, L10n.T("log.update.dl"), Title, // mutante: texto trocado',
     guarda: "uishots",
@@ -192,7 +192,7 @@ const mutantes = [
   },
   {
     nome: "COMPARAR abre sem scan anterior",
-    ficheiro: "src/OficinaDiag/MainWindow.xaml.cs",
+    ficheiro: "src/OficinaDiag/MainWindow.Scan.cs",
     de: "        if (previous.Count == 0)",
     para: "        if (previous.Count < 0) // mutante: nunca diz que não há anterior",
     guarda: "uishots",
@@ -261,7 +261,7 @@ const mutantes = [
   },
   {
     nome: "o descarregador por omissão escreve fora da pasta da app",
-    ficheiro: "src/OficinaDiag/MainWindow.xaml.cs",
+    ficheiro: "src/OficinaDiag/MainWindow.Update.cs",
     de: "    internal static string PastaDeInstalacao => AppContext.BaseDirectory;",
     para: "    internal static string PastaDeInstalacao => System.IO.Path.GetTempPath(); // mutante: fora da pasta da app",
     guarda: "uishots",
@@ -269,7 +269,7 @@ const mutantes = [
   },
   {
     nome: "o Terminar por omissão deixa de fechar a app",
-    ficheiro: "src/OficinaDiag/MainWindow.xaml.cs",
+    ficheiro: "src/OficinaDiag/MainWindow.Update.cs",
     de: "    internal static void TerminarDeProducao() => Application.Current.Shutdown();",
     para: "    internal static void TerminarDeProducao() { } // mutante: não fecha",
     guarda: "uishots",
@@ -277,7 +277,7 @@ const mutantes = [
   },
   {
     nome: "o Baixar por omissão deixa de ser o de produção",
-    ficheiro: "src/OficinaDiag/MainWindow.xaml.cs",
+    ficheiro: "src/OficinaDiag/MainWindow.Update.cs",
     de: "        BaixarDeProducao;",
     para: "        (info, current) => BaixarPara(PastaDeInstalacao, info, current); // mutante: lambda",
     guarda: "uishots",
