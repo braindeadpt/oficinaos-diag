@@ -106,4 +106,32 @@ public class IntakeRulesTests
     [InlineData(null)] // cloud antiga não devolve scope — não partir
     public void RedeemScopeDiagOuAusente_Passa(string? scope) =>
         Assert.Null(IntakeRules.RedeemScopeError(scope));
+
+    // POST /diag-logs: a Cloud recusa log vazio (min 1) ou >200k (max 200_000).
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("   \n  ")]
+    public void PrepareLog_VazioOuBranco_NaoEnvia(string? log) =>
+        Assert.Null(IntakeRules.PrepareLogForUpload(log));
+
+    [Fact]
+    public void PrepareLog_DentroDoLimite_PassaIgual()
+    {
+        var log = new string('x', IntakeRules.LogMaxChars);
+        Assert.Equal(log, IntakeRules.PrepareLogForUpload(log));
+    }
+
+    [Fact]
+    public void PrepareLog_AcimaDoLimite_FicaACaudaComMarcador()
+    {
+        var log = new string('a', 50_000) + "\n" + new string('b', IntakeRules.LogMaxChars);
+        var preparado = IntakeRules.PrepareLogForUpload(log)!;
+        Assert.True(preparado.Length <= IntakeRules.LogMaxChars);
+        Assert.StartsWith(L10n.T("log.log.truncated"), preparado);
+        Assert.EndsWith(new string('b', 1000), preparado);
+        // O corte salta para o início da linha seguinte — não parte linhas.
+        Assert.DoesNotContain("a\nb", preparado[..50]);
+    }
 }

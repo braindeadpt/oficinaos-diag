@@ -212,13 +212,17 @@ public sealed class CloudClient
     public async Task<(bool ok, string message)> SendLogAsync(
         string logTail, string appVersion, string? deviceHint)
     {
+        // A Cloud recusa log vazio ou acima de 200k — preparar aqui também
+        // protege qualquer chamador que não tenha cortado o ficheiro antes.
+        var log = IntakeRules.PrepareLogForUpload(logTail);
+        if (log is null) return (false, L10n.T("log.log.none"));
         try
         {
             var payload = JsonSerializer.Serialize(new
             {
                 appVersion,
                 deviceHint,
-                log = logTail,
+                log,
             });
             using var res = await SendWithRetryAsync(() => new HttpRequestMessage(
                 HttpMethod.Post, new Uri(BaseUri, "diag-logs"))
