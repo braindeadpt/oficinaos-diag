@@ -88,6 +88,15 @@ jobs:
       - name: Build WPF app
         run: dotnet build src/OficinaDiag/OficinaDiag.csproj -c Release -p:EnableWindowsTargeting=true
 
+      # Falha o CI quando um pacote NuGet tem CVE conhecida — no Linux chega:
+      # a lista de pacotes é a mesma nos dois sistemas (EnableWindowsTargeting
+      # cobre a parte WPF) e o audit consulta a mesma base de vulnerabilidades.
+      - name: Pacotes com vulnerabilidades conhecidas
+        if: runner.os == 'Linux'
+        run: |
+          dotnet restore OficinaDiag.sln -p:EnableWindowsTargeting=true
+          dotnet list OficinaDiag.sln package --vulnerable
+
       # O plano tem de continuar verificável: placar a bater com os tickets,
       # [x] com prova, [ ] com motivo, e nenhum teste citado que já não exista.
       # Corre nos dois sistemas de propósito: o tool lê caminhos, e a mesma
