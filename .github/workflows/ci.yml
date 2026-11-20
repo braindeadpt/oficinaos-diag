@@ -92,11 +92,19 @@ jobs:
       # a lista de pacotes é a mesma nos dois sistemas e o audit consulta a
       # mesma base de vulnerabilidades. `EnableWindowsTargeting` vai em env
       # porque `dotnet list package` não aceita `-p:` na sua própria avaliação.
+      # O comando sai com código 0 mesmo quando lista vulnerabilidades, por
+      # isso o passo falha no texto («has the following vulnerable»); as
+      # transitivas entram porque uma CVE indireta não é menos grave.
       - name: Pacotes com vulnerabilidades conhecidas
         if: runner.os == 'Linux'
         env:
           EnableWindowsTargeting: "true"
-        run: dotnet list OficinaDiag.sln package --vulnerable
+        run: |
+          saida=$(dotnet list OficinaDiag.sln package --vulnerable --include-transitive 2>&1)
+          echo "$saida"
+          if echo "$saida" | grep -q "has the following vulnerable"; then
+            exit 1
+          fi
 
       # O plano tem de continuar verificável: placar a bater com os tickets,
       # [x] com prova, [ ] com motivo, e nenhum teste citado que já não exista.
