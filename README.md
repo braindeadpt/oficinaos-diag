@@ -54,7 +54,7 @@ da loja. Também aceita o token direto (legado).
 
 ## Build
 
-Requisitos: [.NET 8 SDK](https://dotnet.microsoft.com/download) e PowerShell.
+Requisitos: [.NET 10 SDK](https://dotnet.microsoft.com/download) e PowerShell.
 
 ```powershell
 tools\fetch-tools.ps1          # descarrega platform-tools (adb) uma vez

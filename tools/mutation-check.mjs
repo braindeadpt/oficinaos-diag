@@ -361,7 +361,7 @@ function correrGuarda(m) {
   const build = mundo("dotnet", ["build", "tools/UiShots/UiShots.csproj", "-c", "Release",
     "-p:EnableWindowsTargeting=true", "--nologo"]);
   if (build.codigo !== 0) return { vermelho: false, motivo: "o harness não compila" };
-  const exe = join(raiz, "tools", "UiShots", "bin", "Release", "net8.0-windows", "UiShots.exe");
+  const exe = join(raiz, "tools", "UiShots", "bin", "Release", "net10.0-windows", "UiShots.exe");
   const destino = join(raiz, "out-store", "mutation-ui-shots");
   const r = mundo(exe, [destino]);
   if (r.erro) return { vermelho: false, motivo: `não arrancou: ${r.erro.message}` };
