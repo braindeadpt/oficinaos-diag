@@ -227,4 +227,46 @@ public sealed class TestServerTests
         // One-shot: o ACK sai antes do fecho, e um segundo pedido já não é servido.
         await Assert.ThrowsAnyAsync<Exception>(() => http.GetAsync($"{root}/{token}/"));
     }
+
+    [Fact]
+    public async Task PostResultComBodyEmSegmentosSeparados_EntregaOJsonCompleto()
+    {
+        // Regressão: o body era decodificado da foto de `buf` tirada antes do
+        // loop de leitura — um POST dividido em vários segmentos TCP (body
+        // maior que o primeiro pacote) lançava ArgumentOutOfRangeException ou
+        // truncava o JSON, e a sessão morria sem resultado.
+        using var server = new TestServer();
+        Assert.True(server.Start());
+        var uri = new Uri(server.LanUrl);
+        var token = uri.AbsolutePath.Trim('/');
+
+        var received = new TaskCompletionSource<Dictionary<string, JsonElement>>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        server.ResultReceived += d => received.TrySetResult(d);
+
+        using var tcp = new TcpClient();
+        await tcp.ConnectAsync(IPAddress.Loopback, uri.Port);
+        using var stream = tcp.GetStream();
+
+        var json = "{\"touchHit\":54,\"touchTotal\":60,\"colorsViewed\":13,\"pad\":\""
+                   + new string('x', 3000) + "\"}";
+        var headers = $"POST /{token}/result HTTP/1.1\r\nHost: x\r\nContent-Type: application/json\r\n"
+                      + $"Content-Length: {Encoding.UTF8.GetByteCount(json)}\r\n\r\n";
+
+        // Três escritas separadas: headers, metade do body, resto.
+        var body = Encoding.UTF8.GetBytes(json);
+        await stream.WriteAsync(Encoding.ASCII.GetBytes(headers));
+        await Task.Delay(150);
+        await stream.WriteAsync(body.AsMemory(0, 40));
+        await Task.Delay(150);
+        await stream.WriteAsync(body.AsMemory(40));
+
+        var buf = new byte[256];
+        var n = await stream.ReadAsync(buf).AsTask().WaitAsync(TimeSpan.FromSeconds(10));
+        Assert.StartsWith("HTTP/1.1 200", Encoding.ASCII.GetString(buf, 0, n));
+
+        var data = await received.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.Equal(54, data["touchHit"].GetInt32());
+        Assert.Equal(3000, data["pad"].GetString()!.Length);
+    }
 }
