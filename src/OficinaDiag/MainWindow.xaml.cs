@@ -879,17 +879,21 @@ public partial class MainWindow : Window
             var path = OficinaDiag.Log.AppLog.FilePath;
             if (!File.Exists(path)) { Log(L10n.T("log.log.none")); return; }
             string tail;
+            bool truncado;
             using (var fs = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
             {
                 var skip = Math.Max(0, fs.Length - maxChars);
+                truncado = skip > 0;
                 fs.Seek(skip, SeekOrigin.Begin);
                 using var sr = new StreamReader(fs);
                 tail = await sr.ReadToEndAsync();
-                if (skip > 0) tail = L10n.T("log.log.truncated") + "\n" + tail;
+                if (truncado) tail = L10n.T("log.log.truncated") + "\n" + tail;
             }
             // Após uma rotação o histórico recente está em diag.log.1 —
             // completar a cauda com ele para o suporte não perder os erros.
-            if (tail.Length < maxChars && File.Exists(path + ".1"))
+            // Só quando o atual coube inteiro: se foi truncado, juntar o .1
+            // deixaria lacunas entre os registos antigos e os recentes.
+            if (!truncado && File.Exists(path + ".1"))
             {
                 using var fsPrev = new FileStream(path + ".1", FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
                 var skipPrev = Math.Max(0, fsPrev.Length - (maxChars - tail.Length));
