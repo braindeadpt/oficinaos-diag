@@ -71,8 +71,8 @@ public sealed class AndroidCollector
         foreach (var line in (dump ?? "").Split('\n'))
         {
             var m = Regex.Match(line.Trim(), @"^\[([^\]]+)\]: \[(.*)\]$");
-            if (m.Success && m.Groups[2].Value.Length > 0)
-                props.TryAdd(m.Groups[1].Value, m.Groups[2].Value);
+            if (m.Success && m.Groups[2].Value.Trim().Length > 0)
+                props.TryAdd(m.Groups[1].Value, m.Groups[2].Value.Trim());
         }
         return props;
     }
