@@ -23,7 +23,14 @@ public static class TestResultMapper
             report.Set("test.touch", h >= t - 5 ? "pass" : "fail",
                 L10n.F("test.touch.zones", h, t), L10n.T("test.touch.detail"));
         }
-        report.Set("test.screen", "pass", L10n.T("test.screen.val"),
+        // colorsViewed = quantas cores o técnico confirmou na fase de ecrã.
+        // 0 = a fase foi saltada — marcar «pass» era um falso positivo.
+        // Chave ausente (payload antigo/malformado) mantém o «pass» de antes.
+        var colors = data.TryGetValue("colorsViewed", out var cv)
+            && cv.ValueKind == JsonValueKind.Number ? cv.GetInt32() : -1;
+        report.Set("test.screen",
+            colors == 0 ? "skipped" : "pass",
+            colors == 0 ? L10n.T("test.screen.skip") : L10n.T("test.screen.val"),
             L10n.T("test.screen.detail"));
 
         // Bordas: falha de toque nas margens é o sintoma clássico de

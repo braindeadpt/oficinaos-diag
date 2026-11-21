@@ -131,7 +131,12 @@ internal static class Program
     [STAThread]
     private static int Main(string[] args)
     {
-        var destino = args.Length > 0 ? args[0] : "out-store/ui-shots";
+        var destino = args.Length > 0 && !args[0].StartsWith("--") ? args[0] : "out-store/ui-shots";
+        // `--baselines <dir>`: compara cada PNG gravado com o da pasta e falha
+        // quando a imagem se afasta do que estava aprovado (baselines visuais).
+        string? baselines = null;
+        for (var i = 0; i < args.Length - 1; i++)
+            if (args[i] == "--baselines") baselines = args[i + 1];
         Directory.CreateDirectory(destino);
         _provas = Path.Combine(destino, "provas.txt");
         try { File.Delete(_provas); } catch { }
@@ -183,7 +188,7 @@ internal static class Program
         var codigo = 1;
         app.Dispatcher.BeginInvoke(DispatcherPriority.Background, new Action(() =>
         {
-            try { codigo = Corpo(destino, logUi); }
+            try { codigo = Corpo(destino, logUi, baselines); }
             catch (Exception ex)
             {
                 // Um corpo que rebenta saía com exit 1 e **nenhuma** linha
@@ -220,7 +225,7 @@ internal static class Program
     /// O corpo do harness — capturas e provas — já dentro do loop do
     /// `Application.Run`, para os modais poderem ser dirigidos de dentro.
     /// </summary>
-    private static int Corpo(string destino, string logUi)
+    private static int Corpo(string destino, string logUi, string? baselines)
     {
         L10n.Set("pt");
 
@@ -350,6 +355,15 @@ internal static class Program
         Marcar("os defeitos por omissão da atualização");
         ProvarDefeitoDaAtualizacao(destino);
         ProvarAplicacaoDoStaging(destino);
+
+        // Comparação com a versão anterior: corre no fim de todas as capturas
+        // (as `troca-*`, `combo-*` e `scrollbar-*` também entram), porque o que
+        // interessa é a imagem final no destino — não importa quem a gravou.
+        if (baselines is not null)
+        {
+            Marcar("baselines visuais");
+            CompararBaselines(destino, baselines);
+        }
 
         // O último passo do harness não é uma prova: é o `Terminar` de
         // produção a correr a sério, a fechar a app como faria na bancada. Não
@@ -1126,7 +1140,9 @@ internal static class Program
         }, "commit: token OK");
         Verificar("commit: token OK devolveu OK", leuToken == true);
         Verificar("commit: o token devolvido é o que foi escrito", token.Token == "ABCD-1234");
-        Verificar("commit: «lembrar» ficou desligado por omissão", !token.Remember);
+        // d1e6161: «guardar neste PC» vem marcado por omissão — um token
+        // só-em-memória morria ao fechar e o código de uso único não o repunha.
+        Verificar("commit: «lembrar» vem ligado por omissão", token.Remember);
 
         // 5. Seguro GERAR: com os três campos obrigatórios, produz formulário.
         var seguro = new InsuranceDialog(DiagConfig.Load());
@@ -2790,6 +2806,113 @@ internal static class Program
         {
             Verificar($"captura {nome}: legível ({ex.GetType().Name})", false);
         }
+    }
+
+    /// <summary>
+    /// Compara cada PNG do destino com o baseline de mesmo nome. Um pixel conta
+    /// como diferente quando um canal de cor se afasta mais de
+    /// <see cref="ToleranciaCanal"/> (ruído de anti-aliasing não conta); a
+    /// captura reprova quando os diferentes passam <see cref="LimiteDiferenca"/>.
+    /// Quando há diferença, `diff-<nome>.png` fica no destino com os pixéis
+    /// diferentes a vermelho — a falha vê-se sem abrir as duas imagens.
+    /// Uma captura sem baseline é nova e não reprova; uma baseline sem captura
+    /// é órfã (a captura foi renomeada ou removida) e reprova.
+    /// </summary>
+    private const int ToleranciaCanal = 16;
+    private const double LimiteDiferenca = 0.005; // 0,5% dos pixéis
+
+    private static void CompararBaselines(string destino, string dirBaselines)
+    {
+        var existe = Directory.Exists(dirBaselines);
+        Verificar($"baselines: a pasta {dirBaselines} existe", existe);
+        if (!existe) return;
+
+        var atuais = Directory.GetFiles(destino, "*.png")
+            .Select(f => Path.GetFileName(f)!)
+            .Where(n => !n.StartsWith("diff-"))
+            .ToList();
+        var esperadas = Directory.GetFiles(dirBaselines, "*.png")
+            .Select(f => Path.GetFileName(f)!).ToList();
+
+        var comparadas = 0;
+        foreach (var nome in atuais.OrderBy(n => n))
+        {
+            var fBase = Path.Combine(dirBaselines, nome);
+            if (!File.Exists(fBase))
+            {
+                Console.WriteLine($"  {nome}: sem baseline — captura nova");
+                continue;
+            }
+            comparadas++;
+            CompararPng(fBase, Path.Combine(destino, nome),
+                Path.Combine(destino, $"diff-{nome}"));
+        }
+
+        var orfas = esperadas.Where(e => !atuais.Contains(e)).ToList();
+        Verificar($"baselines: {comparadas} capturas comparadas",
+            comparadas > 0 || esperadas.Count == 0);
+        if (orfas.Count > 0)
+            Console.WriteLine($"  órfãs: {string.Join(", ", orfas)}");
+        Verificar("baselines: nenhuma baseline órfã", orfas.Count == 0);
+    }
+
+    private static void CompararPng(string fBase, string fAtual, string fDiff)
+    {
+        var nome = Path.GetFileName(fAtual);
+        try
+        {
+            var (pb, bw, bh) = LerPixels(fBase);
+            var (pa, aw, ah) = LerPixels(fAtual);
+            if (bw != aw || bh != ah)
+            {
+                Verificar($"baseline {nome}: mesmas dimensões " +
+                          $"(baseline {bw}x{bh}, atual {aw}x{ah})", false);
+                return;
+            }
+            var diferentes = 0;
+            var diff = (byte[])pa.Clone();
+            for (var i = 0; i < pa.Length; i += 4)
+            {
+                var d = Math.Abs(pa[i] - pb[i]) > ToleranciaCanal
+                     || Math.Abs(pa[i + 1] - pb[i + 1]) > ToleranciaCanal
+                     || Math.Abs(pa[i + 2] - pb[i + 2]) > ToleranciaCanal;
+                if (!d) continue;
+                diferentes++;
+                diff[i] = 0; diff[i + 1] = 0; diff[i + 2] = 255; diff[i + 3] = 255;
+            }
+            var razao = (double)diferentes / (aw * ah);
+            if (diferentes > 0)
+            {
+                var wb = new WriteableBitmap(aw, ah, 96, 96, PixelFormats.Bgra32, null);
+                wb.WritePixels(new Int32Rect(0, 0, aw, ah), diff, aw * 4, 0);
+                var enc = new PngBitmapEncoder();
+                enc.Frames.Add(BitmapFrame.Create(wb));
+                using (var fs = File.Create(fDiff)) enc.Save(fs);
+            }
+            else
+            {
+                try { File.Delete(fDiff); } catch { }
+            }
+            Verificar($"baseline {nome}: {razao:P2} de pixéis diferentes ({aw}x{ah})",
+                razao <= LimiteDiferenca);
+        }
+        catch (Exception ex)
+        {
+            Verificar($"baseline {nome}: comparável ({ex.GetType().Name})", false);
+        }
+    }
+
+    /// <summary>Descodifica um PNG para pixéis BGRA32, como o ConferirCaptura.</summary>
+    private static (byte[] Pixels, int W, int H) LerPixels(string ficheiro)
+    {
+        using var fs = File.OpenRead(ficheiro);
+        var dec = new PngBitmapDecoder(fs, BitmapCreateOptions.PreservePixelFormat,
+            BitmapCacheOption.OnLoad);
+        var bgra = new FormatConvertedBitmap(dec.Frames[0], PixelFormats.Bgra32, null, 0);
+        var stride = bgra.PixelWidth * 4;
+        var pixels = new byte[stride * bgra.PixelHeight];
+        bgra.CopyPixels(pixels, stride, 0);
+        return (pixels, bgra.PixelWidth, bgra.PixelHeight);
     }
 
     /// <summary>

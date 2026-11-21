@@ -1,0 +1,27 @@
+version: 2
+
+# O Dependabot abre PRs de atualização; o CI decide se entram. Segundas de
+# manhã, para os PRs aparecerem junto dos runs agendados (mutantes, tools).
+updates:
+  # NuGet: os três csproj (app, Core, testes) e o harness UiShots —
+  # `directory: "/"` cobre a árvore toda.
+  - package-ecosystem: "nuget"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 5
+
+  # As actions usadas nos três workflows (checkout, setup-dotnet, ...).
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+
+  # A suite jsdom em tests/device-test (jsdom é o único pacote).
+  - package-ecosystem: "npm"
+    directory: "/tests/device-test"
+    schedule:
+      interval: "weekly"
+      day: "monday"

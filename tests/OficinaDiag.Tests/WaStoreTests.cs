@@ -162,6 +162,56 @@ public sealed class WaStoreTests : IDisposable
     }
 
     [Fact]
+    public void MensagemComDataNull_NaoRebentaOExport()
+    {
+        // BD real tem mensagens com ZMESSAGEDATE NULL — antes o iterador
+        // morria a meio da conversa (GetDouble sobre DBNull) e o export
+        // saía truncado.
+        var path = Path.Combine(_dir, "nulldate.sqlite");
+        BuildChatStorage(path);
+        using (var w = new SqliteConnection($"Data Source={path}"))
+        {
+            w.Open();
+            Exec(w, "INSERT INTO ZWAMESSAGE (Z_PK,Z_ENT,Z_OPT,ZISFROMME,ZMESSAGESTATUS,ZMESSAGETYPE,ZSORT,ZCHATSESSION,ZMESSAGEDATE,ZTEXT) VALUES (99,7,1,0,0,0,9,1,NULL,'sem data')");
+        }
+        using var ro = WaStore.OpenReadOnly(path);
+        ro.Open();
+
+        var msgs = WaIosReader.Messages(ro, 1).ToList();
+        Assert.Equal(4, msgs.Count);
+        Assert.Null(msgs.Last().Utc);
+
+        // MIN/MAX ignoram o NULL — as datas continuam a vir das outras.
+        var info = WaStore.Inspect(ro);
+        Assert.NotNull(info.FirstMessageUtc);
+    }
+
+    [Fact]
+    public void MensagensSemNenhumaData_DaoNullENao2001()
+    {
+        // MIN/MAX sobre um conjunto vazio devolve NULL: antes caía para 0 e a
+        // conversa aparecia como «2001-01-01» (o próprio epoch Core Data).
+        var path = Path.Combine(_dir, "alldatenull.sqlite");
+        using (var w = new SqliteConnection($"Data Source={path}"))
+        {
+            w.Open();
+            Exec(w, """
+                CREATE TABLE Z_METADATA (Z_PLIST BLOB);
+                CREATE TABLE ZWACHATSESSION (Z_PK INTEGER PRIMARY KEY, ZCONTACTJID VARCHAR, ZREMOVED INTEGER);
+                CREATE TABLE ZWAMESSAGE (Z_PK INTEGER PRIMARY KEY, ZMESSAGEDATE TIMESTAMP, ZMESSAGETYPE INTEGER, ZISFROMME INTEGER, ZTEXT VARCHAR, ZCHATSESSION INTEGER, ZSORT INTEGER);
+                INSERT INTO ZWACHATSESSION VALUES (1,'x@s.whatsapp.net',0);
+                INSERT INTO ZWAMESSAGE VALUES (1,NULL,0,0,'oi',1,1);
+                """);
+        }
+        using var ro = WaStore.OpenReadOnly(path);
+        ro.Open();
+
+        var info = WaStore.Inspect(ro);
+        Assert.Null(info.FirstMessageUtc);
+        Assert.Null(info.LastMessageUtc);
+    }
+
+    [Fact]
     public void Inspect_UnknownDatabase_ReturnsUnknown()
     {
         var other = Path.Combine(_dir, "other.sqlite");

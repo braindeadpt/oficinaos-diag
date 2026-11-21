@@ -107,6 +107,21 @@ public sealed class TestServerTests
     }
 
     [Fact]
+    public async Task OuvinteNaoEstaEmAny_ELoopbackContinuaASerServido()
+    {
+        // O bind é o IP LAN escolhido (+ loopback para o adb reverse),
+        // nunca Any — e o caminho do túnel USB continua a responder.
+        using var server = new TestServer();
+        Assert.True(server.Start());
+        Assert.NotEqual(IPAddress.Any, server.BindAddress);
+        var uri = new Uri(server.LanUrl);
+        var token = uri.AbsolutePath.Trim('/');
+        using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(10) };
+        var res = await http.GetAsync($"http://127.0.0.1:{uri.Port}/{token}/");
+        Assert.Equal(HttpStatusCode.OK, res.StatusCode);
+    }
+
+    [Fact]
     public async Task LigacaoAutorizadaContinuaASerServidaDepoisDeUmaRejeitada()
     {
         using var server = new TestServer();
@@ -229,11 +244,12 @@ public sealed class TestServerTests
     }
 
     [Fact]
-    public async Task BodyEmSegmentosTcpSeparadosEEntregueNaMesma()
+    public async Task PostResultComBodyEmSegmentosSeparados_EntregaOJsonCompleto()
     {
-        // Regressão: o buffer antigo fazia snapshot antes do body chegar —
-        // um POST segmentado (comum em Wi-Fi) morria sem resposta e a sessão
-        // ficava pendurada. O servidor tem de ler até Content-Length.
+        // Regressão: o body era decodificado da foto de `buf` tirada antes do
+        // loop de leitura — um POST dividido em vários segmentos TCP (body
+        // maior que o primeiro pacote) lançava ArgumentOutOfRangeException ou
+        // truncava o JSON, e a sessão morria sem resultado.
         using var server = new TestServer();
         Assert.True(server.Start());
         var uri = new Uri(server.LanUrl);
@@ -243,28 +259,30 @@ public sealed class TestServerTests
             TaskCreationOptions.RunContinuationsAsynchronously);
         server.ResultReceived += d => received.TrySetResult(d);
 
-        const string json = "{\"touchHit\":10,\"touchTotal\":12,\"colorsViewed\":4}";
-        var headers = Encoding.ASCII.GetBytes(
-            $"POST /{token}/result HTTP/1.1\r\nHost: x\r\nContent-Type: application/json\r\n" +
-            $"Content-Length: {Encoding.UTF8.GetByteCount(json)}\r\n\r\n");
-        var metade = Encoding.UTF8.GetByteCount(json) / 2;
-        var body = Encoding.UTF8.GetBytes(json);
-
         using var tcp = new TcpClient();
-        await tcp.ConnectAsync(uri.Host, uri.Port);
+        await tcp.ConnectAsync(IPAddress.Loopback, uri.Port);
         using var stream = tcp.GetStream();
-        await stream.WriteAsync(headers);
-        await Task.Delay(300); // body chega noutro segmento
-        await stream.WriteAsync(body.AsMemory(0, metade));
-        await Task.Delay(300); // e ainda noutro
-        await stream.WriteAsync(body.AsMemory(metade));
+
+        var json = "{\"touchHit\":54,\"touchTotal\":60,\"colorsViewed\":13,\"pad\":\""
+                   + new string('x', 3000) + "\"}";
+        var headers = $"POST /{token}/result HTTP/1.1\r\nHost: x\r\nContent-Type: application/json\r\n"
+                      + $"Content-Length: {Encoding.UTF8.GetByteCount(json)}\r\n\r\n";
+
+        // Três escritas separadas: headers, metade do body, resto.
+        var body = Encoding.UTF8.GetBytes(json);
+        await stream.WriteAsync(Encoding.ASCII.GetBytes(headers));
+        await Task.Delay(150);
+        await stream.WriteAsync(body.AsMemory(0, 40));
+        await Task.Delay(150);
+        await stream.WriteAsync(body.AsMemory(40));
 
         var buf = new byte[256];
         var n = await stream.ReadAsync(buf).AsTask().WaitAsync(TimeSpan.FromSeconds(10));
         Assert.StartsWith("HTTP/1.1 200", Encoding.ASCII.GetString(buf, 0, n));
 
         var data = await received.Task.WaitAsync(TimeSpan.FromSeconds(5));
-        Assert.Equal(10, data["touchHit"].GetInt32());
+        Assert.Equal(54, data["touchHit"].GetInt32());
+        Assert.Equal(3000, data["pad"].GetString()!.Length);
     }
 
     [Fact]

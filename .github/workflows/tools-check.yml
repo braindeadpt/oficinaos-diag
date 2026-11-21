@@ -19,7 +19,7 @@ jobs:
 
       - uses: actions/setup-dotnet@v6
         with:
-          dotnet-version: "8.0.x"
+          dotnet-version: "10.0.x"
 
       # O script lança se a versão do csproj não tiver pin, se um hash não bater
       # ou se faltar no pacote um binário que a tabela espera — um `throw` num

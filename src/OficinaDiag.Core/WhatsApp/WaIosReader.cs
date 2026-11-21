@@ -103,7 +103,9 @@ internal static class WaIosReader
             yield return new WaMessage
             {
                 Pk = r.GetInt64(0),
-                Utc = FromCoreData(r.GetDouble(1)),
+                // ZMESSAGEDATE NULL numa BD real rebentava o export inteiro da
+                // conversa a meio do iterador (GetDouble sobre DBNull).
+                Utc = r.IsDBNull(1) ? null : FromCoreData(r.GetDouble(1)),
                 Type = r.GetInt32(2),
                 FromMe = r.GetInt32(3) == 1,
                 Text = r.IsDBNull(4) ? null : r.GetString(4),

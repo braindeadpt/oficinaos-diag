@@ -150,6 +150,18 @@ public sealed class TestResultMapperTests
     }
 
     [Fact]
+    public void EcranSemCoresConfirmadasViraSkippedNaoPass()
+    {
+        // colorsViewed=0: o técnico saltou a fase de cores — «pass» aqui era
+        // um falso positivo num relatório que vai à seguradora.
+        var r = Map("""{"touchHit":60,"touchTotal":60,"colorsViewed":0}""");
+        Assert.Equal("skipped", r.Results["test.screen"].Status);
+
+        var confirmado = Map("""{"colorsViewed":13}""");
+        Assert.Equal("pass", confirmado.Results["test.screen"].Status);
+    }
+
+    [Fact]
     public void VibracaoAusenteEEstadoDesconhecidoNaoCriamLinha()
     {
         var r = Map("""{"vibrate":"unavailable"}""");

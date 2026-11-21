@@ -6,7 +6,7 @@
 
 ---
 
-Estás a trabalhar no **oficinaos-diag**, uma app WPF (Windows, `net8.0-windows`) para diagnóstico de telemóveis numa loja. O plano em `plan-nota10/` tem **87 critérios provados e 1 pendente**; a pendência é o primeiro critério do `T-10` (`plan-nota10/tickets/T-10-test-v3-adb-reverse-labels-gdpr.md`) e exige **um telefone Android físico num PC sem Wi-Fi/LAN**. Além disso há três coisas que só se vêem nesta máquina: a UI a **125% e 150%** de escala, a **fila de envio** quando a rede cai, e o **selo de integridade** de um relatório gerado a sério.
+Estás a trabalhar no **oficinaos-diag**, uma app WPF (Windows, `net10.0-windows`) para diagnóstico de telemóveis numa loja. O plano em `plan-nota10/` tem **87 critérios provados e 1 pendente**; a pendência é o primeiro critério do `T-10` (`plan-nota10/tickets/T-10-test-v3-adb-reverse-labels-gdpr.md`) e exige **um telefone Android físico num PC sem Wi-Fi/LAN**. Além disso há três coisas que só se vêem nesta máquina: a UI a **125% e 150%** de escala, a **fila de envio** quando a rede cai, e o **selo de integridade** de um relatório gerado a sério.
 
 O teu trabalho é correr os testes, recolher prova e devolver o plano actualizado num PR. **Regras que não se negociam:** escreve em pt-PT; só marcas um critério `[x]` se viste o comportamento acontecer; se algo falhar, escreves exactamente o que viste em vez de arredondar; não alteras código de produção para "fazer passar" um teste (se encontrares um defeito, abres PR separado com a correção e um teste que o apanhe); não colas tokens nem chaves em lado nenhum.
 
@@ -16,7 +16,7 @@ O teu trabalho é correr os testes, recolher prova e devolver o plano actualizad
 git clone https://github.com/braindeadpt/oficinaos-diag.git; cd oficinaos-diag
 git log --oneline -1        # 646f0f9 ou mais recente em main
 git checkout -b chore/windows-<AAAA-MM-DD>
-dotnet --version            # 8.0.4xx (global.json fixa 8.0.100 + latestFeature)
+dotnet --version            # 10.0.x (global.json fixa 10.0.100 + latestFeature)
 pwsh -File tools/fetch-tools.ps1   # traz tools/platform-tools/adb.exe e verifica assinaturas
 dotnet build OficinaDiag.sln -c Release
 dotnet test tests/OficinaDiag.Tests -c Release   # esperado: 329 verdes

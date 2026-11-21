@@ -106,4 +106,58 @@ public class IntakeRulesTests
     [InlineData(null)] // cloud antiga não devolve scope — não partir
     public void RedeemScopeDiagOuAusente_Passa(string? scope) =>
         Assert.Null(IntakeRules.RedeemScopeError(scope));
+
+    // POST /diag-logs: a Cloud recusa log vazio (min 1) ou >200k (max 200_000).
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("   \n  ")]
+    public void PrepareLog_VazioOuBranco_NaoEnvia(string? log) =>
+        Assert.Null(IntakeRules.PrepareLogForUpload(log));
+
+    [Fact]
+    public void PrepareLog_DentroDoLimite_PassaIgual()
+    {
+        var log = new string('x', IntakeRules.LogMaxChars);
+        Assert.Equal(log, IntakeRules.PrepareLogForUpload(log));
+    }
+
+    [Fact]
+    public void PrepareLog_AcimaDoLimite_FicaACaudaComMarcador()
+    {
+        var log = new string('a', 50_000) + "\n" + new string('b', IntakeRules.LogMaxChars);
+        var preparado = IntakeRules.PrepareLogForUpload(log)!;
+        Assert.True(preparado.Length <= IntakeRules.LogMaxChars);
+        Assert.StartsWith(L10n.T("log.log.truncated"), preparado);
+        Assert.EndsWith(new string('b', 1000), preparado);
+        // O corte salta para o início da linha seguinte — não parte linhas.
+        Assert.DoesNotContain("a\nb", preparado[..50]);
+    }
+
+    [Fact]
+    public void PrepareLog_CortePertoDeNewline_ComecaNaLinhaSeguinte()
+    {
+        // O '\n' cai logo depois do ponto de corte: o resultado começa na
+        // linha inteira seguinte ('b'), não a meio da linha de 'p'.
+        var marcador = L10n.T("log.log.truncated") + "\n";
+        var room = IntakeRules.LogMaxChars - marcador.Length;
+        var log = new string('p', room) + "\n" + new string('b', room - 2);
+        var preparado = IntakeRules.PrepareLogForUpload(log)!;
+        Assert.True(preparado.Length <= IntakeRules.LogMaxChars);
+        Assert.Equal('b', preparado[marcador.Length]);
+    }
+
+    [Fact]
+    public void PrepareLog_CorteEmParSurrogate_NaoParteOEmoji()
+    {
+        // Emoji = par surrogate: o corte é posicionado sobre a metade baixa.
+        // Sem a proteção o upload começava com um caractere inválido.
+        var marcador = L10n.T("log.log.truncated") + "\n";
+        var room = IntakeRules.LogMaxChars - marcador.Length;
+        var log = new string('p', marcador.Length) + "\U0001F600" + new string('b', room - 1);
+        var preparado = IntakeRules.PrepareLogForUpload(log)!;
+        Assert.Equal('b', preparado[marcador.Length]);
+        Assert.DoesNotContain("\uFFFD", preparado);
+    }
 }
