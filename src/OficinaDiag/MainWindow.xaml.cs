@@ -58,6 +58,10 @@ public partial class MainWindow : Window
     private readonly Cloud.CloudClient _cloud;
     private DetectedDevice? _current;
     private DeviceReport? _report;
+    // Id do dispositivo que gerou _report (adb serial / UDID). Resultados do
+    // teste no ecrã e do bench só entram no relatório do MESMO aparelho —
+    // trocar de telefone a meio não pode contaminar o diagnóstico do cliente.
+    private string? _reportDeviceId;
     // Último relatório IA gerado para _report — viaja no envio à loja para a
     // loja o ver no pedido sem gastar outra geração.
     private string? _lastAiReport;

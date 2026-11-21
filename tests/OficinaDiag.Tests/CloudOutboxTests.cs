@@ -99,6 +99,27 @@ public class CloudOutboxTests : IDisposable
     }
 
     [Fact]
+    public async Task PastaDeErroNaoCresceSemTeto()
+    {
+        // A quarentena é para diagnóstico: mais de 10 ficheiros corrompidos
+        // acumulados começam a ser apagados — não enchem o disco ao longo
+        // de anos de uso.
+        Directory.CreateDirectory(_dir);
+        for (var i = 0; i < 15; i++)
+        {
+            var f = Path.Combine(_dir, $"202001010000000{i:d2}-bbbbbbbb.json");
+            await File.WriteAllTextAsync(f, "{ corrompido");
+            File.SetLastWriteTimeUtc(f, DateTime.UtcNow.AddMinutes(-i));
+        }
+
+        await Fila(Sucesso).DrenarAsync();
+
+        var erro = Path.Combine(_dir, "erro");
+        Assert.True(Directory.Exists(erro));
+        Assert.True(Directory.GetFiles(erro, "*.json").Length <= 10);
+    }
+
+    [Fact]
     public async Task EnvioVelhoNaoSaiEDesaparece()
     {
         var agora = new DateTimeOffset(2026, 11, 16, 12, 0, 0, TimeSpan.Zero);

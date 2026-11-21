@@ -143,7 +143,7 @@ public partial class MainWindow : Window
                 }
                 catch (Exception ex) { Log(L10n.F("log.err", ex.Message)); return; }
                 Log(L10n.F("log.ai.saved", dlg.FileName));
-                Process.Start(new ProcessStartInfo(dlg.FileName) { UseShellExecute = true });
+                OpenHtmlFile(dlg.FileName);
             }
         }
         finally { AiButton.IsEnabled = true; }

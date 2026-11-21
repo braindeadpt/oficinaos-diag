@@ -156,6 +156,9 @@ public sealed class DeviceDetector : IDisposable
             using var p = Process.Start(psi);
             if (p is null) return null;
             var read = p.StandardOutput.ReadToEndAsync();
+            // Drenar stderr — um fastboot falado (>pipe buffer) bloqueava
+            // até ao timeout de 2 s o matar.
+            var _err = p.StandardError.ReadToEndAsync();
             if (!p.WaitForExit(2000))
             {
                 try { p.Kill(entireProcessTree: true); } catch { }
@@ -213,14 +216,20 @@ public sealed class DeviceDetector : IDisposable
     internal void PollOnce()
     {
         var now = DedupeById(_current());
+        List<DetectedDevice>? attached = null, detached = null;
         lock (_seen)
         {
             foreach (var (id, d) in now)
                 if (_seen.Remove(id)) _seen[id] = d;   // refresca label (unauthorized→device)
-                else { _seen[id] = d; Attached?.Invoke(d); }
+                else { _seen[id] = d; (attached ??= new()).Add(d); }
             foreach (var (id, d) in _seen.ToArray())
-                if (!now.ContainsKey(id)) { _seen.Remove(id); Detached?.Invoke(d); }
+                if (!now.ContainsKey(id)) { _seen.Remove(id); (detached ??= new()).Add(d); }
         }
+        // Eventos FORA do lock: os handlers fazem Dispatcher.Invoke síncrono —
+        // invocá-los com _seen tomado era um deadlock latente contra qualquer
+        // chamada da UI a SeenById/SeenCount.
+        if (attached is not null) foreach (var d in attached) Attached?.Invoke(d);
+        if (detached is not null) foreach (var d in detached) Detached?.Invoke(d);
     }
 
     internal int SeenCount { get { lock (_seen) return _seen.Count; } }

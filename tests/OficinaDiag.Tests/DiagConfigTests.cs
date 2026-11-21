@@ -36,6 +36,23 @@ public class DiagConfigTests : IDisposable
     private void WriteConfig(object cfg) =>
         File.WriteAllText(ConfigPath, JsonSerializer.Serialize(cfg));
 
+    [Theory]
+    // Loopback — o servidor Cloud de testes local é permitido em http://
+    [InlineData("http://localhost:8080", false)]
+    [InlineData("http://127.0.0.1:8080", false)]
+    [InlineData("http://127.10.20.30:8080", false)] // todo o 127/8 é loopback
+    [InlineData("http://[::1]:8080", false)]        // Uri.Host devolve "[::1]" com parênteses
+    // Qualquer destino fora de loopback: token + PII em claro — recusado
+    [InlineData("http://192.168.1.50:8080", true)]
+    [InlineData("http://10.0.0.9", true)]
+    [InlineData("http://cloud.oficinaos.app", true)]
+    // https nunca é inseguro para esta verificação
+    [InlineData("https://cloud.oficinaos.app", false)]
+    public void IsInsecureUrl_LoopbackPermitido_InternetRecusada(string url, bool esperado)
+    {
+        Assert.Equal(esperado, DiagConfig.IsInsecureUrl(new Uri(url)));
+    }
+
     [Fact]
     public void Load_WipesLegacyTokenWithoutScope()
     {

@@ -193,7 +193,11 @@ public sealed class UpdateChecker
             if (ValidateSums(sumsBytes, sigB64, info.Tag, current, ChavePublicaDaRelease) is { } err)
                 return (false, err);
 
-            var zipPath = Path.Combine(Path.GetTempPath(), $"oficinaos-diag-{info.Tag}.zip");
+            // O tag já passou por Version.TryParse, mas vai para um path —
+            // defesa em profundidade contra metacaracteres (.., separadores).
+            var safeTag = new string(info.Tag.Where(
+                c => char.IsLetterOrDigit(c) || c is '.' or '-' or '_').ToArray());
+            var zipPath = Path.Combine(Path.GetTempPath(), $"oficinaos-diag-{safeTag}.zip");
 
             // Stream to disk — the self-contained zip is 100+ MB and does not
             // belong in a byte[] on the large-object heap.
@@ -216,7 +220,7 @@ public sealed class UpdateChecker
             // UTF-8 BOM so Windows PowerShell 5.1 reads accented paths correctly.
             // Single-quoted literals escaped via '' — a path with an apostrophe
             // must not break (or inject into) the staged script.
-            var ps1Path = Path.Combine(Path.GetTempPath(), $"oficinaos-diag-update-{info.Tag}.ps1");
+            var ps1Path = Path.Combine(Path.GetTempPath(), $"oficinaos-diag-update-{safeTag}.ps1");
             var logPath = Path.Combine(Path.GetTempPath(), "oficinaos-diag-update.log");
             var script = BuildUpdateScript(info.Tag, appDir, zipPath, logPath, Environment.ProcessId);
             WriteUpdateScript(ps1Path, script);

@@ -22,9 +22,19 @@ public partial class MainWindow : Window
             // Os WaitForExit dentro dos coletores são síncronos — sem o
             // Task.Run cada chamada adb bloqueava a UI thread e a janela
             // congelava durante o scan inteiro.
-            _report = _current.Kind == DeviceKind.Android
-                ? await Task.Run(() => new AndroidCollector(_adbPath).CollectAsync(_current.Id.TrimEnd('!')))
-                : await Task.Run(() => new IosCollector().CollectAsync(_current.Id));
+            var scannedId = _current.Id;
+            var fresh = _current.Kind == DeviceKind.Android
+                ? await Task.Run(() => new AndroidCollector(_adbPath).CollectAsync(scannedId.TrimEnd('!')))
+                : await Task.Run(() => new IosCollector().CollectAsync(scannedId));
+            // O scan substitui o relatório mas há resultados que ele não
+            // volta a produzir — checklist manual, teste no ecrã e bancada.
+            // PreserveManualFrom copia só esses: arrastar chaves USB/
+            // derivadas (root, battery.swap) de um scan anterior falseava
+            // a nova recolha (aviso obsoleto mantinha o grau limitado).
+            if (_report is not null && _reportDeviceId == scannedId)
+                fresh.PreserveManualFrom(_report);
+            _report = fresh;
+            _reportDeviceId = scannedId;
 
             // iOS: o serial da célula não se repete — se mudou desde a última
             // visita, a bateria foi trocada e isso tem de ficar no relatório.
@@ -74,11 +84,15 @@ public partial class MainWindow : Window
     private void Checklist_Click(object sender, RoutedEventArgs e)
     {
         // Inspeção física sem scan é válida — telemóvel que não fala por USB.
-        _report ??= new DeviceReport
+        if (_report is null)
         {
-            Platform = _current?.Kind == DeviceKind.Ios ? "ios" : "android",
-            Device = { Serial = _current?.Id?.TrimEnd('!') },
-        };
+            _report = new DeviceReport
+            {
+                Platform = _current?.Kind == DeviceKind.Ios ? "ios" : "android",
+                Device = { Serial = _current?.Id?.TrimEnd('!') },
+            };
+            _reportDeviceId = _current?.Id;
+        }
         var dlg = new ChecklistDialog(_report) { Owner = this };
         if (dlg.ShowDialog() != true) return;
         ApplyGrade();

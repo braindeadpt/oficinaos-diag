@@ -293,10 +293,20 @@ public sealed class IosCollector
         return File.Exists(exe) ? exe : null;
     }
 
+    /// <summary>
+    /// UDIDs vêm de usbmuxd — não confiáveis. Um UDID com aspas/espaços
+    /// injetava argumentos nas ferramentas idevice* (parsing de cmdline do
+    /// Windows); rejeita tudo o que não é hex/dashes plausível.
+    /// </summary>
+    internal static bool IsValidUdid(string udid) =>
+        System.Text.RegularExpressions.Regex.IsMatch(
+            udid, @"^[0-9a-fA-F]{8,40}(-[0-9a-fA-F]{1,16})*$");
+
     /// <summary>idevicediagnostics.exe bundled ao lado do exe — ponte para a IORegistry.</summary>
     private static string? RunTool(string udid, string args, int timeoutMs = 15000,
         CancellationToken ct = default)
     {
+        if (!IsValidUdid(udid)) return null;
         var exe = ToolPath("idevicediagnostics.exe");
         return exe is null ? null : ToolProcess.Run(exe, $"-u {udid} {args}", timeoutMs, ct);
     }
@@ -524,7 +534,7 @@ public sealed class IosCollector
     private void CollectCrashLogs(DeviceReport r, string udid, CancellationToken ct)
     {
         var exe = ToolPath("idevicecrashreport.exe");
-        if (exe is null) return;
+        if (exe is null || !IsValidUdid(udid)) return;
         var dir = Path.Combine(Path.GetTempPath(), $"oficinadiag-crash-{Guid.NewGuid():N}");
         try
         {

@@ -5,19 +5,20 @@ using Xunit.Abstractions;
 namespace OficinaDiag.Tests;
 
 /// <summary>
-/// Spike descartável contra a BD real extraída do iPhone 12 Pro (Business,
-/// 1.43M msgs). Não é teste de CI — prova manual de escala; corre só
-/// quando o ficheiro existe nesta máquina.
+/// Spike descartável contra a BD real extraída de um iPhone de teste
+/// (Business, 1.43M msgs). Não é teste de CI — prova manual de escala;
+/// corre só quando OFICINAOS_SPIKE_DB aponta para o ficheiro nesta máquina
+/// (o caminho — que contém o UDID do aparelho — nunca fica no repo).
 /// </summary>
 public sealed class WaRealSpike(ITestOutputHelper o)
 {
-    private const string RealDb =
-        @"E:\oficinaos-ios-backup-v2\00008101-0002390A3600801E\72\724bd3b98b18518b455a87c1f3ac3a0d189c4466";
+    private static readonly string? RealDb =
+        Environment.GetEnvironmentVariable("OFICINAOS_SPIKE_DB");
 
     [Fact]
     public void RealBusinessDb_Inspects()
     {
-        if (!File.Exists(RealDb)) return;
+        if (RealDb is null || !File.Exists(RealDb)) return;
         using var db = WaStore.OpenReadOnly(RealDb);
         db.Open();
 
@@ -36,11 +37,11 @@ public sealed class WaRealSpike(ITestOutputHelper o)
     [Fact]
     public void RealBusinessDb_Exports()
     {
-        if (!File.Exists(RealDb)) return;
+        if (RealDb is null || !File.Exists(RealDb)) return;
         using var db = WaStore.OpenReadOnly(RealDb);
         db.Open();
 
-        var outDir = @"E:\wa-export-spike";
+        var outDir = Path.Combine(Path.GetTempPath(), "wa-export-spike");
         var sw = System.Diagnostics.Stopwatch.StartNew();
         var chats = WaIosReader.Chats(db);
         o.WriteLine($"{chats.Count} conversas");

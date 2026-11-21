@@ -13,6 +13,9 @@ public partial class MainWindow : Window
     /// </summary>
     private async Task<bool> RunAdbAsync(string serial, string args)
     {
+        // Serial vem do `adb devices` — um valor a começar por '-' era lido
+        // pelo adb como flag dele, não como o alvo -s.
+        if (serial.Length == 0 || !char.IsLetterOrDigit(serial[0])) return false;
         try
         {
             var psi = new ProcessStartInfo(_adbPath, $"-s {serial} {args}")
@@ -147,26 +150,40 @@ public partial class MainWindow : Window
     /// </summary>
     private void StartTelemetry(DetectedDevice d)
     {
-        _telemetryCts?.Cancel();
+        var old = _telemetryCts;
+        old?.Cancel();
         var cts = _telemetryCts = new CancellationTokenSource();
+        // Token (não o source) é seguro de tocar depois de Dispose — evita
+        // ObjectDisposedException na volta do loop quando o source morre.
+        var token = cts.Token;
         _ = Task.Run(async () =>
         {
-            while (!cts.IsCancellationRequested)
+            try
             {
-                try
+                while (!token.IsCancellationRequested)
                 {
-                    if (_current?.Id == d.Id && !_busy)
+                    try
                     {
-                        var t = d.Kind == DeviceKind.Android
-                            ? await new AndroidCollector(_adbPath).ProbeAsync(d.Id.TrimEnd('!'))
-                            : await new IosCollector().ProbeAsync(d.Id);
-                        var text = FormatTelemetry(t);
-                        Dispatcher.Invoke(() => TelemetryText.Text = text);
+                        if (_current?.Id == d.Id && !_busy)
+                        {
+                            var t = d.Kind == DeviceKind.Android
+                                ? await new AndroidCollector(_adbPath).ProbeAsync(d.Id.TrimEnd('!'))
+                                : await new IosCollector().ProbeAsync(d.Id);
+                            var text = FormatTelemetry(t);
+                            Dispatcher.Invoke(() => TelemetryText.Text = text);
+                        }
                     }
+                    catch (Exception ex)
+                    {
+                        // Log() escreve na UI — chamado da thread de fundo
+                        // lançava outra exceção e matava o ciclo de leitura.
+                        try { Dispatcher.Invoke(() => Log(L10n.F("log.err", ex.Message))); }
+                        catch { /* janela a fechar — perder uma linha de log é benigno */ }
+                    }
+                    try { await Task.Delay(4000, token); } catch { return; }
                 }
-                catch { }
-                try { await Task.Delay(4000, cts.Token); } catch { return; }
             }
+            finally { old?.Dispose(); }
         });
     }
 

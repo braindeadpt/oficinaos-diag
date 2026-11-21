@@ -125,11 +125,14 @@ public partial class SettingsDialog : Window
                 return;
             }
             // http:// para a Internet envia o token Pro e dados do cliente em
-            // claro — só localhost/LAN de testes é razoável; exige confirmação.
-            if (DiagConfig.IsInsecureUrl(uri) && MessageBox.Show(this,
-                    L10n.T("set.warn.http"), Title,
-                    MessageBoxButton.YesNo, MessageBoxImage.Warning) != MessageBoxResult.Yes)
+            // claro — falha fechado, não é uma opção: só localhost/LAN de
+            // testes passa (IsInsecureUrl já os exclui).
+            if (DiagConfig.IsInsecureUrl(uri))
+            {
+                MessageBox.Show(this, L10n.T("set.warn.http"), Title,
+                    MessageBoxButton.OK, MessageBoxImage.Warning);
                 return;
+            }
             validatedUrl = url;
         }
 

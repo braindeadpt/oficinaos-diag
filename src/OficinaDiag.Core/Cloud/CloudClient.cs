@@ -81,6 +81,9 @@ public sealed class CloudClient
             using (var timeout = new CancellationTokenSource(attemptTimeout))
             using (var cts = CancellationTokenSource.CreateLinkedTokenSource(timeout.Token, ct))
             {
+                // HttpMessageInvoker.SendAsync não faz LoadIntoBufferAsync
+                // (isso é do overload HttpClient.SendAsync): o corpo chega
+                // como stream vivo e o cap do ReadBodyAsync corta o download.
                 try { res = await _http.SendAsync(req, cts.Token); }
                 // Cancelamento do chamador (utilizador fechou a janela) não é
                 // timeout: propaga-se e não vale uma segunda tentativa.
@@ -168,6 +171,32 @@ public sealed class CloudClient
         return (ok, message);
     }
 
+    // Bodies de erro/sucesso da Cloud são pequenos — um servidor errado ou
+    // comprometido não pode encher-nos a heap com uma resposta infinita.
+    private const int MaxResponseBytes = 256 * 1024;
+
+    private static async Task<string> ReadBodyAsync(
+        HttpResponseMessage res, CancellationToken ct = default)
+    {
+        // O attempt-timeout só cobriu os headers (ResponseHeadersRead) —
+        // sem teto próprio, um servidor a escorregar o corpo prendia a
+        // chamada para sempre. 60 s chega com folga para ≤256 KB.
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(60));
+        using var linked = CancellationTokenSource.CreateLinkedTokenSource(timeout.Token, ct);
+        var read = linked.Token;
+        await using var s = await res.Content.ReadAsStreamAsync(read);
+        var ms = new MemoryStream();
+        var buf = new byte[8192];
+        int n;
+        while ((n = await s.ReadAsync(buf, read)) > 0)
+        {
+            if (ms.Length + n > MaxResponseBytes)
+                throw new InvalidDataException("resposta da Cloud excede o limite");
+            ms.Write(buf, 0, n);
+        }
+        return Encoding.UTF8.GetString(ms.GetBuffer(), 0, (int)ms.Length);
+    }
+
     private async Task<(bool ok, string message, bool falhaDeRede)> PostIntakeAsync(
         string shopCode, string json, string idempotencyKey, CancellationToken ct = default)
     {
@@ -181,7 +210,7 @@ public sealed class CloudClient
             }.WithIdempotencyKey(idempotencyKey), _fastAttempt, ct: ct);
             if (res.IsSuccessStatusCode)
                 return (true, L10n.T("cloud.send.ok"), false);
-            var body = await res.Content.ReadAsStringAsync(ct);
+            var body = await ReadBodyAsync(res, ct);
             if ((int)res.StatusCode == 402)
                 return (false, L10n.T("cloud.send.nomodule"), false);
             if ((int)res.StatusCode == 404)
@@ -231,7 +260,7 @@ public sealed class CloudClient
             }, _fastAttempt);
             if (res.IsSuccessStatusCode)
                 return (true, L10n.T("cloud.log.ok"));
-            var body = await res.Content.ReadAsStringAsync();
+            var body = await ReadBodyAsync(res);
             return (false, L10n.F("cloud.status", (int)res.StatusCode, body));
         }
         catch (Exception ex) { return (false, ex.Message); }
@@ -258,7 +287,7 @@ public sealed class CloudClient
             {
                 Content = new StringContent(payload, Encoding.UTF8, "application/json"),
             }, _fastAttempt, ct: ct);
-            var body = await res.Content.ReadAsStringAsync(ct);
+            var body = await ReadBodyAsync(res, ct);
             if (!res.IsSuccessStatusCode)
             {
                 if (body.Contains("INVALID_OR_EXPIRED_CODE"))
@@ -312,7 +341,7 @@ public sealed class CloudClient
                 req.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", shopToken);
                 return req;
             }, _aiAttempt, RetryMode.PaidOnce);
-            var body = await res.Content.ReadAsStringAsync();
+            var body = await ReadBodyAsync(res);
             if (!res.IsSuccessStatusCode) return (false, $"{(int)res.StatusCode} — {body}");
             using var doc = JsonDocument.Parse(body);
             return (true, doc.RootElement.GetProperty("report").GetString() ?? "");

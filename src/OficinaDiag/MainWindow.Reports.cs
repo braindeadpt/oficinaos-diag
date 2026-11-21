@@ -37,7 +37,18 @@ public partial class MainWindow : Window
         }
         catch (Exception ex) { Log(L10n.F("log.err", ex.Message)); return; }
         Log(L10n.F("log.client.saved", dlg.FileName));
-        Process.Start(new ProcessStartInfo(dlg.FileName) { UseShellExecute = true });
+        OpenHtmlFile(dlg.FileName);
+    }
+
+    /// <summary>
+    /// Abre um ficheiro que acabámos de gravar — só .html: o nome vem do
+    /// SaveFileDialog e o utilizador podia trocar a extensão à mão; com
+    /// UseShellExecute isso corria a associação arbitrária da shell.
+    /// </summary>
+    private static void OpenHtmlFile(string path)
+    {
+        if (!path.EndsWith(".html", StringComparison.OrdinalIgnoreCase)) return;
+        Process.Start(new ProcessStartInfo(path) { UseShellExecute = true });
     }
 
     private void Export_Click(object sender, RoutedEventArgs e)
@@ -60,7 +71,7 @@ public partial class MainWindow : Window
         Log(L10n.F("log.export.saved", dlg.FileName));
         // HTML é para ver/partilhar — abre já no browser predefinido.
         if (isHtml)
-            Process.Start(new ProcessStartInfo(dlg.FileName) { UseShellExecute = true });
+            OpenHtmlFile(dlg.FileName);
     }
 
     /// <summary>Relatório formal A4 para seguradora — dano + estado + carimbo da loja.</summary>
@@ -82,6 +93,6 @@ public partial class MainWindow : Window
         catch (Exception ex) { Log(L10n.F("log.err", ex.Message)); return; }
         Log(L10n.F("log.ins.saved", save.FileName));
         // Abre já no browser — daí é imprimir ou gravar em PDF.
-        Process.Start(new ProcessStartInfo(save.FileName) { UseShellExecute = true });
+        OpenHtmlFile(save.FileName);
     }
 }

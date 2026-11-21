@@ -284,4 +284,98 @@ public sealed class TestServerTests
         Assert.Equal(54, data["touchHit"].GetInt32());
         Assert.Equal(3000, data["pad"].GetString()!.Length);
     }
+
+    [Fact]
+    public async Task ClienteDesligadoAMeioDoBodyRecebe400ENaoHang()
+    {
+        using var server = new TestServer();
+        Assert.True(server.Start());
+        var uri = new Uri(server.LanUrl);
+        var token = uri.AbsolutePath.Trim('/');
+
+        using var tcp = new TcpClient();
+        await tcp.ConnectAsync(uri.Host, uri.Port);
+        using var stream = tcp.GetStream();
+        // Anuncia 100 bytes, envia 5 e cala-se.
+        await stream.WriteAsync(Encoding.ASCII.GetBytes(
+            $"POST /{token}/result HTTP/1.1\r\nHost: x\r\nContent-Length: 100\r\n\r\n{{\"a\":"));
+        await stream.WriteAsync(Encoding.ASCII.GetBytes("}")); // 7 bytes de 100
+        tcp.Client.Shutdown(SocketShutdown.Send); // EOF: não vêm mais
+
+        var buf = new byte[256];
+        var n = await stream.ReadAsync(buf).AsTask().WaitAsync(TimeSpan.FromSeconds(10));
+        Assert.StartsWith("HTTP/1.1 400", Encoding.ASCII.GetString(buf, 0, n));
+    }
+
+    [Fact]
+    public async Task RejeicoesNaoEsgotamOsSlotsDeClientes()
+    {
+        // Regressão: cada ligação recusada no filtro de origem queimava um dos
+        // 16 slots de clientes — 16 scans na LAN matavam a sessão de teste.
+        using var server = new TestServer { RemoteAllowed = _ => false };
+        Assert.True(server.Start());
+        var uri = new Uri(server.LanUrl);
+        var token = uri.AbsolutePath.Trim('/');
+
+        for (var i = 0; i < 20; i++)
+        {
+            using var tcp = new TcpClient();
+            await tcp.ConnectAsync(IPAddress.Loopback, uri.Port);
+            var stream = tcp.GetStream();
+            await stream.WriteAsync(
+                Encoding.ASCII.GetBytes("GET / HTTP/1.1\r\nHost: x\r\n\r\n"));
+            // Esperar o fecho: sem isto as ligações podiam ainda estar na
+            // fila do accept quando o filtro muda — o teste passava sem
+            // provar que as 20 recusas aconteceram. O servidor fecha sem
+            // resposta — EOF limpo ou RST (IOException) conforme o timing.
+            var b = new byte[16];
+            try
+            {
+                var n = await stream.ReadAsync(b).AsTask().WaitAsync(TimeSpan.FromSeconds(10));
+                Assert.Equal(0, n);
+            }
+            catch (IOException) { /* RST também prova a recusa */ }
+        }
+
+        // Trocar o filtro depois das rejeições: a sessão continua viva.
+        server.RemoteAllowed = _ => true;
+        using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(10) };
+        var res = await http.GetAsync($"http://127.0.0.1:{uri.Port}/{token}/");
+        Assert.Equal(HttpStatusCode.OK, res.StatusCode);
+    }
+
+    [Fact]
+    public async Task AcceptResultRecusaDevolve409EMantemSessaoViva()
+    {
+        // A app só faz ACK quando o resultado pode entrar no relatório —
+        // o telemóvel vê falha real (e pode tentar de novo) em vez de
+        // «resultado entregue» para o vazio.
+        var aceitar = false;
+        using var server = new TestServer { AcceptResult = _ => aceitar };
+        Assert.True(server.Start());
+        var uri = new Uri(server.LanUrl);
+        var token = uri.AbsolutePath.Trim('/');
+        var body = JsonSerializer.Serialize(new
+        {
+            touchHit = 8,
+            touchTotal = 9,
+            colorsViewed = 4,
+        });
+        using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(10) };
+        var content = new StringContent(body, Encoding.UTF8, "application/json");
+
+        var recusado = await http.PostAsync($"http://127.0.0.1:{uri.Port}/{token}/result", content);
+        Assert.Equal(HttpStatusCode.Conflict, recusado.StatusCode);
+
+        // Gate levantada: o mesmo POST é agora aceite — a sessão não morreu
+        // com a recusa anterior.
+        aceitar = true;
+        var received = new TaskCompletionSource<Dictionary<string, JsonElement>>();
+        server.ResultReceived += d => received.TrySetResult(d);
+        var aceite = await http.PostAsync($"http://127.0.0.1:{uri.Port}/{token}/result",
+            new StringContent(body, Encoding.UTF8, "application/json"));
+        Assert.Equal(HttpStatusCode.OK, aceite.StatusCode);
+        var data = await received.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        Assert.Equal(8, data["touchHit"].GetInt32());
+    }
 }
