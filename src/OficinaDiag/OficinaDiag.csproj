@@ -29,7 +29,7 @@
 
   <ItemGroup>
     <!-- QRCoder fica na app: só a janela do QR o usa. -->
-    <PackageReference Include="QRCoder" Version="1.8.1" />
+    <PackageReference Include="QRCoder" Version="1.9.0" />
   </ItemGroup>
 
   <!-- bundled adb, copied to output; Data/models.json + Tests/wwwroot vêm do Core -->
