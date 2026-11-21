@@ -11,6 +11,31 @@ public partial class MainWindow : Window
     {
         try
         {
+            // O resultado só pode aterrar num relatório DESTE aparelho.
+            // Se o aberto pertence a outro cliente, bloquear antes de ligar
+            // a sessão — o telemóvel não pode completar o teste, entregar ao
+            // vazio e sair a achar que foi aceite.
+            if (_report is not null && _reportDeviceId != _current?.Id)
+            {
+                Log(L10n.T("log.test.mismatch"));
+                return;
+            }
+            if (_report is null)
+            {
+                if (_current is null)
+                {
+                    Log(L10n.T("log.test.mismatch"));
+                    return;
+                }
+                // Sem relatório aberto, criar um para o aparelho selecionado —
+                // como na bancada: o resultado tem sempre onde aterrar.
+                _report = new DeviceReport
+                {
+                    Platform = _current.Kind == DeviceKind.Android ? "android" : "ios",
+                    Device = { Serial = _current.Id },
+                };
+                _reportDeviceId = _current.Id;
+            }
             await _tunnel.ClearAsync(); // túnel da sessão anterior não fica pendurado
             _testServer?.Dispose(); // sessão anterior abandonada — liberta a porta
             var server = _testServer = new TestServer();
@@ -25,23 +50,37 @@ public partial class MainWindow : Window
             // fora do dispatcher, sem prender a janela 3 s.
             var forReport = _report;
             var testedId = _current?.Id;
+            // O ACK ao telemóvel só sai se o resultado puder ser aplicado:
+            // relatório substituído a meio da sessão → 409, a página mostra
+            // falha honesta e permite nova tentativa.
+            server.AcceptResult = _ =>
+                _report is not null && ReferenceEquals(_report, forReport)
+                && _reportDeviceId == testedId;
             server.ResultReceived += data => Dispatcher.InvokeAsync(async () =>
             {
-                // O resultado pertence ao aparelho em teste — se o relatório
-                // foi substituído ou descreve outro dispositivo, recusar em
-                // vez de contaminar o diagnóstico do cliente seguinte.
-                if (_report is null || !ReferenceEquals(_report, forReport)
-                    || _reportDeviceId != testedId)
+                try
                 {
-                    Log(L10n.T("log.test.wrongdev"));
-                    return;
+                    // O resultado pertence ao aparelho em teste — se o relatório
+                    // foi substituído ou descreve outro dispositivo, recusar em
+                    // vez de contaminar o diagnóstico do cliente seguinte.
+                    if (_report is null || !ReferenceEquals(_report, forReport)
+                        || _reportDeviceId != testedId)
+                    {
+                        Log(L10n.T("log.test.wrongdev"));
+                        return;
+                    }
+                    TestResultMapper.Apply(_report, data);
+                    Log(L10n.T("log.test.received"));
+                    ApplyGrade();
                 }
-                TestResultMapper.Apply(_report, data);
-                Log(L10n.T("log.test.received"));
-                ApplyGrade();
-                await _tunnel.ClearAsync(); // o telefone não precisa mais do túnel
-                server.Dispose();
-                if (ReferenceEquals(_testServer, server)) _testServer = null;
+                finally
+                {
+                    // O túnel e a porta fecham mesmo quando o resultado é
+                    // recusado — antes o return saltava a limpeza.
+                    await _tunnel.ClearAsync(); // o telefone não precisa mais do túnel
+                    server.Dispose();
+                    if (ReferenceEquals(_testServer, server)) _testServer = null;
+                }
             });
 
             var url = server.LanUrl;
@@ -92,6 +131,14 @@ public partial class MainWindow : Window
             return;
         }
         var d = _current;
+        // A sessão recolhe medições para o relatório aberto. Se ele descreve
+        // outro aparelho, parar ANTES da bancada — não deixar o técnico
+        // percorrer as três fases para o resultado ser descartado ao gravar.
+        if (_report is not null && _reportDeviceId != d.Id)
+        {
+            Log(L10n.T("log.test.mismatch"));
+            return;
+        }
         Func<Task<LiveTelemetry?>> probe;
         Func<Task>? loadOn = null, loadOff = null;
         if (d.Kind == DeviceKind.Android)

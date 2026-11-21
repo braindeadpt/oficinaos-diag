@@ -173,7 +173,13 @@ public partial class MainWindow : Window
                             Dispatcher.Invoke(() => TelemetryText.Text = text);
                         }
                     }
-                    catch (Exception ex) { Log(L10n.F("log.err", ex.Message)); }
+                    catch (Exception ex)
+                    {
+                        // Log() escreve na UI — chamado da thread de fundo
+                        // lançava outra exceção e matava o ciclo de leitura.
+                        try { Dispatcher.Invoke(() => Log(L10n.F("log.err", ex.Message))); }
+                        catch { /* janela a fechar — perder uma linha de log é benigno */ }
+                    }
                     try { await Task.Delay(4000, token); } catch { return; }
                 }
             }

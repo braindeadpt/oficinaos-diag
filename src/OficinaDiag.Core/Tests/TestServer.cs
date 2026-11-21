@@ -46,6 +46,14 @@ public sealed class TestServer : IDisposable
     /// <summary>Results posted back by the on-device test page.</summary>
     public event Action<Dictionary<string, JsonElement>>? ResultReceived;
 
+    /// <summary>
+    /// Porta consultada ANTES do 200: devolver false → 409 e a página mostra
+    /// falha real em vez de «resultado entregue». A sessão fica viva — depois
+    /// de corrigida a condição (ex.: relatório aberto de outro aparelho) um
+    /// novo POST pode ser aceite.
+    /// </summary>
+    public Func<Dictionary<string, JsonElement>, bool>? AcceptResult { get; set; }
+
     private int _responsesSent;
 
     /// <summary>
@@ -394,6 +402,15 @@ public sealed class TestServer : IDisposable
                     if (data is null || !IsResultShape(data))
                     {
                         Respond(stream, "400 Bad Request", "unexpected payload", "text/plain");
+                        return;
+                    }
+                    // O JSON ser válido não chega: a app só pode aceitar o
+                    // resultado se houver um relatório deste aparelho. Sem o
+                    // gate, o telemóvel mostrava «entregue» e o técnico
+                    // descobria depois que nada foi gravado.
+                    if (AcceptResult is { } gate && !gate(data))
+                    {
+                        Respond(stream, "409 Conflict", "result refused", "text/plain");
                         return;
                     }
                     Respond(stream, "200 OK", "ok", "text/plain");

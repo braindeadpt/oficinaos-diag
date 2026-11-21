@@ -81,6 +81,9 @@ public sealed class CloudClient
             using (var timeout = new CancellationTokenSource(attemptTimeout))
             using (var cts = CancellationTokenSource.CreateLinkedTokenSource(timeout.Token, ct))
             {
+                // HttpMessageInvoker.SendAsync não faz LoadIntoBufferAsync
+                // (isso é do overload HttpClient.SendAsync): o corpo chega
+                // como stream vivo e o cap do ReadBodyAsync corta o download.
                 try { res = await _http.SendAsync(req, cts.Token); }
                 // Cancelamento do chamador (utilizador fechou a janela) não é
                 // timeout: propaga-se e não vale uma segunda tentativa.
@@ -175,11 +178,17 @@ public sealed class CloudClient
     private static async Task<string> ReadBodyAsync(
         HttpResponseMessage res, CancellationToken ct = default)
     {
-        await using var s = await res.Content.ReadAsStreamAsync(ct);
+        // O attempt-timeout só cobriu os headers (ResponseHeadersRead) —
+        // sem teto próprio, um servidor a escorregar o corpo prendia a
+        // chamada para sempre. 60 s chega com folga para ≤256 KB.
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(60));
+        using var linked = CancellationTokenSource.CreateLinkedTokenSource(timeout.Token, ct);
+        var read = linked.Token;
+        await using var s = await res.Content.ReadAsStreamAsync(read);
         var ms = new MemoryStream();
         var buf = new byte[8192];
         int n;
-        while ((n = await s.ReadAsync(buf, ct)) > 0)
+        while ((n = await s.ReadAsync(buf, read)) > 0)
         {
             if (ms.Length + n > MaxResponseBytes)
                 throw new InvalidDataException("resposta da Cloud excede o limite");

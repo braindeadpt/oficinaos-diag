@@ -97,8 +97,10 @@ public sealed class DiagConfig
 
     /// <summary>http:// para fora de localhost — Bearer token e PII em claro na rede.</summary>
     public static bool IsInsecureUrl(Uri uri) =>
-        uri.Scheme == Uri.UriSchemeHttp
-        && uri.Host is not ("localhost" or "127.0.0.1" or "::1");
+        // Uri.Host devolve IPv6 com parênteses ("[::1]") — a lista de nomes
+        // recusava loopback legítimo. IsLoopback cobre localhost, 127.0.0.0/8
+        // e ::1 de uma vez.
+        uri.Scheme == Uri.UriSchemeHttp && !uri.IsLoopback;
 
     public string? GetShopToken()
     {
