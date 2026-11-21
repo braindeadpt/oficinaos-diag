@@ -212,10 +212,24 @@ public sealed class TestServer : IDisposable
             return false;
         }
         if (client.Client.RemoteEndPoint is not IPEndPoint ep) return true;
-        if (!RemoteAllowed(ep.Address)) return false;
+        if (!RemoteAllowed(ep.Address))
+        {
+            // O slot foi reservado acima — sem o decrement cada rejeição
+            // queimava 1 dos 16 slots e a sessão morria com scans na LAN.
+            Interlocked.Decrement(ref _activeClients);
+            return false;
+        }
         lock (_rateLock)
         {
             var now = DateTimeOffset.UtcNow;
+            if (_rate.Count > 256)
+            {
+                // Poda: IPs que já não vêem tráfego não podem crescer sem
+                // bound (uma sessão one-shot, mas ainda assim barato).
+                foreach (var k in _rate.Keys.ToArray())
+                    if (now - _rate[k].windowStart >= TimeSpan.FromMinutes(1))
+                        _rate.Remove(k);
+            }
             if (_rate.TryGetValue(ep.Address, out var r)
                 && now - r.windowStart < TimeSpan.FromMinutes(1))
             {
@@ -315,21 +329,37 @@ public sealed class TestServer : IDisposable
                         return;
                     }
                     var bodyStart = headerEnd + 4;
-                    var have = buf.Count - bodyStart;
-                    while (have < contentLen)
+                    // O body pode chegar em segmentos TCP separados dos
+                    // headers (comum em Wi-Fi real) — ler até Content-Length.
+                    while (buf.Count - bodyStart < contentLen)
                     {
                         var n = stream.Read(b, 0, b.Length);
                         if (n <= 0) break;
                         for (var i = 0; i < n; i++) buf.Add(b[i]);
-                        have += n;
                     }
-                    var body = Encoding.UTF8.GetString(raw, bodyStart, Math.Min(contentLen, have));
-                    var data = JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(body);
+                    if (buf.Count - bodyStart < contentLen)
+                    {
+                        // Cliente desligou a meio do body — responder em vez
+                        // de o deixar a fazer timeout para sempre.
+                        Respond(stream, "400 Bad Request", "incomplete body", "text/plain");
+                        return;
+                    }
+                    var body = Encoding.UTF8.GetString(
+                        buf.ToArray(), bodyStart, contentLen);
+                    Dictionary<string, JsonElement>? data;
+                    try
+                    {
+                        data = JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(body);
+                    }
+                    catch (JsonException)
+                    {
+                        data = null;
+                    }
                     // Shape check antes de fechar: a página envia sempre
                     // touchHit/touchTotal/colorsViewed. Um JSON qualquer de
                     // um peer da LAN (scanner, curl curioso) não pode matar
                     // a sessão antes de o telemóvel entregar o resultado.
-                    if (!IsResultShape(data))
+                    if (data is null || !IsResultShape(data))
                     {
                         Respond(stream, "400 Bad Request", "unexpected payload", "text/plain");
                         return;

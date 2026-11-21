@@ -14,9 +14,12 @@ public static class TestResultMapper
 {
     public static void Apply(DeviceReport report, IReadOnlyDictionary<string, JsonElement> data)
     {
-        if (data.TryGetValue("touchHit", out var hit) && data.TryGetValue("touchTotal", out var tot))
+        // O payload vem de um POST na LAN — TryGet* em vez de Get*: um tipo
+        // errado não pode rebentar o mapeamento a meio do relatório.
+        if (data.TryGetValue("touchHit", out var hit) && data.TryGetValue("touchTotal", out var tot)
+            && hit.ValueKind == JsonValueKind.Number && tot.ValueKind == JsonValueKind.Number
+            && hit.TryGetInt32(out var h) && tot.TryGetInt32(out var t))
         {
-            var h = hit.GetInt32(); var t = tot.GetInt32();
             report.Set("test.touch", h >= t - 5 ? "pass" : "fail",
                 L10n.F("test.touch.zones", h, t), L10n.T("test.touch.detail"));
         }
@@ -25,9 +28,10 @@ public static class TestResultMapper
 
         // Bordas: falha de toque nas margens é o sintoma clássico de
         // ecrã aftermarket / mal ligado — contado à parte do interior.
-        if (data.TryGetValue("edgeHit", out var eh) && data.TryGetValue("edgeTotal", out var et))
+        if (data.TryGetValue("edgeHit", out var eh) && data.TryGetValue("edgeTotal", out var et)
+            && eh.ValueKind == JsonValueKind.Number && et.ValueKind == JsonValueKind.Number
+            && eh.TryGetInt32(out var eH) && et.TryGetInt32(out var eT))
         {
-            var eH = eh.GetInt32(); var eT = et.GetInt32();
             if (eT > 0)
                 report.Set("test.edges", eH >= eT ? "pass" : "warn",
                     L10n.F("test.edges.val", eH, eT),
@@ -37,10 +41,11 @@ public static class TestResultMapper
 
         // Multi-toque real (dedos simultâneos vistos na fase 3) — mais
         // informativo que o maxTouchPoints anunciado.
-        if (data.TryGetValue("multiTouch", out var mt) && mt.GetInt32() > 0)
+        if (data.TryGetValue("multiTouch", out var mt) && mt.ValueKind == JsonValueKind.Number
+            && mt.TryGetInt32(out var mtVal) && mtVal > 0)
             report.Set("sensor.multitouch",
-                mt.GetInt32() >= 5 ? "pass" : "warn",
-                L10n.F("test.multitouch.val", mt.GetInt32()),
+                mtVal >= 5 ? "pass" : "warn",
+                L10n.F("test.multitouch.val", mtVal),
                 L10n.T("test.multitouch.detail"));
 
         // Altifalante — confirmação humana do tom WebAudio.
@@ -68,7 +73,8 @@ public static class TestResultMapper
             };
             foreach (var (key, label) in names)
             {
-                if (!sensors.TryGetProperty(key, out var s)) continue;
+                if (!sensors.TryGetProperty(key, out var s)
+                    || s.ValueKind != JsonValueKind.String) continue;
                 var state = s.GetString();
                 if (state is null) continue;
                 report.Set($"sensor.{key}",

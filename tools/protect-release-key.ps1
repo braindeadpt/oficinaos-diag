@@ -48,7 +48,7 @@ if ((Get-Content $SourcePem -TotalCount 1) -notmatch 'BEGIN ENCRYPTED PRIVATE KE
 }
 
 # --- pública embutida: a verdade que os dois ficheiros têm de provar ---
-$checker = Join-Path $PSScriptRoot '..\src\OficinaDiag\Cloud\UpdateChecker.cs'
+$checker = Join-Path $PSScriptRoot '..\src\OficinaDiag.Core\Cloud\UpdateChecker.cs'
 $m = [regex]::Match([IO.File]::ReadAllText($checker), 'ReleaseSigningPublicKey\s*=\s*"([^"]+)"')
 if (-not $m.Success) { Write-Error "ReleaseSigningPublicKey não encontrada em $checker" }
 $embedded = $m.Groups[1].Value

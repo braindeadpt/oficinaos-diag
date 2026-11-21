@@ -227,4 +227,90 @@ public sealed class TestServerTests
         // One-shot: o ACK sai antes do fecho, e um segundo pedido já não é servido.
         await Assert.ThrowsAnyAsync<Exception>(() => http.GetAsync($"{root}/{token}/"));
     }
+
+    [Fact]
+    public async Task BodyEmSegmentosTcpSeparadosEEntregueNaMesma()
+    {
+        // Regressão: o buffer antigo fazia snapshot antes do body chegar —
+        // um POST segmentado (comum em Wi-Fi) morria sem resposta e a sessão
+        // ficava pendurada. O servidor tem de ler até Content-Length.
+        using var server = new TestServer();
+        Assert.True(server.Start());
+        var uri = new Uri(server.LanUrl);
+        var token = uri.AbsolutePath.Trim('/');
+
+        var received = new TaskCompletionSource<Dictionary<string, JsonElement>>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        server.ResultReceived += d => received.TrySetResult(d);
+
+        const string json = "{\"touchHit\":10,\"touchTotal\":12,\"colorsViewed\":4}";
+        var headers = Encoding.ASCII.GetBytes(
+            $"POST /{token}/result HTTP/1.1\r\nHost: x\r\nContent-Type: application/json\r\n" +
+            $"Content-Length: {Encoding.UTF8.GetByteCount(json)}\r\n\r\n");
+        var metade = Encoding.UTF8.GetByteCount(json) / 2;
+        var body = Encoding.UTF8.GetBytes(json);
+
+        using var tcp = new TcpClient();
+        await tcp.ConnectAsync(uri.Host, uri.Port);
+        using var stream = tcp.GetStream();
+        await stream.WriteAsync(headers);
+        await Task.Delay(300); // body chega noutro segmento
+        await stream.WriteAsync(body.AsMemory(0, metade));
+        await Task.Delay(300); // e ainda noutro
+        await stream.WriteAsync(body.AsMemory(metade));
+
+        var buf = new byte[256];
+        var n = await stream.ReadAsync(buf).AsTask().WaitAsync(TimeSpan.FromSeconds(10));
+        Assert.StartsWith("HTTP/1.1 200", Encoding.ASCII.GetString(buf, 0, n));
+
+        var data = await received.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.Equal(10, data["touchHit"].GetInt32());
+    }
+
+    [Fact]
+    public async Task ClienteDesligadoAMeioDoBodyRecebe400ENaoHang()
+    {
+        using var server = new TestServer();
+        Assert.True(server.Start());
+        var uri = new Uri(server.LanUrl);
+        var token = uri.AbsolutePath.Trim('/');
+
+        using var tcp = new TcpClient();
+        await tcp.ConnectAsync(uri.Host, uri.Port);
+        using var stream = tcp.GetStream();
+        // Anuncia 100 bytes, envia 5 e cala-se.
+        await stream.WriteAsync(Encoding.ASCII.GetBytes(
+            $"POST /{token}/result HTTP/1.1\r\nHost: x\r\nContent-Length: 100\r\n\r\n{{\"a\":"));
+        await stream.WriteAsync(Encoding.ASCII.GetBytes("}")); // 7 bytes de 100
+        tcp.Client.Shutdown(SocketShutdown.Send); // EOF: não vêm mais
+
+        var buf = new byte[256];
+        var n = await stream.ReadAsync(buf).AsTask().WaitAsync(TimeSpan.FromSeconds(10));
+        Assert.StartsWith("HTTP/1.1 400", Encoding.ASCII.GetString(buf, 0, n));
+    }
+
+    [Fact]
+    public async Task RejeicoesNaoEsgotamOsSlotsDeClientes()
+    {
+        // Regressão: cada ligação recusada no filtro de origem queimava um dos
+        // 16 slots de clientes — 16 scans na LAN matavam a sessão de teste.
+        using var server = new TestServer { RemoteAllowed = _ => false };
+        Assert.True(server.Start());
+        var uri = new Uri(server.LanUrl);
+        var token = uri.AbsolutePath.Trim('/');
+
+        for (var i = 0; i < 20; i++)
+        {
+            using var tcp = new TcpClient();
+            await tcp.ConnectAsync(IPAddress.Loopback, uri.Port);
+            await tcp.GetStream().WriteAsync(
+                Encoding.ASCII.GetBytes("GET / HTTP/1.1\r\nHost: x\r\n\r\n"));
+        }
+
+        // Trocar o filtro depois das rejeições: a sessão continua viva.
+        server.RemoteAllowed = _ => true;
+        using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(10) };
+        var res = await http.GetAsync($"http://127.0.0.1:{uri.Port}/{token}/");
+        Assert.Equal(HttpStatusCode.OK, res.StatusCode);
+    }
 }

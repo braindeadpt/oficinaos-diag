@@ -134,6 +134,11 @@ public sealed class CloudOutbox
             var erro = Path.Combine(_dir, "erro");
             Directory.CreateDirectory(erro);
             File.Move(ficheiro, Path.Combine(erro, Path.GetFileName(ficheiro)), true);
+            // A pasta de erro é para diagnóstico, não um arquivo: sem teto,
+            // ficheiros corrompidos repetidos enchiam o disco ao longo de anos.
+            var velhos = Directory.GetFiles(erro, "*.json")
+                .OrderByDescending(File.GetLastWriteTimeUtc).Skip(10);
+            foreach (var v in velhos) Apagar(v);
         }
         catch { Apagar(ficheiro); }
     }

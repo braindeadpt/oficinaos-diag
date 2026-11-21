@@ -67,6 +67,10 @@ public partial class MainWindow : Window
     private readonly Cloud.CloudClient _cloud;
     private DetectedDevice? _current;
     private DeviceReport? _report;
+    // Id do dispositivo que gerou _report (adb serial / UDID). Resultados do
+    // teste no ecrã e do bench só entram no relatório do MESMO aparelho —
+    // trocar de telefone a meio não pode contaminar o diagnóstico do cliente.
+    private string? _reportDeviceId;
     // Último relatório IA gerado para _report — viaja no envio à loja para a
     // loja o ver no pedido sem gastar outra geração.
     private string? _lastAiReport;
@@ -200,6 +204,9 @@ public partial class MainWindow : Window
     /// </summary>
     private async Task<bool> RunAdbAsync(string serial, string args)
     {
+        // Serial vem do `adb devices` — um valor a começar por '-' era lido
+        // pelo adb como flag dele, não como o alvo -s.
+        if (serial.Length == 0 || !char.IsLetterOrDigit(serial[0])) return false;
         try
         {
             var psi = new ProcessStartInfo(_adbPath, $"-s {serial} {args}")
@@ -334,26 +341,34 @@ public partial class MainWindow : Window
     /// </summary>
     private void StartTelemetry(DetectedDevice d)
     {
-        _telemetryCts?.Cancel();
+        var old = _telemetryCts;
+        old?.Cancel();
         var cts = _telemetryCts = new CancellationTokenSource();
+        // Token (não o source) é seguro de tocar depois de Dispose — evita
+        // ObjectDisposedException na volta do loop quando o source morre.
+        var token = cts.Token;
         _ = Task.Run(async () =>
         {
-            while (!cts.IsCancellationRequested)
+            try
             {
-                try
+                while (!token.IsCancellationRequested)
                 {
-                    if (_current?.Id == d.Id && !_busy)
+                    try
                     {
-                        var t = d.Kind == DeviceKind.Android
-                            ? await new AndroidCollector(_adbPath).ProbeAsync(d.Id.TrimEnd('!'))
-                            : await new IosCollector().ProbeAsync(d.Id);
-                        var text = FormatTelemetry(t);
-                        Dispatcher.Invoke(() => TelemetryText.Text = text);
+                        if (_current?.Id == d.Id && !_busy)
+                        {
+                            var t = d.Kind == DeviceKind.Android
+                                ? await new AndroidCollector(_adbPath).ProbeAsync(d.Id.TrimEnd('!'))
+                                : await new IosCollector().ProbeAsync(d.Id);
+                            var text = FormatTelemetry(t);
+                            Dispatcher.Invoke(() => TelemetryText.Text = text);
+                        }
                     }
+                    catch (Exception ex) { Log(L10n.F("log.err", ex.Message)); }
+                    try { await Task.Delay(4000, token); } catch { return; }
                 }
-                catch { }
-                try { await Task.Delay(4000, cts.Token); } catch { return; }
             }
+            finally { old?.Dispose(); }
         });
     }
 
@@ -529,9 +544,11 @@ public partial class MainWindow : Window
             // Os WaitForExit dentro dos coletores são síncronos — sem o
             // Task.Run cada chamada adb bloqueava a UI thread e a janela
             // congelava durante o scan inteiro.
+            var scannedId = _current.Id;
             _report = _current.Kind == DeviceKind.Android
-                ? await Task.Run(() => new AndroidCollector(_adbPath).CollectAsync(_current.Id.TrimEnd('!')))
-                : await Task.Run(() => new IosCollector().CollectAsync(_current.Id));
+                ? await Task.Run(() => new AndroidCollector(_adbPath).CollectAsync(scannedId.TrimEnd('!')))
+                : await Task.Run(() => new IosCollector().CollectAsync(scannedId));
+            _reportDeviceId = scannedId;
 
             // iOS: o serial da célula não se repete — se mudou desde a última
             // visita, a bateria foi trocada e isso tem de ficar no relatório.
@@ -581,11 +598,15 @@ public partial class MainWindow : Window
     private void Checklist_Click(object sender, RoutedEventArgs e)
     {
         // Inspeção física sem scan é válida — telemóvel que não fala por USB.
-        _report ??= new DeviceReport
+        if (_report is null)
         {
-            Platform = _current?.Kind == DeviceKind.Ios ? "ios" : "android",
-            Device = { Serial = _current?.Id?.TrimEnd('!') },
-        };
+            _report = new DeviceReport
+            {
+                Platform = _current?.Kind == DeviceKind.Ios ? "ios" : "android",
+                Device = { Serial = _current?.Id?.TrimEnd('!') },
+            };
+            _reportDeviceId = _current?.Id;
+        }
         var dlg = new ChecklistDialog(_report) { Owner = this };
         if (dlg.ShowDialog() != true) return;
         ApplyGrade();
@@ -646,7 +667,18 @@ public partial class MainWindow : Window
         }
         catch (Exception ex) { Log(L10n.F("log.err", ex.Message)); return; }
         Log(L10n.F("log.client.saved", dlg.FileName));
-        Process.Start(new ProcessStartInfo(dlg.FileName) { UseShellExecute = true });
+        OpenHtmlFile(dlg.FileName);
+    }
+
+    /// <summary>
+    /// Abre um ficheiro que acabámos de gravar — só .html: o nome vem do
+    /// SaveFileDialog e o utilizador podia trocar a extensão à mão; com
+    /// UseShellExecute isso corria a associação arbitrária da shell.
+    /// </summary>
+    private static void OpenHtmlFile(string path)
+    {
+        if (!path.EndsWith(".html", StringComparison.OrdinalIgnoreCase)) return;
+        Process.Start(new ProcessStartInfo(path) { UseShellExecute = true });
     }
 
     private async void Test_Click(object sender, RoutedEventArgs e)
@@ -665,9 +697,19 @@ public partial class MainWindow : Window
             }
             // InvokeAsync + await: a UI atualiza já e a limpeza do túnel espera
             // fora do dispatcher, sem prender a janela 3 s.
+            var forReport = _report;
+            var testedId = _current?.Id;
             server.ResultReceived += data => Dispatcher.InvokeAsync(async () =>
             {
-                if (_report is null) return;
+                // O resultado pertence ao aparelho em teste — se o relatório
+                // foi substituído ou descreve outro dispositivo, recusar em
+                // vez de contaminar o diagnóstico do cliente seguinte.
+                if (_report is null || !ReferenceEquals(_report, forReport)
+                    || _reportDeviceId != testedId)
+                {
+                    Log(L10n.T("log.test.wrongdev"));
+                    return;
+                }
                 TestResultMapper.Apply(_report, data);
                 Log(L10n.T("log.test.received"));
                 ApplyGrade();
@@ -771,6 +813,13 @@ public partial class MainWindow : Window
         finally { _busy = false; _detector!.Detached -= OnDrop; }
 
         if (!saved || res is null) return;
+        if (_report is not null && _reportDeviceId != d.Id)
+        {
+            // O bench correu no aparelho d mas o relatório aberto descreve
+            // outro — gravar aqui contaminava o diagnóstico desse cliente.
+            Log(L10n.T("log.test.wrongdev"));
+            return;
+        }
         if (_report is null)
         {
             _report = new DeviceReport
@@ -778,6 +827,7 @@ public partial class MainWindow : Window
                 Platform = d.Kind == DeviceKind.Android ? "android" : "ios",
                 Device = { Serial = d.Id },
             };
+            _reportDeviceId = d.Id;
         }
         res.UsbDrops = drops;
         res.ApplyTo(_report);
@@ -821,7 +871,7 @@ public partial class MainWindow : Window
         Log(L10n.F("log.export.saved", dlg.FileName));
         // HTML é para ver/partilhar — abre já no browser predefinido.
         if (isHtml)
-            Process.Start(new ProcessStartInfo(dlg.FileName) { UseShellExecute = true });
+            OpenHtmlFile(dlg.FileName);
     }
 
     /// <summary>Relatório formal A4 para seguradora — dano + estado + carimbo da loja.</summary>
@@ -843,7 +893,7 @@ public partial class MainWindow : Window
         catch (Exception ex) { Log(L10n.F("log.err", ex.Message)); return; }
         Log(L10n.F("log.ins.saved", save.FileName));
         // Abre já no browser — daí é imprimir ou gravar em PDF.
-        Process.Start(new ProcessStartInfo(save.FileName) { UseShellExecute = true });
+        OpenHtmlFile(save.FileName);
     }
 
     private async void Send_Click(object sender, RoutedEventArgs e)
@@ -972,7 +1022,7 @@ public partial class MainWindow : Window
                 }
                 catch (Exception ex) { Log(L10n.F("log.err", ex.Message)); return; }
                 Log(L10n.F("log.ai.saved", dlg.FileName));
-                Process.Start(new ProcessStartInfo(dlg.FileName) { UseShellExecute = true });
+                OpenHtmlFile(dlg.FileName);
             }
         }
         finally { AiButton.IsEnabled = true; }

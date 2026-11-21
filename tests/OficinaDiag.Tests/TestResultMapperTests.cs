@@ -158,4 +158,19 @@ public sealed class TestResultMapperTests
         var desconhecido = Map("""{"vibrate":"no-data"}""");
         Assert.Equal("fail", desconhecido.Results["sensor.vibrate"].Status);
     }
+
+    [Fact]
+    public void TiposErradosNoJsonNaoRebentamOMapeamento()
+    {
+        // O POST vem da LAN — um peer malicioso/bugado que mande strings onde
+        // a página envia números não pode matar a sessão com uma exceção.
+        var r = Map("""
+            {"touchHit":"dez","touchTotal":{},"edgeHit":[1],"multiTouch":"sim","sensors":{"accel":5}}
+            """);
+
+        Assert.False(r.Results.ContainsKey("test.touch"));
+        Assert.False(r.Results.ContainsKey("test.edges"));
+        Assert.False(r.Results.ContainsKey("sensor.multitouch"));
+        Assert.False(r.Results.ContainsKey("sensor.accel"));
+    }
 }

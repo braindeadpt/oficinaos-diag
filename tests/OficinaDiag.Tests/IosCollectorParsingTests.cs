@@ -222,4 +222,15 @@ public sealed class IosCollectorParsingTests
         Assert.Equal("D", grade.Grade);
         Assert.Contains("bateria", grade.Parts);
     });
+
+    [Theory]
+    [InlineData("00008101-0002390A3600801E", true)]
+    [InlineData("00008027-001F4D123456789A", true)]
+    [InlineData("0123456789abcdef0123456789abcdef01234567", true)]
+    [InlineData("udid-que-nao-e-udid", false)]
+    [InlineData("abc\" &calc", false)]
+    [InlineData("-u outro", false)]
+    [InlineData("", false)]
+    public void UdidRejeitaTudoOQueNaoEHexPlausivel(string udid, bool esperado) =>
+        Assert.Equal(esperado, IosCollector.IsValidUdid(udid));
 }
