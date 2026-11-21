@@ -28,25 +28,11 @@ public partial class MainWindow : Window
                 : await Task.Run(() => new IosCollector().CollectAsync(scannedId));
             // O scan substitui o relatório mas há resultados que ele não
             // volta a produzir — checklist manual, teste no ecrã e bancada.
-            // Só esses sobrevivem: copiar chaves USB/derivadas (root,
-            // battery.swap) de um scan anterior falseava a nova recolha
-            // (aviso obsoleto mantinha o grau limitado). A base é o
-            // relatório novo — tem os campos de hardware reais.
+            // PreserveManualFrom copia só esses: arrastar chaves USB/
+            // derivadas (root, battery.swap) de um scan anterior falseava
+            // a nova recolha (aviso obsoleto mantinha o grau limitado).
             if (_report is not null && _reportDeviceId == scannedId)
-            {
-                static bool Manual(string k) =>
-                    k.StartsWith("checklist.") || k.StartsWith("test.")
-                    || k.StartsWith("sensor.") || k.StartsWith("power.")
-                    || k == "usb.stability";
-                foreach (var kv in _report.Results)
-                    if (Manual(kv.Key) && !fresh.Results.ContainsKey(kv.Key))
-                        fresh.Results[kv.Key] = kv.Value;
-                // Notas, finalidade e fotos do checklist vivem fora de Results.
-                fresh.Notes ??= _report.Notes;
-                fresh.Purpose ??= _report.Purpose;
-                fresh.PhotoPaths.AddRange(
-                    _report.PhotoPaths.Where(p => !fresh.PhotoPaths.Contains(p)));
-            }
+                fresh.PreserveManualFrom(_report);
             _report = fresh;
             _reportDeviceId = scannedId;
 

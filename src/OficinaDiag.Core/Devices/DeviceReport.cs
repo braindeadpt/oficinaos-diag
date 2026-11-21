@@ -92,6 +92,31 @@ public sealed class DeviceReport
             Results[key] = new CheckResult { Status = status, Value = value, Detail = detail };
     }
 
+    // Namespaces que um re-scan NÃO volta a produzir — checklist manual,
+    // teste no ecrã e bancada de potência. Tudo o resto (battery.*,
+    // security.*, device.*, derivados como battery.swap) é refeito na
+    // recolha e não pode ser arrastado de um scan anterior.
+    private static readonly string[] ManualPrefixes = ["checklist.", "test.", "sensor.", "power."];
+
+    /// <summary>
+    /// Copia para ESTE relatório os resultados manuais de
+    /// <paramref name="previous"/> que aqui não existem — checklist,
+    /// teste no ecrã e bancada — mais os anexos do checklist (notas,
+    /// finalidade, fotos). Chamado quando um novo scan substitui o
+    /// relatório do mesmo aparelho: sem isto as medições manuais
+    /// perdiam-se; com chaves a mais arrastava-se hardware obsoleto.
+    /// </summary>
+    public void PreserveManualFrom(DeviceReport previous)
+    {
+        foreach (var kv in previous.Results)
+            if (!Results.ContainsKey(kv.Key)
+                && (ManualPrefixes.Any(kv.Key.StartsWith) || kv.Key == "usb.stability"))
+                Results[kv.Key] = kv.Value;
+        Notes ??= previous.Notes;
+        Purpose ??= previous.Purpose;
+        PhotoPaths.AddRange(previous.PhotoPaths.Where(p => !PhotoPaths.Contains(p)));
+    }
+
     /// <summary>Cópia consistente de <see cref="Results"/> — os CheckResult são
     /// partilhados mas nunca mutados (Set substitui sempre o objeto inteiro).</summary>
     public Dictionary<string, CheckResult> SnapshotResults()
