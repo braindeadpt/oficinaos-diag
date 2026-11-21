@@ -48,23 +48,21 @@ public partial class MainWindow : Window
             }
             // InvokeAsync + await: a UI atualiza já e a limpeza do túnel espera
             // fora do dispatcher, sem prender a janela 3 s.
-            var forReport = _report;
             var testedId = _current?.Id;
-            // O ACK ao telemóvel só sai se o resultado puder ser aplicado:
-            // relatório substituído a meio da sessão → 409, a página mostra
-            // falha honesta e permite nova tentativa.
+            // O ACK ao telemóvel só sai se houver um relatório DESTE aparelho
+            // a receber o resultado — sem ele a página mostrava «entregue» e
+            // nada era gravado. Por identidade (não instância): um rescan do
+            // mesmo aparelho durante a sessão não condena o retry a 409.
             server.AcceptResult = _ =>
-                _report is not null && ReferenceEquals(_report, forReport)
-                && _reportDeviceId == testedId;
+                _report is not null && _reportDeviceId == testedId;
             server.ResultReceived += data => Dispatcher.InvokeAsync(async () =>
             {
                 try
                 {
                     // O resultado pertence ao aparelho em teste — se o relatório
-                    // foi substituído ou descreve outro dispositivo, recusar em
-                    // vez de contaminar o diagnóstico do cliente seguinte.
-                    if (_report is null || !ReferenceEquals(_report, forReport)
-                        || _reportDeviceId != testedId)
+                    // aberto descreve outro dispositivo, recusar em vez de
+                    // contaminar o diagnóstico do cliente seguinte.
+                    if (_report is null || _reportDeviceId != testedId)
                     {
                         Log(L10n.T("log.test.wrongdev"));
                         return;
@@ -72,6 +70,13 @@ public partial class MainWindow : Window
                     TestResultMapper.Apply(_report, data);
                     Log(L10n.T("log.test.received"));
                     ApplyGrade();
+                    // O teste pode correr antes do primeiro scan — os botões
+                    // do relatório têm de acordar como no scan/bancada, senão
+                    // as medições ficavam invisíveis para exportar/enviar.
+                    ExportButton.IsEnabled = SendButton.IsEnabled =
+                        AiButton.IsEnabled = InsuranceButton.IsEnabled =
+                        CompareButton.IsEnabled = LabelButton.IsEnabled =
+                        ClientButton.IsEnabled = true;
                 }
                 finally
                 {

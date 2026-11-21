@@ -23,9 +23,18 @@ public partial class MainWindow : Window
             // Task.Run cada chamada adb bloqueava a UI thread e a janela
             // congelava durante o scan inteiro.
             var scannedId = _current.Id;
-            _report = _current.Kind == DeviceKind.Android
+            var fresh = _current.Kind == DeviceKind.Android
                 ? await Task.Run(() => new AndroidCollector(_adbPath).CollectAsync(scannedId.TrimEnd('!')))
                 : await Task.Run(() => new IosCollector().CollectAsync(scannedId));
+            // Teste no ecrã/checklist/bancada feitos ANTES do scan já têm
+            // resultados neste aparelho — substituir o relatório deitava-os
+            // fora. Fundir o que o scan não produz (a base é o relatório
+            // novo: tem os campos de hardware reais).
+            if (_report is not null && _reportDeviceId == scannedId)
+                foreach (var kv in _report.Results)
+                    if (!fresh.Results.ContainsKey(kv.Key))
+                        fresh.Results[kv.Key] = kv.Value;
+            _report = fresh;
             _reportDeviceId = scannedId;
 
             // iOS: o serial da célula não se repete — se mudou desde a última
