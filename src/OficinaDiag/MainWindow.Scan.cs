@@ -26,14 +26,27 @@ public partial class MainWindow : Window
             var fresh = _current.Kind == DeviceKind.Android
                 ? await Task.Run(() => new AndroidCollector(_adbPath).CollectAsync(scannedId.TrimEnd('!')))
                 : await Task.Run(() => new IosCollector().CollectAsync(scannedId));
-            // Teste no ecrã/checklist/bancada feitos ANTES do scan já têm
-            // resultados neste aparelho — substituir o relatório deitava-os
-            // fora. Fundir o que o scan não produz (a base é o relatório
-            // novo: tem os campos de hardware reais).
+            // O scan substitui o relatório mas há resultados que ele não
+            // volta a produzir — checklist manual, teste no ecrã e bancada.
+            // Só esses sobrevivem: copiar chaves USB/derivadas (root,
+            // battery.swap) de um scan anterior falseava a nova recolha
+            // (aviso obsoleto mantinha o grau limitado). A base é o
+            // relatório novo — tem os campos de hardware reais.
             if (_report is not null && _reportDeviceId == scannedId)
+            {
+                static bool Manual(string k) =>
+                    k.StartsWith("checklist.") || k.StartsWith("test.")
+                    || k.StartsWith("sensor.") || k.StartsWith("power.")
+                    || k == "usb.stability";
                 foreach (var kv in _report.Results)
-                    if (!fresh.Results.ContainsKey(kv.Key))
+                    if (Manual(kv.Key) && !fresh.Results.ContainsKey(kv.Key))
                         fresh.Results[kv.Key] = kv.Value;
+                // Notas, finalidade e fotos do checklist vivem fora de Results.
+                fresh.Notes ??= _report.Notes;
+                fresh.Purpose ??= _report.Purpose;
+                fresh.PhotoPaths.AddRange(
+                    _report.PhotoPaths.Where(p => !fresh.PhotoPaths.Contains(p)));
+            }
             _report = fresh;
             _reportDeviceId = scannedId;
 
