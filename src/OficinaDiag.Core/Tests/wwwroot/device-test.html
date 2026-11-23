@@ -130,17 +130,19 @@ const result = {
 };
 
 /* Taxa de amostragem de toque: PointerEvent.getCoalescedEvents expõe os
-   eventos que o browser fundiu — conta-os durante TODO o teste. Mede-se
-   por SEGMENTO de movimento: a janela vai do PRIMEIRO ao ÚLTIMO
-   pointermove, nunca até ao pointerup — um dedo parado na grelha não
-   gera eventos e não pode diluir a taxa. E um gap >TOUCH_GAP_MS entre
-   movimentos fecha o segmento e abre outro: hold no início, no fim ou
-   no meio do contacto fica todo fora do denominador. Pausas entre
-   gestos (dedo levantado) também não entram.
-   A lista de coalesced já inclui o próprio pointermove como última
-   amostra — somar +1 contava tudo a dobrar. Sem a API o sampler fica
-   inativo e o check sai 'skip' — limitação de plataforma, nunca falha. */
-window.__touchSampler = { supported: false, active: 0, segStart: null, segEnd: null, segSamples: 0, samples: 0, ms: 0 };
+   eventos que o browser fundiu — conta-os durante TODO o teste. A medida
+   usa os TIMESTAMPS DAS AMOSTRAS (cada PointerEvent coalesced traz o seu):
+   agrupar amostras num só dispatch não muda a taxa, e amostras anteriores
+   ao timestamp do primeiro evento entram na janela como deve ser.
+   Segmentos de movimento: um gap >TOUCH_GAP_MS entre AMOSTRAS fecha o
+   segmento — dedo parado (sem eventos), pausas entre gestos e hover nunca
+   entram no denominador. A taxa é Σ(N−1 intervalos)/Σ(janela de cada
+   segmento): N amostras não têm intervalo na fronteira, e intervalos
+   entre segmentos não contam. Sem a API o sampler fica inativo e o check
+   sai 'skip' — limitação de plataforma, nunca falha. */
+window.__touchSampler = { supported: false, active: 0,
+  segStart: null, segEnd: null, segCount: 0,
+  samples: 0, intervals: 0, ms: 0 };
 document.addEventListener('pointerdown', e => {
   window.__touchSampler.active++;
 }, { passive: true });
@@ -148,27 +150,44 @@ document.addEventListener('pointermove', e => {
   if (typeof e.getCoalescedEvents !== 'function') return;
   const s = window.__touchSampler;
   if (s.active === 0) return; // hover/sem contacto — não é amostragem de toque
-  let n = 0;
-  try { n = e.getCoalescedEvents().length; } catch (err) { n = 0; }
-  // coalesced inclui o próprio evento; lista vazia (stub, ex.: Firefox
-  // Android) conta o pointermove despachado como a amostra que é.
+  let list = null;
+  try { list = e.getCoalescedEvents(); } catch (err) { list = null; }
+  // A lista inclui o próprio pointermove como última amostra; vazia
+  // (stub, ex.: Firefox Android) → o evento despachado é a amostra.
+  const batch = list && list.length ? list : [e];
   s.supported = true;
-  const now = e.timeStamp;
-  // dedo parado = sem eventos; ao voltar a mexer, o gap fecha o segmento
-  // anterior — o tempo imóvel não entra na janela de amostragem.
-  if (s.segStart !== null && now - s.segEnd > D.TOUCH_GAP_MS) closeTouchSeg();
-  if (s.segStart === null) s.segStart = now;
-  s.segEnd = now;
-  s.segSamples += Math.max(n, 1);
+  for (const smp of batch) {
+    const t = smp && typeof smp.timeStamp === 'number' && isFinite(smp.timeStamp)
+      ? smp.timeStamp : null;
+    // Amostra sem timestamp válido não se pode situar no tempo — ignorar
+    // é conservador (nunca infla a taxa com intervalos inventados).
+    if (t === null) continue;
+    if (s.segStart !== null) {
+      if (t <= s.segEnd) continue; // duplicada/fora de ordem — não situável
+      // dedo parado = sem amostras; ao voltar a mexer, o gap fecha o
+      // segmento anterior — o tempo imóvel não entra na janela.
+      if (t - s.segEnd > D.TOUCH_GAP_MS) closeTouchSeg();
+      if (s.segStart === null) s.segStart = t; // segmento novo após o split
+    } else {
+      s.segStart = t;
+    }
+    s.segEnd = t;
+    s.segCount++;
+    s.samples++;
+  }
 }, { passive: true });
 function closeTouchSeg(){
   const s = window.__touchSampler;
   if (s.segStart === null) return;
   const dur = s.segEnd - s.segStart;
-  // Só contam segmentos com movimento real: janela curta é ruído, não um
-  // swipe — e menos de 5 amostras não mede taxa nenhuma.
-  if (dur >= 100 && s.segSamples >= 5) { s.samples += s.segSamples; s.ms += dur; }
-  s.segStart = null; s.segEnd = null; s.segSamples = 0;
+  // Mínimos separados do cálculo: o segmento só mede com ≥5 amostras; a
+  // taxa usa N−1 intervalos porque N amostras não têm intervalo na
+  // fronteira — dividir N pela janela aprovava taxas ~1 amostra acima.
+  if (s.segCount >= 5 && dur > 0) {
+    s.intervals += s.segCount - 1;
+    s.ms += dur;
+  }
+  s.segStart = null; s.segEnd = null; s.segCount = 0;
 }
 const endTouchContact = e => {
   const s = window.__touchSampler;
@@ -182,7 +201,7 @@ document.addEventListener('pointercancel', endTouchContact, { passive: true });
 function computeTouchHz() {
   const s = window.__touchSampler;
   if (!s.supported || s.samples < 10 || s.ms <= 0) return null;
-  return Math.round(s.samples / (s.ms / 1000));
+  return Math.round(s.intervals / (s.ms / 1000));
 }
 
 /* ── fase 1: cores + cinzentos ── */
