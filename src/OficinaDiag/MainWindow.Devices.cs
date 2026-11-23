@@ -76,6 +76,10 @@ public partial class MainWindow : Window
         "recovery" => L10n.F("status.recovery", d.Label),
         "sideload" => L10n.F("status.sideload", d.Label),
         "fastboot" => L10n.F("status.fastboot", d.Label),
+        "edl" => L10n.F("status.edl", d.Label),
+        "odin" => L10n.F("status.odin", d.Label),
+        "dfu" => L10n.F("status.dfu", d.Label),
+        "iosrecovery" => L10n.F("status.iosrecovery", d.Label),
         _ => L10n.F("status.detected", d.Label),
     };
 
