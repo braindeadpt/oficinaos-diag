@@ -7,7 +7,7 @@ namespace OficinaDiag.Devices;
 
 public enum DeviceKind { Android, Ios }
 
-/// <param name="State">ready | unauthorized | recovery | sideload | fastboot | offline</param>
+/// <param name="State">ready | unauthorized | recovery | sideload | fastboot | offline | edl | odin | dfu | iosrecovery</param>
 public sealed record DetectedDevice(DeviceKind Kind, string Id, string Label, string State = "ready");
 
 /// <summary>
@@ -86,6 +86,18 @@ public sealed class DeviceDetector : IDisposable
                 found.Add(new DetectedDevice(DeviceKind.Ios, udid, "iPhone/iPad"));
         }
         catch { /* usbmuxd indisponível */ }
+
+        // Modos de serviço invisíveis ao adb/fastboot/idevice (EDL, Odin,
+        // DFU, recovery iOS): só vale a pena procurar quando não há aparelho
+        // `ready` desse kind — mesmo padrão do fastboot.exe acima.
+        var needAndroid = !found.Any(d => d.Kind == DeviceKind.Android && d.State == "ready");
+        var needIos = !found.Any(d => d.Kind == DeviceKind.Ios && d.State == "ready");
+        if (needAndroid || needIos)
+        {
+            var modes = ServiceModeUsb.List();
+            if (needAndroid) found.AddRange(modes.Where(d => d.Kind == DeviceKind.Android));
+            if (needIos) found.AddRange(modes.Where(d => d.Kind == DeviceKind.Ios));
+        }
 
         return found;
     }
