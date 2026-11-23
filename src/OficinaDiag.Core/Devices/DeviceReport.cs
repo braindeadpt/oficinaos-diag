@@ -83,6 +83,17 @@ public sealed class DeviceReport
     [JsonInclude]
     public List<string> PhotoPaths { get; private set; } = [];
 
+    /// <summary>
+    /// Limpeza/otimização medida (antes/ações/depois). Fica FORA de Results
+    /// porque não é um check de diagnóstico: inflaria a cobertura do
+    /// Grader e apareceria nas vistas cliente/seguro. Serializa no JSON da
+    /// cloud (campo aditivo — o schema zod do lado dela ignora chaves
+    /// desconhecidas) e também no histórico local, como qualquer relatório
+    /// guardado.
+    /// </summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public Maintenance.MaintenanceReport? Maintenance { get; set; }
+
     // No timeout do scan iOS a task órfã pode continuar a chamar Set() —
     // o gate torna essa escrita segura e o snapshot dá uma cópia estável.
     private readonly object _gate = new();
@@ -116,6 +127,9 @@ public sealed class DeviceReport
         Notes ??= previous.Notes;
         Purpose ??= previous.Purpose;
         PhotoPaths.AddRange(previous.PhotoPaths.Where(p => !PhotoPaths.Contains(p)));
+        // A limpeza medida sobrevive ao re-scan: é trabalho manual do técnico,
+        // como o checklist — um novo scan não a reproduz.
+        Maintenance ??= previous.Maintenance;
     }
 
     /// <summary>Cópia consistente de <see cref="Results"/> — os CheckResult são

@@ -131,6 +131,7 @@ public partial class MainWindow : Window
             BenchButton.IsEnabled = false;
             AppsButton.IsEnabled = false;
             AppsButton.Visibility = Visibility.Collapsed;
+            MaintenanceButton.IsEnabled = false;
             ScanButton.IsEnabled = true; // permite tentar mesmo sem evento
             return;
         }
@@ -145,6 +146,9 @@ public partial class MainWindow : Window
         var appsAndroid = ready && d.Kind == DeviceKind.Android;
         AppsButton.IsEnabled = appsAndroid;
         AppsButton.Visibility = appsAndroid ? Visibility.Visible : Visibility.Collapsed;
+        // Limpeza/otimização é Android-only (comandos pm/am/settings) e precisa
+        // do sistema completo — recovery/sideload não a têm.
+        MaintenanceButton.IsEnabled = ready && d.Kind == DeviceKind.Android;
         if (ready) StartTelemetry(d);
         else { _telemetryCts?.Cancel(); TelemetryText.Text = ""; }
     }

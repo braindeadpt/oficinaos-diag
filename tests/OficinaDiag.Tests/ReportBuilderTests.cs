@@ -169,3 +169,103 @@ public class ReportBuilderTests
         Assert.Equal("sale", r.Purpose); // o override é só deste pedido à Cloud
     }
 }
+
+public class ReportBuilderMaintenanceTests
+{
+    private static DeviceReport Sample() => new()
+    {
+        Platform = "android",
+        Device = new DeviceIdentity { Brand = "Samsung", Model = "SM-G991B", Os = "Android", OsVersion = "14", Serial = "R5X" },
+    };
+
+    private static OficinaDiag.Maintenance.MaintenanceReport Cleanup() =>
+        OficinaDiag.Maintenance.MaintenanceReport.Build(
+            new OficinaDiag.Maintenance.MaintenanceSnapshot
+            {
+                StorageFreeBytes = 100L * 1024 * 1024,
+                MemAvailableBytes = 2L * 1024 * 1024 * 1024,
+                BatteryLevelPct = 80,
+            },
+            new OficinaDiag.Maintenance.MaintenanceSnapshot
+            {
+                StorageFreeBytes = 612L * 1024 * 1024,
+                MemAvailableBytes = 2L * 1024 * 1024 * 1024,
+                BatteryLevelPct = 78,
+            },
+            [
+                new OficinaDiag.Maintenance.MaintenanceActionResult
+                {
+                    Key = "trim-caches", LabelPt = "Caches do sistema", Status = "ok",
+                },
+                new OficinaDiag.Maintenance.MaintenanceActionResult
+                {
+                    Key = "clear-cache", LabelPt = "Cache das apps", Status = "partial",
+                    Detail = "3/4 apps",
+                },
+            ]);
+
+    [Fact]
+    public void ToHtml_SemManutencao_NaoTemSecao()
+    {
+        var html = ReportBuilder.ToHtml(Sample());
+        Assert.DoesNotContain("LIMPEZA E OTIMIZAÇÃO", html);
+    }
+
+    [Fact]
+    public void ToHtml_ComManutencao_MostraAcoesEAntesDepois()
+    {
+        var r = Sample();
+        r.Maintenance = Cleanup();
+        var html = ReportBuilder.ToHtml(r);
+        Assert.Contains("LIMPEZA E OTIMIZAÇÃO", html);
+        Assert.Contains("Caches do sistema", html);
+        Assert.Contains("PARCIAL", html);
+        Assert.Contains("100 MB", html);
+        Assert.Contains("612 MB", html);
+        Assert.Contains("+512 MB", html);
+    }
+
+    [Fact]
+    public void ToClientHtml_ComManutencao_MostraEmLinguagemSimples()
+    {
+        var r = Sample();
+        r.Maintenance = Cleanup();
+        var html = ReportBuilder.ToClientHtml(r);
+        Assert.Contains("Manutenção realizada", html);
+        Assert.Contains("Feito", html);
+        Assert.Contains("Parcial", html);
+    }
+
+    [Fact]
+    public void ToClientHtml_SemManutencao_NaoTemSecao()
+    {
+        var html = ReportBuilder.ToClientHtml(Sample());
+        Assert.DoesNotContain("Manutenção realizada", html);
+    }
+
+    [Fact]
+    public void ToCloudJson_LevaManutencaoComoCampoAditivo()
+    {
+        var r = Sample();
+        r.Maintenance = Cleanup();
+        var json = ReportBuilder.ToCloudJson(r);
+        using var doc = JsonDocument.Parse(json);
+        Assert.True(doc.RootElement.TryGetProperty("maintenance", out var m));
+        Assert.Equal(2, m.GetProperty("Actions").GetArrayLength());
+        // sem manutenção o campo não viaja — versões antigas da cloud não reparam
+        var sem = ReportBuilder.ToCloudJson(Sample());
+        using var doc2 = JsonDocument.Parse(sem);
+        Assert.False(doc2.RootElement.TryGetProperty("maintenance", out _));
+    }
+
+    [Fact]
+    public void Manutencao_NaoEntraEmResultsNemNoGrau()
+    {
+        var r = Sample();
+        r.Maintenance = Cleanup();
+        // a limpeza vive fora de Results: o Grader conta Results para a cobertura
+        Assert.DoesNotContain(r.Results.Keys, k => k.Contains("maint"));
+        var html = ReportBuilder.ToHtml(r);
+        Assert.DoesNotContain("maint.", html);
+    }
+}
