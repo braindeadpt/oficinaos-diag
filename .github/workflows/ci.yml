@@ -60,7 +60,7 @@ jobs:
 
       - name: Publicar cobertura
         if: runner.os == 'Linux' && always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: coverage
           path: tests/OficinaDiag.Tests/TestResults
@@ -152,7 +152,7 @@ jobs:
 
       - name: Publicar capturas
         if: runner.os == 'Windows' && always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: ui-shots
           path: out-store/ui-shots
