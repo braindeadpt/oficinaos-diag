@@ -84,13 +84,31 @@ public sealed partial class CompareWindow : Window
             var nowText = hasNew ? $"{now!.Value ?? "—"} [{now.Status}]" : "—";
             var oldSev = hasOld ? Severity.GetValueOrDefault(old!.Status) : -1;
             var newSev = hasNew ? Severity.GetValueOrDefault(now!.Status) : -1;
+            // health.* é um score 0–100: 96→78 são ambos "pass" mas é uma
+            // descida real — a cor segue o número, não o estado.
+            var healthTrend = key.StartsWith("health.", StringComparison.Ordinal)
+                && hasOld && hasNew
+                && TryScore(old!.Value, out var oldScore)
+                && TryScore(now!.Value, out var newScore)
+                ? newScore.CompareTo(oldScore)
+                : 0;
             var brush = !hasOld || !hasNew ? dim
+                : healthTrend != 0 ? (healthTrend > 0 ? pass : fail)
                 : newSev > oldSev ? fail
                 : newSev < oldSev ? pass
                 : now!.Value == old!.Value ? dim : pass;
             rows.Add(new DiffRow { Key = key, Before = before, Now = nowText, Brush = brush });
         }
         DiffList.ItemsSource = rows;
+    }
+
+    /// <summary>Extrai o número de um valor "87/100" — -1 quando não é score.</summary>
+    private static bool TryScore(string? value, out int score)
+    {
+        score = -1;
+        if (value is null) return false;
+        var head = value.Split('/')[0].Trim();
+        return int.TryParse(head, out score) && score >= 0;
     }
 
     private void Close_Click(object sender, RoutedEventArgs e) => Close();

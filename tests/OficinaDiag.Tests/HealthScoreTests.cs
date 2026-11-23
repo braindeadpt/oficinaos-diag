@@ -255,6 +255,60 @@ public sealed class HealthScoreTests
     }
 
     [Fact]
+    public void Apply_CategoriaSemDados_RemoveEntradaAntiga()
+    {
+        // Regressão Devin Review: marcar o único teste como «não testado»
+        // depois de já ter pontuado deixava health.test=100/100 no JSON/HTML
+        // exportado, embora a categoria já não entrasse no total.
+        var r = Report();
+        Set(r, "test.touch", "pass", "60/60 zonas");
+        HealthScore.Apply(r);
+        Assert.True(r.Results.ContainsKey("health.test"));
+
+        Set(r, "test.touch", "skipped", null);
+        HealthScore.Apply(r);
+
+        Assert.False(r.Results.ContainsKey("health.test"));
+        // O total fica — sem dados nenhuns é "skipped", nunca um número velho.
+        Assert.True(r.Results.TryGetValue("health.score", out var hs));
+        Assert.Equal("skipped", hs!.Status);
+    }
+
+    [Fact]
+    public void SkippedComValor_NuncaPontua()
+    {
+        // Regressão Devin Review: os scorers que leem Value (Percent,
+        // BatteryHealth, StorageFree) interpretavam-no mesmo com status
+        // skipped — a exclusão tem de ser uniforme. É exatamente o caso do
+        // iPhone sem espaço livre exposto (storage skipped).
+        var r = Report();
+        Set(r, "battery.capacity", "skipped", "95%");
+        Set(r, "battery.health", "skipped", "good");
+        Set(r, "storage", "skipped", "indisponível");
+        var res = HealthScore.Compute(r);
+        Assert.Null(res.Score);
+        Assert.All(res.Categories, c => Assert.Null(c.Score));
+    }
+
+    [Fact]
+    public void StorageWearInfo_ForaDoCalculo()
+    {
+        // storage.wear info = classe abaixo do limiar — contexto como os
+        // outros info: não desconta (antes dava 85 e todo o Android
+        // saudável ficava com armazenamento a 95).
+        var r = Report();
+        Set(r, "storage", "info", "30% usado"); // 70% livre → 100
+        Set(r, "storage.wear", "info", "classe 3/11");
+        var res = HealthScore.Compute(r);
+        Assert.Equal(100, res.Categories.Single(c => c.Key == "storage").Score);
+
+        // warn = perto do fim da vida NAND — esse desconta mesmo.
+        Set(r, "storage.wear", "warn", "classe 10/11");
+        var res2 = HealthScore.Compute(r);
+        Assert.Equal(80, res2.Categories.Single(c => c.Key == "storage").Score);
+    }
+
+    [Fact]
     public void StorageIOS_LeGBLivres()
     {
         var r = Report();

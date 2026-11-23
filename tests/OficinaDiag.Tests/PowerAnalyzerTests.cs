@@ -24,6 +24,42 @@ public sealed class PowerAnalyzerTests
     }
 
     [Fact]
+    public void SemTelemetriaDeCorrente_NaoEMedicaoSemCarga()
+    {
+        // Regressão Devin Review: driver que não expõe mA produzia o mesmo
+        // warn "não entra carga" de uma porta morta — e o health score
+        // descontava 45 pts numa medição que nunca aconteceu. Sem nenhuma
+        // amostra de corrente → skipped, neutro no score e na coverage.
+        var s = new List<PowerSample>
+        {
+            S(1, 1, v: 4.95, temp: 30), S(2, 1, v: 4.95, temp: 30),
+            S(15, 2, v: 4.95, temp: 31), S(35, 3, v: 4.95, temp: 30),
+        };
+        var r = PowerAnalyzer.Analyze(s);
+        Assert.Equal("skipped", r.ChargeStatus);
+        Assert.Equal("—", r.ChargeValue); // "0 mA" sugeria leitura real
+
+        var report = new DeviceReport();
+        r.ApplyTo(report);
+        Assert.Equal("skipped", report.Results["power.charge"].Status);
+    }
+
+    [Fact]
+    public void CorrenteBaixaMedida_MantemWarn()
+    {
+        // Contraste: corrente exposta e efetivamente baixa É evidência de
+        // não carregar — o warn fica e o desconto no health score é justo.
+        var s = new List<PowerSample>
+        {
+            S(1, 1, ma: 10, charging: true), S(2, 1, ma: 10, charging: true),
+            S(35, 3, ma: 10, charging: true),
+        };
+        var r = PowerAnalyzer.Analyze(s);
+        Assert.Equal("warn", r.ChargeStatus);
+        Assert.Contains("não entra carga", r.ChargeDetail);
+    }
+
+    [Fact]
     public void CargaPcNormal_InfoEWatts()
     {
         var s = new List<PowerSample>();

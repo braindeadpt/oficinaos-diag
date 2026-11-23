@@ -192,18 +192,15 @@ public sealed class IosCollector
 
                     // Storage — o espaço de dados vive no domínio disk_usage;
                     // TotalDiskCapacity no domínio nulo serve de fallback.
-                    if (ulong.TryParse(
+                    // IosDecisions.Storage decide: total por ler = check
+                    // ausente; livre por ler = skipped (nunca "0 GB" por
+                    // omissão, que pareceria disco cheio).
+                    if (IosDecisions.Storage(
                             GetValue(client, "com.apple.disk_usage", "TotalDataCapacity")
-                            ?? GetValue(client, null, "TotalDiskCapacity"), out var total))
-                    {
-                        ulong.TryParse(GetValue(client, "com.apple.disk_usage", "TotalDataAvailable")
-                            ?? GetValue(client, null, "TotalDataAvailable"), out var free);
-                        // Sempre "info": espaço usado é dados do utilizador,
-                        // não defeito de hardware — contexto, não achado.
-                        r.Set("storage", "info",
-                            $"{free / 1_073_741_824.0:0.#} GB livres de {total / 1_073_741_824.0:0.#} GB",
-                            "utilização normal — não é defeito de hardware");
-                    }
+                            ?? GetValue(client, null, "TotalDiskCapacity"),
+                            GetValue(client, "com.apple.disk_usage", "TotalDataAvailable")
+                            ?? GetValue(client, null, "TotalDataAvailable")) is { } storage)
+                        r.Set("storage", storage.Status, storage.Value, storage.Note);
 
                     var imei = GetValue(client, null, "InternationalMobileEquipmentIdentity");
                     if (imei is not null)

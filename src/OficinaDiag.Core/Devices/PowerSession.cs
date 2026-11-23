@@ -84,6 +84,10 @@ public static class PowerAnalyzer
 
         // Carga via porta do PC — honestamente é só isso que o cabo de dados permite medir
         var charging = samples.Where(s => s.Phase != 2 && s.Milliamps is > 30 && s.Charging != false).ToList();
+        // Telemetria de corrente: se NENHUMA amostra trouxe mA, o driver não
+        // expõe corrente — a lista vazia é falta de medição, não prova de
+        // porta morta. skipped fica neutro no health score e na coverage.
+        var currentExposed = samples.Any(s => s.Milliamps is not null);
         double? realW = null;
         var withW = charging.Where(s => s.Volts is { }).ToList();
         if (withW.Count > 2)
@@ -128,8 +132,16 @@ public static class PowerAnalyzer
         string status, detail;
         if (charging.Count == 0)
         {
-            status = "warn";
-            detail = "não entra carga pela porta — cabo sem dados+power, porta suja ou circuito de carga morto";
+            if (!currentExposed)
+            {
+                status = "skipped";
+                detail = "corrente não exposta pelo driver — caminho de carga não medido (não é defeito do aparelho)";
+            }
+            else
+            {
+                status = "warn";
+                detail = "não entra carga pela porta — cabo sem dados+power, porta suja ou circuito de carga morto";
+            }
         }
         else if (realW is { } rw)
         {
@@ -147,7 +159,9 @@ public static class PowerAnalyzer
         return new PowerSessionResult
         {
             ChargeStatus = status,
-            ChargeValue = realW is { } rw2 ? $"{rw2:0.#} W" : $"{avgMa:0} mA",
+            // skipped não tem valor medido — "0 mA" sugeria leitura real.
+            ChargeValue = status == "skipped" ? "—"
+                : realW is { } rw2 ? $"{rw2:0.#} W" : $"{avgMa:0} mA",
             ChargeDetail = detail,
             RealWatts = realW,
             InternalResistanceMohm = irMohm,

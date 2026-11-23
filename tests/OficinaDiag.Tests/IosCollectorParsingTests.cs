@@ -233,4 +233,46 @@ public sealed class IosCollectorParsingTests
     [InlineData("", false)]
     public void UdidRejeitaTudoOQueNaoEHexPlausivel(string udid, bool esperado) =>
         Assert.Equal(esperado, IosCollector.IsValidUdid(udid));
+
+    [Fact]
+    public void Storage_CapacidadeTotalPorLer_CheckAusente()
+    {
+        // Sem total não há leitura de todo — o check fica ausente (neutro),
+        // nunca se inventa um valor.
+        Assert.Null(IosDecisions.Storage(null, "137438953472"));
+        Assert.Null(IosDecisions.Storage("0", "137438953472"));
+    }
+
+    [Fact]
+    public void Storage_EspacoLivrePorLer_EhSkipped()
+    {
+        // Regressão Devin Review: TotalDataAvailable por ler caía no
+        // TryParse falhado e free ficava 0 — o relatório dizia
+        // "0 GB livres de 128 GB" e o health score lia disco cheio num
+        // iPhone saudável. Agora é skipped: a falta de medição é neutra.
+        var s = IosDecisions.Storage("137438953472", null);
+        Assert.NotNull(s);
+        Assert.Equal("skipped", s!.Value.Status);
+        Assert.DoesNotContain("GB livres", s.Value.Value);
+    }
+
+    [Fact]
+    public void Storage_LivreZero_Lido_EhMedicaoReal()
+    {
+        // 0 bytes livres LIDOS é disco cheio a sério — fica info e o
+        // score desconta, como deve ser. O que muda é a origem do zero.
+        var s = IosDecisions.Storage("137438953472", "0");
+        Assert.NotNull(s);
+        Assert.Equal("info", s!.Value.Status);
+        Assert.Equal("0 GB livres de 128 GB", s.Value.Value);
+    }
+
+    [Fact]
+    public void Storage_LeituraNormal_FormataGB()
+    {
+        var s = IosDecisions.Storage("137438953472", "68719476736");
+        Assert.NotNull(s);
+        Assert.Equal("info", s!.Value.Status);
+        Assert.Equal("64 GB livres de 128 GB", s.Value.Value);
+    }
 }

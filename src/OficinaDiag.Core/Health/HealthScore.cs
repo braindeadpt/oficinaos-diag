@@ -216,9 +216,11 @@ public static class HealthScore
         new("storage", "armazenamento", WStorage,
         [
             new("storage", 2, StorageFree),
-            // Desgaste NAND: info = classe abaixo do limiar de aviso —
-            // vida gasta conta um pouco (85), warn = perto do fim (40).
-            new("storage.wear", 1, (k, c) => ByStatus(c, warn: 40, info: 85)),
+            // Desgaste NAND: warn = perto do fim (40). O info — classe
+            // abaixo do limiar — é contexto como os outros info e fica
+            // fora: descontar aqui baixava o armazenamento de todo o
+            // Android saudável para 95 sem defeito nenhum.
+            new("storage.wear", 1, (k, c) => ByStatus(c, warn: 40)),
         ]),
         new("security", "segurança", WSecurity,
         [
@@ -323,8 +325,12 @@ public static class HealthScore
             foreach (var s in signals)
             {
                 var c = Get(s.Key);
+                // skipped nunca pontua — guarda uniforme aqui para os
+                // scorers que leem Value (capacity, health, storage)
+                // não interpretarem um valor de uma medição que não houve.
+                if (c?.Status == "skipped") continue;
                 var pts = s.Score(s.Key, c);
-                if (pts is not { } p) continue; // ausente/skipped/info-contexto
+                if (pts is not { } p) continue; // ausente/info-contexto
                 contribs.Add((s.Weight, p,
                     c is null ? null : $"{s.Key}={c.Value ?? c.Status}"));
             }
@@ -394,7 +400,15 @@ public static class HealthScore
             res.Verdict);
         foreach (var cat in res.Categories)
         {
-            if (cat.Score is not { } cs) continue;
+            if (cat.Score is not { } cs)
+            {
+                // A categoria pode ter ficado sem medições depois de já ter
+                // pontuado (ex.: o único teste do checklist voltou a
+                // «não testado»). A entrada velha sai do relatório — senão
+                // o JSON/HTML mostravam um número que já não entra no total.
+                r.Remove($"health.{cat.Key}");
+                continue;
+            }
             r.Set($"health.{cat.Key}", StatusFor(cs), $"{cs}/100", cat.Detail);
         }
         return res;
