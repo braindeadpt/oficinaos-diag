@@ -157,6 +157,30 @@ public sealed class ServiceModeUsbTests
     }
 
     [Fact]
+    public void AppleRecovery_NomeAlternativoComVidApple()
+    {
+        // A regra nova apanha variantes do INF que não usam o nome completo.
+        var m = ServiceModeUsb.MatchServiceMode(
+            "Apple Recovery Mode",
+            @"USB\VID_05AC&PID_1281\000081100001234ABC");
+
+        Assert.NotNull(m);
+        Assert.Equal(DeviceKind.Ios, m.Kind);
+        Assert.Equal("iosrecovery", m.State);
+    }
+
+    [Fact]
+    public void AppleRecovery_NomeAlternativoSemVidApple_NaoCasa()
+    {
+        // O mesmo nome num periférico de outro fabricante não é um iPhone.
+        var m = ServiceModeUsb.MatchServiceMode(
+            "Apple Recovery Mode",
+            @"USB\VID_1234&PID_5678\6&2A1B3C4D&0&B");
+
+        Assert.Null(m);
+    }
+
+    [Fact]
     public void AppleUsbNormal_NaoCasaRecovery()
     {
         // PID 1281 também aparece em iPads antigos em modo normal — o nome
