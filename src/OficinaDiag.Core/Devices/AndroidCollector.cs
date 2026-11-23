@@ -486,14 +486,26 @@ public sealed class AndroidCollector
             {
                 r.Set("security.audit.permissions", "skipped", "dump ilegível",
                     "dumpsys package não respondeu — permissões não auditadas");
-                r.Set("security.audit.installpackages", "skipped", "dump ilegível",
-                    "dumpsys package não respondeu — permissões não auditadas");
             }
             else
             {
                 var perms = AndroidSecurityAudit.SensitivePermissions(apps, grants);
                 r.Set("security.audit.permissions", perms.Status, perms.Value, perms.Note);
-                var inst = AndroidSecurityAudit.InstallPackages(apps, grants);
+            }
+
+            // Instalação de APKs: REQUEST_INSTALL_PACKAGES é signature|appop —
+            // o "install permissions" do dump mostra sempre granted=false para
+            // apps de utilizador; a autorização real vive nos AppOps.
+            var appOps = AndroidSecurityAudit.ParseInstallPackagesAppOps(
+                await AdbAsync(serial, "shell dumpsys appops", 30000));
+            if (appOps is null)
+            {
+                r.Set("security.audit.installpackages", "skipped", "appops ilegível",
+                    "dumpsys appops não respondeu — instalação de APKs não auditada");
+            }
+            else
+            {
+                var inst = AndroidSecurityAudit.InstallPackages(apps, appOps);
                 r.Set("security.audit.installpackages", inst.Status, inst.Value, inst.Note);
             }
 

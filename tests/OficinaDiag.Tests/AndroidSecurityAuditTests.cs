@@ -134,7 +134,50 @@ public class AndroidSecurityAuditTests
     public void DumpGrants_DumpNuloEDumpSemSecao()
     {
         Assert.Null(AndroidSecurityAudit.ParsePackageDumpGrants(null));
-        Assert.Empty(AndroidSecurityAudit.ParsePackageDumpGrants("lixo sem secção Packages")!);
+        // Sem "Packages:" o dump está truncado/corrompido — null = skipped,
+        // nunca uma lista vazia que daria "pass" às cegas.
+        Assert.Null(AndroidSecurityAudit.ParsePackageDumpGrants("lixo sem secção Packages"));
+    }
+
+    [Fact]
+    public void DumpGrants_UidPartilhadoReplicaPermissoesNosMembros()
+    {
+        // Apps com sharedUserId não têm bloco de permissões em "Packages:" —
+        // as permissões do UID vivem em "Shared users:" e valem para todos.
+        var dump = """
+            Packages:
+              Package [com.example.normal] (aa):
+                install permissions:
+                  android.permission.INTERNET: granted=true
+            Shared users:
+              SharedUser [com.example.shared] (bb):
+                appId=10100
+                Packages
+                  PackageSetting{c0ffee com.example.membera/10100}
+                  PackageSetting{c0ffee com.example.memberb/10100}
+                install permissions:
+                  android.permission.INTERNET: granted=true
+                  android.permission.WRITE_SETTINGS: granted=true
+                User 0:
+                  runtime permissions:
+                    android.permission.READ_SMS: granted=true, flags=[USER_SENSITIVE_WHEN_GRANTED]
+                    android.permission.READ_CONTACTS: granted=false, flags=[]
+            Package Changes:
+              SharedUser [com.example.late] (cc):
+                PackageSetting{c0ffee com.example.ignored/10101}
+                install permissions:
+                  android.permission.READ_SMS: granted=true
+            """;
+        var grants = AndroidSecurityAudit.ParsePackageDumpGrants(dump);
+
+        Assert.NotNull(grants);
+        // Cada membro herda os grants do UID partilhado; granted=false fica fora
+        // e o bloco depois de "Package Changes:" (fora de "Shared users:") não conta.
+        Assert.Contains(grants!, g => g.Package == "com.example.membera" && g.Permission == "android.permission.READ_SMS");
+        Assert.Contains(grants!, g => g.Package == "com.example.memberb" && g.Permission == "android.permission.WRITE_SETTINGS");
+        Assert.Contains(grants!, g => g.Package == "com.example.memberb" && g.Permission == "android.permission.INTERNET");
+        Assert.DoesNotContain(grants!, g => g.Package == "com.example.membera" && g.Permission == "android.permission.READ_CONTACTS");
+        Assert.DoesNotContain(grants!, g => g.Package == "com.example.ignored");
     }
 
     // ── settings: acessibilidade ────────────────────────────────────────
@@ -279,20 +322,76 @@ public class AndroidSecurityAuditTests
         Assert.Equal("pass", r.Status);
     }
 
+    // ── dumpsys appops (REQUEST_INSTALL_PACKAGES) ──────────────────────
+
+    private const string AppOpsDump = """
+        Current AppOps Service state:
+          Op mode watchers:
+            Op COARSE_LOCATION:
+              #0: ModeCallback{1e735b0 watchinguid=-1 flags=0x1 op=FINE_LOCATION from uid=u0a128 pid=5060}
+          Uid u0a100:
+            state=cch
+            Package com.android.system: 
+            Package com.whatsapp:
+              REQUEST_INSTALL_PACKAGES (ignore):
+              READ_CONTACTS: mode=ignore
+          Uid u0a101:
+            state=cch
+            Package com.spy:
+              REQUEST_INSTALL_PACKAGES (allow):
+              REQUEST_INSTALL_PACKAGES (allow): foreground
+            Package com.other:
+              REQUEST_INSTALL_PACKAGES: mode=allow
+        AppOps policy location tags:
+          #0: 10128=com.google.android.gms[awareness_provider]
+        """;
+
     [Fact]
-    public void InstallPackages_QualquerAppComPermissaoEWarn()
+    public void AppOps_SoModoAllowConta()
     {
-        var r = AndroidSecurityAudit.InstallPackages(AuditApps,
-            [("com.spy", "android.permission.REQUEST_INSTALL_PACKAGES")]);
-        Assert.Equal("warn", r.Status);
-        Assert.Contains("com.spy", r.Note);
+        var allowed = AndroidSecurityAudit.ParseInstallPackagesAppOps(AppOpsDump);
+
+        Assert.NotNull(allowed);
+        // ignore não conta; allow conta nos dois formatos ((allow) e mode=allow);
+        // duplicados no mesmo pacote não importam (HashSet).
+        Assert.Equal(["com.other", "com.spy"], allowed!.OrderBy(s => s, StringComparer.Ordinal).ToArray());
+        Assert.DoesNotContain("com.whatsapp", allowed);
+        Assert.DoesNotContain("com.android.system", allowed);
     }
 
     [Fact]
-    public void InstallPackages_SemPermissaoEPass()
+    public void AppOps_NuloDevolveNuloEOutputSemAppsDaVazio()
     {
-        var r = AndroidSecurityAudit.InstallPackages(AuditApps, []);
+        Assert.Null(AndroidSecurityAudit.ParseInstallPackagesAppOps(null));
+        Assert.Empty(AndroidSecurityAudit.ParseInstallPackagesAppOps("lixo sem packages")!);
+    }
+
+    [Fact]
+    public void InstallPackages_AutorizadasPelaAppopSaoWarn()
+    {
+        var r = AndroidSecurityAudit.InstallPackages(AuditApps,
+            new HashSet<string>(StringComparer.Ordinal) { "com.spy" });
+        Assert.Equal("warn", r.Status);
+        Assert.Contains("1 app(s) autorizadas a instalar APKs", r.Value);
+        Assert.Contains("com.spy (via origem desconhecida)", r.Note);
+        Assert.Contains("desconhecidos", r.Note);
+    }
+
+    [Fact]
+    public void InstallPackages_AppopDeSistemaNaoConta()
+    {
+        // Só contam apps de utilizador (pm -3): appops do sistema não são risco novo.
+        var r = AndroidSecurityAudit.InstallPackages(AuditApps,
+            new HashSet<string>(StringComparer.Ordinal) { "com.android.system", "com.whatsapp.system" });
         Assert.Equal("pass", r.Status);
+    }
+
+    [Fact]
+    public void InstallPackages_SemAutorizacaoEPass()
+    {
+        var r = AndroidSecurityAudit.InstallPackages(AuditApps, new HashSet<string>());
+        Assert.Equal("pass", r.Status);
+        Assert.Equal("0 apps autorizadas a instalar APKs", r.Value);
     }
 
     [Fact]
@@ -334,10 +433,21 @@ public class AndroidSecurityAuditTests
     [InlineData(false, null, "warn")]
     [InlineData(true, false, "pass")]
     [InlineData(true, true, "pass")]
+    // Android recente não expõe package_verifier_enable: cai no verify_adb.
+    [InlineData(null, false, "info")]
+    [InlineData(null, true, "pass")]
     public void Verifier_Estados(bool? enabled, bool? verifyAdb, string status)
     {
         var r = AndroidSecurityAudit.Verifier(enabled, verifyAdb);
         Assert.Equal(status, r.Status);
+    }
+
+    [Fact]
+    public void Verifier_SemChaveLegadaMasComVerifyAdbExplicaNaNota()
+    {
+        var r = AndroidSecurityAudit.Verifier(null, false);
+        Assert.Contains("ADB", r.Note);
+        Assert.Contains("package_verifier_enable", r.Note);
     }
 
     [Fact]

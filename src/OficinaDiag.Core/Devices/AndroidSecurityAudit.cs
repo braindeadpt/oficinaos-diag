@@ -48,14 +48,19 @@ internal static class AndroidSecurityAudit
         "android.permission.READ_PHONE_NUMBERS",
     };
 
-    private const string InstallPackagesPermission =
-        "android.permission.REQUEST_INSTALL_PACKAGES";
-
     private static readonly Regex PackageLine = new(@"^package:([^\s]+)", RegexOptions.Compiled);
     private static readonly Regex InstallerInline = new(@"\binstaller=(\S+)", RegexOptions.Compiled);
     private static readonly Regex PackageHeader = new(@"^\s+Package \[([^\]]+)\]", RegexOptions.Compiled);
     private static readonly Regex GrantedPermission = new(
         @"^\s+(android\.permission\.[A-Za-z0-9_]+):\s*granted=true\b", RegexOptions.Compiled);
+    private static readonly Regex SharedUserHeader = new(@"^\s+SharedUser \[", RegexOptions.Compiled);
+    private static readonly Regex SharedMember = new(
+        @"PackageSetting\{[^ ]+ ([^/]+)/\d+\}", RegexOptions.Compiled);
+    private static readonly Regex AppOpsPackageLine = new(@"^Package (\S+):$", RegexOptions.Compiled);
+    private static readonly Regex AppOpsOpParens = new(
+        @"^REQUEST_INSTALL_PACKAGES \((\w+)\)", RegexOptions.Compiled);
+    private static readonly Regex AppOpsOpMode = new(
+        @"^REQUEST_INSTALL_PACKAGES: mode=(\w+)", RegexOptions.Compiled);
 
     // ── Parsing (adb → dados) ────────────────────────────────────────────
 
@@ -109,36 +114,116 @@ internal static class AndroidSecurityAudit
     /// Um só dump: `dumpsys package &lt;pkg&gt;` por app eram ~100 arranques
     /// de JVM no telemóvel; o dump total transfere uma vez e filtra-se aqui.
     /// Só conta `granted=true` — `requested` e `granted=false` não dão risco.
+    ///
+    /// Apps com UID partilhado não têm permissões na secção "Packages:" —
+    /// vivem no bloco "Shared users:" e aplicam-se a todos os membros, por
+    /// isso os grants partilhados são replicados para cada membro. Sem a
+    /// secção "Packages:" o dump está truncado/corrompido: devolve null e o
+    /// collector faz skipped em vez de dar luz verde às cegas.
     /// </summary>
     internal static List<(string Package, string Permission)>? ParsePackageDumpGrants(string? dump)
     {
         if (dump is null) return null;
         var grants = new List<(string, string)>();
         var inPackages = false;
+        var inShared = false;
+        var sawPackages = false;
         string? current = null;
+        List<string>? sharedMembers = null;
+        List<string>? sharedGrants = null;
+
+        void FlushShared()
+        {
+            if (sharedMembers is not null && sharedGrants is not null)
+                foreach (var member in sharedMembers)
+                    foreach (var perm in sharedGrants)
+                        grants.Add((member, perm));
+            sharedMembers = null;
+            sharedGrants = null;
+        }
+
         foreach (var raw in dump.Split('\n'))
         {
             // Linhas vazias (\n ou \r\n) não são cabeçalhos — não podem fechar a secção.
             if (string.IsNullOrWhiteSpace(raw)) continue;
-            // Secções de topo começam na coluna 0; dentro de "Packages:" tudo é indentado.
+            // Secções de topo começam na coluna 0; dentro delas tudo é indentado.
             if (raw[0] is not (' ' or '\t'))
             {
-                inPackages = string.Equals(raw.TrimEnd(), "Packages:", StringComparison.Ordinal);
+                var header = raw.TrimEnd();
+                inPackages = string.Equals(header, "Packages:", StringComparison.Ordinal);
+                if (inPackages) sawPackages = true;
+                inShared = string.Equals(header, "Shared users:", StringComparison.Ordinal);
+                if (!inShared) FlushShared();
                 current = null;
                 continue;
             }
-            if (!inPackages) continue;
-            var pkg = PackageHeader.Match(raw);
+            if (inPackages)
+            {
+                var pkg = PackageHeader.Match(raw);
+                if (pkg.Success)
+                {
+                    current = pkg.Groups[1].Value;
+                    continue;
+                }
+                if (current is null) continue;
+                var g = GrantedPermission.Match(raw);
+                if (g.Success) grants.Add((current, g.Groups[1].Value));
+                continue;
+            }
+            if (!inShared) continue;
+            if (SharedUserHeader.IsMatch(raw))
+            {
+                FlushShared();
+                sharedMembers = new List<string>();
+                sharedGrants = new List<string>();
+                continue;
+            }
+            if (sharedMembers is null) continue;
+            var member = SharedMember.Match(raw);
+            if (member.Success)
+            {
+                sharedMembers.Add(member.Groups[1].Value);
+                continue;
+            }
+            var sg = GrantedPermission.Match(raw);
+            if (sg.Success) sharedGrants!.Add(sg.Groups[1].Value);
+        }
+        FlushShared();
+        return sawPackages ? grants : null;
+    }
+
+    /// <summary>
+    /// `dumpsys appops` — pacotes com REQUEST_INSTALL_PACKAGES em modo
+    /// <c>allow</c>. A permissão é <c>signature|appop</c>: o "install
+    /// permissions" do dumpsys package mostra sempre <c>granted=false</c>
+    /// para apps de utilizador e a autorização real ("instalar apps
+    /// desconhecidos") vive nos AppOps. Formato real (Android 14):
+    /// <c>Uid u0aXXX:</c> → <c>Package com.app:</c> →
+    /// <c>REQUEST_INSTALL_PACKAGES (allow):</c> (ou <c>: mode=allow</c>).
+    /// </summary>
+    internal static HashSet<string>? ParseInstallPackagesAppOps(string? appopsOutput)
+    {
+        if (appopsOutput is null) return null;
+        var allowed = new HashSet<string>(StringComparer.Ordinal);
+        string? current = null;
+        foreach (var raw in appopsOutput.Split('\n'))
+        {
+            var line = raw.Trim();
+            if (line.Length == 0) continue;
+            var pkg = AppOpsPackageLine.Match(line);
             if (pkg.Success)
             {
                 current = pkg.Groups[1].Value;
                 continue;
             }
             if (current is null) continue;
-            var g = GrantedPermission.Match(raw);
-            if (g.Success) grants.Add((current, g.Groups[1].Value));
+            var parens = AppOpsOpParens.Match(line);
+            var mode = parens.Success ? parens.Groups[1].Value
+                : AppOpsOpMode.Match(line) is { Success: true } m ? m.Groups[1].Value
+                : null;
+            if (mode == "allow") allowed.Add(current);
         }
-        return grants;
+        return allowed;
     }
 
     /// <summary>
@@ -265,27 +350,25 @@ internal static class AndroidSecurityAudit
     }
 
     /// <summary>
-    /// REQUEST_INSTALL_PACKAGES concedida — a permissão que permite a uma
-    /// app instalar outras apps (vetor de sideloading e persistência).
+    /// Apps de utilizador autorizadas a instalar APKs (AppOps
+    /// REQUEST_INSTALL_PACKAGES em <c>allow</c> — o "instalar apps
+    /// desconhecidos" das Definições). É o vetor de sideloading e
+    /// persistência; desinstalar ou repor a permissão é decisão do técnico.
     /// </summary>
     internal static AndroidDecisions.Reading InstallPackages(
-        IReadOnlyList<UserApp> apps, IReadOnlyList<(string Package, string Permission)> grants)
+        IReadOnlyList<UserApp> apps, ISet<string> appOpsAllowed)
     {
-        var appByPkg = new Dictionary<string, UserApp>(StringComparer.Ordinal);
-        foreach (var a in apps) appByPkg.TryAdd(a.Package, a);
-
-        var holders = grants
-            .Where(g => g.Permission == InstallPackagesPermission && appByPkg.ContainsKey(g.Package))
-            .Select(g => $"{g.Package} (via {OriginLabel(appByPkg[g.Package].Installer)})")
-            .Distinct(StringComparer.Ordinal)
+        var holders = apps
+            .Where(a => appOpsAllowed.Contains(a.Package))
+            .Select(a => $"{a.Package} (via {OriginLabel(a.Installer)})")
             .OrderBy(s => s, StringComparer.Ordinal)
             .ToList();
         if (holders.Count == 0)
-            return new AndroidDecisions.Reading("pass", "0 apps podem instalar APKs", null);
+            return new AndroidDecisions.Reading("pass", "0 apps autorizadas a instalar APKs", null);
 
         var detail = string.Join(", ", holders.Take(8)) + (holders.Count > 8 ? $" … (+{holders.Count - 8})" : "");
-        return new AndroidDecisions.Reading("warn", $"{holders.Count} app(s) podem instalar outras apps",
-            detail + " — rever 'instalar apps desconhecidos' e desinstalar o que o cliente não reconhece");
+        return new AndroidDecisions.Reading("warn", $"{holders.Count} app(s) autorizadas a instalar APKs",
+            detail + " — 'instalar apps desconhecidos' ativo; rever e desativar o que o cliente não reconhece");
     }
 
     /// <summary>
@@ -311,22 +394,34 @@ internal static class AndroidSecurityAudit
     }
 
     /// <summary>
-    /// Verificação de pacotes / Play Protect: `package_verifier_enable` e
-    /// `verifier_verify_adb_installs`. Desligada = apps novas não são
-    /// verificadas antes de instalar — warn; chave ausente = skipped.
+    /// Verificação de pacotes / Play Protect. Android recente já não expõe
+    /// `package_verifier_enable`: nesse caso usa-se
+    /// `verifier_verify_adb_installs` — como a auditoria vive de ADB, é o
+    /// estado que interessa (info: não é decisão do utilizador). Com a
+    /// chave presente, desligada = warn; ambas ausentes = skipped.
     /// </summary>
     internal static AndroidDecisions.Reading Verifier(bool? enabled, bool? verifyAdb)
     {
-        if (enabled is null)
-            return new AndroidDecisions.Reading("skipped", "verifier não exposto",
-                "package_verifier_enable ausente neste Android — não verificável");
-        if (!enabled.Value)
+        if (enabled == true)
+        {
+            var note = verifyAdb == false
+                ? "apps verificados antes de instalar; instalações via ADB não passam pelo verificador — conferir a origem dos APKs"
+                : "apps verificados antes de instalar (Play Protect)";
+            return new AndroidDecisions.Reading("pass", "verificação de pacotes ativa", note);
+        }
+        if (enabled == false)
             return new AndroidDecisions.Reading("warn", "verificação de pacotes desligada",
                 "Play Protect / verificação de apps desligada — apps novas não são verificadas antes de instalar");
-        var note = verifyAdb == false
-            ? "apps verificados antes de instalar; instalações via ADB não passam pelo verificador — conferir a origem dos APKs"
-            : "apps verificados antes de instalar (Play Protect)";
-        return new AndroidDecisions.Reading("pass", "verificação de pacotes ativa", note);
+        return verifyAdb switch
+        {
+            true => new AndroidDecisions.Reading("pass", "verificação de pacotes ativa",
+                "package_verifier_enable ausente neste Android; instalações ADB passam pelo verificador"),
+            false => new AndroidDecisions.Reading("info", "verificação de pacotes (estado legado)",
+                "package_verifier_enable ausente neste Android e verifier_verify_adb_installs=0 — " +
+                "instalações ADB não passam pelo verificador; o Play Protect não expõe estado via adb"),
+            _ => new AndroidDecisions.Reading("skipped", "verifier não exposto",
+                "package_verifier_enable e verifier_verify_adb_installs ausentes — não verificável"),
+        };
     }
 
     /// <summary>Apps desativadas mas ainda instaladas — inventário para a limpeza.</summary>
