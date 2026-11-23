@@ -69,8 +69,9 @@ public sealed class DeviceReport
 
     /// <summary>
     /// "sale" quando o técnico marca a avaliação como retoma/compra (ou o
-    /// cliente envia para venda); null = reparação (o default da Cloud).
-    /// Enviado como <c>purpose</c> ao /reports/diagnostic.
+    /// cliente envia para venda); "repair"/null = reparação (o default da Cloud).
+    /// "maintenance" é aceite no /reports/diagnostic para o relatório IA de
+    /// manutenção — a app envia-o como override do pedido, sem o gravar aqui.
     /// </summary>
     public string? Purpose { get; set; }
 
