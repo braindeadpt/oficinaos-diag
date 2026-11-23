@@ -129,6 +129,7 @@ public partial class MainWindow : Window
             _telemetryCts?.Cancel();
             TestButton.IsEnabled = false;
             BenchButton.IsEnabled = false;
+            MaintenanceButton.IsEnabled = false;
             ScanButton.IsEnabled = true; // permite tentar mesmo sem evento
             return;
         }
@@ -140,6 +141,9 @@ public partial class MainWindow : Window
         ScanButton.IsEnabled = ready;
         TestButton.IsEnabled = ready;
         BenchButton.IsEnabled = ready;
+        // Limpeza/otimização é Android-only (comandos pm/am/settings) e precisa
+        // do sistema completo — recovery/sideload não a têm.
+        MaintenanceButton.IsEnabled = ready && d.Kind == DeviceKind.Android;
         if (ready) StartTelemetry(d);
         else { _telemetryCts?.Cancel(); TelemetryText.Text = ""; }
     }
