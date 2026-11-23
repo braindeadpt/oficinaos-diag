@@ -58,3 +58,69 @@ Fases:
 Dependências: catálogo de reparações por modelo populado na app da loja
 (já existe parcialmente — repairs/services por device). Re-avaliar quando
 houver dados reais de scans beta.
+
+## Plano Diag Pro — evolução manutenção (TASK-90)
+
+Estado: P0 (relatório IA manutenção #45/#59, gestor apps #46, limpeza
+medida #47, auditoria segurança #48) **feito**. Este plano cobre o resto.
+
+### Fase A — estado do dispositivo e score (quick wins)
+
+1. **Deteção de modos de serviço/flash** — Android: `adb devices`/`getprop`
+   para fastboot/recovery/EDL/download mode + props; iOS: distinguir
+   normal/DFU/recovery via estado libimobiledevice. Alerta no relatório
+   antes de scans que falhariam silenciosamente.
+2. **Health score 0–100** — índice combinando bateria, armazenamento,
+   segurança (root/MDM/contas), crashes, temperatura e teste on-device.
+   Evolução antes/depois no histórico + export no relatório. Marketing/UX,
+   não substitui grading A–D.
+
+### Fase B — teste on-device avançado
+
+3. **Novos checks no TestServer/wwwroot** — `test.camera_front`,
+   `test.camera_back` (getUserMedia), `test.gpu` (WebGL stress),
+   `test.gps` (geolocation+precisão), `test.brightness`, touch sampling
+   rate se exposto. `skipped` quando a API não existe — nunca `fail` por
+   falta de permissão (Safari iOS é mais restrito).
+
+### Fase C — perfil de desempenho/bateria
+
+4. **Stress leve 5–10 min** durante scan manutenção: WebGL/canvas com
+   temperatura CPU/SoC vs célula, quedas USB; repetir pós-otimização.
+   Prova mensurável de autonomia ao cliente (usa PowerSession + medições
+   da limpeza #47).
+
+### Fase D — iOS
+
+5. **Inventário iOS via installation_proxy** — `ideviceinstaller list`
+   (CFBundleIdentifier, versões, Static/DynamicDiskUsage) = "o que ocupa
+   espaço" no iPhone sem jailbreak. Desinstalação de apps de utilizador
+   como Pro com confirmação. `security.mdm`/`findmy` com domínios e
+   instruções guiadas.
+
+### Fase E — operador/UX Pro
+
+6. **Templates de serviço** — troca bateria, troca ecrã, compra usado,
+   otimização, migração WhatsApp: checklist específico + medições
+   obrigatórias + relatório IA diferente por tipo.
+7. **Personalização assistida** — Android: intents para definições
+   (wallpaper/ecrã/bateria/apps), animações/densidade/fontes onde o OEM
+   permite, sugestão launchers/icon packs. iOS: assistente visual com QR
+   para o cliente seguir no próprio iPhone.
+8. **Batch/multi-device** — bancadas com N telefones, etiquetas em lote,
+   comparação de scans do mesmo modelo, fila "aparelhos por fazer".
+
+### Fase F — integrações
+
+9. **Auto-orçamento + peças** (desenho acima) — F2–F3 do roadmap:
+   match modelo→catálogo, checks→serviços candidatos, integração
+   `market-prices` para peças e `diag-intake` para pré-orçamento.
+10. **scrcpy** — bundling ~30 MB, `tools/platform-tools` já existe, Pro
+    (`diag` module). Licença Apache-2.0 OK (nota acima).
+
+### Bloqueado — precisa de hardware real
+
+11. **wa-migrate UI Pro** — core library existe (`WaStore`, `WaIosReader`,
+    `WaHtmlExport`, `WaContacts`) sem UI. Faltam os gates C (restore
+    domain-scoped) e D (WhatsApp não apaga BD injetada) validados em
+    dispositivos reais antes de prometer a feature.
