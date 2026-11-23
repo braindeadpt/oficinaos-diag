@@ -229,6 +229,12 @@ public sealed class TestResultMapperTests
         var skip = Map("""{"gpu":"skip"}""");
         Assert.Equal("skipped", skip.Results["test.gpu"].Status);
         Assert.Equal(L10n.T("test.gpu.skip"), skip.Results["test.gpu"].Value);
+
+        // API exposta mas contexto recusado — bloqueio de plataforma
+        // indistinguível de avaria: skipped com nota própria, nunca fail.
+        var noctx = Map("""{"gpu":"noctx"}""");
+        Assert.Equal("skipped", noctx.Results["test.gpu"].Status);
+        Assert.Equal(L10n.T("test.gpu.noctx"), noctx.Results["test.gpu"].Value);
     }
 
     [Fact]

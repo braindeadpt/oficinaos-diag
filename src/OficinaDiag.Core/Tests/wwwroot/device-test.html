@@ -130,26 +130,51 @@ const result = {
 };
 
 /* Taxa de amostragem de toque: PointerEvent.getCoalescedEvents expõe os
-   eventos que o browser fundiu — conta-os durante TODO o teste (a fase de
-   grelha já é um swipe contínuo). Sem a API o sampler fica inativo e o
-   check sai 'skip' — limitação de plataforma, nunca falha. */
-window.__touchSampler = { supported: false, moves: 0, coalesced: 0, t0: null, t1: null };
+   eventos que o browser fundiu — conta-os durante TODO o teste. Mede-se
+   por SEGMENTO de contacto (pointerdown→pointerup): pausas entre gestos
+   (dedo levantado, technician a ler instruções) não entram no denominador
+   — medido página toda, um swipe de 2 s seguido de 20 s de pausa dava uma
+   taxa 10× mais baixa do que a real.
+   A lista de coalesced já inclui o próprio pointermove como última
+   amostra — somar +1 contava tudo a dobrar. Sem a API o sampler fica
+   inativo e o check sai 'skip' — limitação de plataforma, nunca falha. */
+window.__touchSampler = { supported: false, active: 0, segStart: null, segSamples: 0, samples: 0, ms: 0 };
+document.addEventListener('pointerdown', e => {
+  const s = window.__touchSampler;
+  s.active++;
+  if (s.active === 1) { s.segStart = e.timeStamp; s.segSamples = 0; }
+}, { passive: true });
 document.addEventListener('pointermove', e => {
   if (typeof e.getCoalescedEvents !== 'function') return;
   const s = window.__touchSampler;
+  if (s.active === 0) return; // hover/sem contacto — não é amostragem de toque
   let n = 0;
-  try { n = e.getCoalescedEvents().length; } catch (err) { /* ignora */ }
+  try { n = e.getCoalescedEvents().length; } catch (err) { n = 0; }
+  // coalesced inclui o próprio evento; lista vazia (stub, ex.: Firefox
+  // Android) conta o pointermove despachado como a amostra que é.
   s.supported = true;
-  s.moves++;
-  s.coalesced += n + 1; // o PointerEvent atual soma-se aos coalesced
-  if (s.t0 === null) s.t0 = e.timeStamp;
-  s.t1 = e.timeStamp;
+  s.segSamples += Math.max(n, 1);
 }, { passive: true });
+const endTouchContact = e => {
+  const s = window.__touchSampler;
+  if (s.active === 0) return;
+  s.active--;
+  if (s.active === 0 && s.segStart !== null) {
+    const dur = e.timeStamp - s.segStart;
+    // Só contam segmentos com movimento real: contacto parado não mede
+    // taxa e um toque rápido (<100 ms / <5 amostras) é ruído, não um swipe.
+    if (dur >= 100 && s.segSamples >= 5) { s.samples += s.segSamples; s.ms += dur; }
+    s.segStart = null;
+    s.segSamples = 0;
+  }
+};
+document.addEventListener('pointerup', endTouchContact, { passive: true });
+document.addEventListener('pointercancel', endTouchContact, { passive: true });
 
 function computeTouchHz() {
   const s = window.__touchSampler;
-  if (!s.supported || s.moves < 5 || s.t1 <= s.t0) return null;
-  return Math.round(s.coalesced / ((s.t1 - s.t0) / 1000));
+  if (!s.supported || s.samples < 10 || s.ms <= 0) return null;
+  return Math.round(s.samples / (s.ms / 1000));
 }
 
 /* ── fase 1: cores + cinzentos ── */
@@ -478,9 +503,11 @@ function probeBrightness(){
   setSt('a-bright', result.brightnessValue + '%', 'ok');
 }
 
-/* GPU — stress WebGL leve: shader a rodar ~3 s. Contexto criado mas
-   perdido/erro a meio = 'fail'; API ausente = 'skip'; fps a menos de
-   5 = 'warn' (RAF estrangulado por poupança de bateria não é defeito). */
+/* GPU — stress WebGL leve: shader a rodar ~3 s. A API existir não garante
+   contexto criável: getContext() a devolver null é bloqueio da plataforma
+   (blocklist de GPU, política, modo poupança) indistinguível de avaria —
+   sai 'noctx' → skipped. 'fail' fica para o que é defeito real DEPOIS de
+   o contexto existir: shader/link, contexto perdido a meio ou gl.getError. */
 function runGpuTest(){
   if (!D.gpuApiAvailable(window)) {
     result.gpu = 'skip';
@@ -492,9 +519,11 @@ function runGpuTest(){
   const gl = canvas.getContext('webgl2') || canvas.getContext('webgl')
     || canvas.getContext('experimental-webgl');
   if (!gl) {
-    // A API existe mas a GPU/driver recusou o contexto — defeito real.
-    result.gpu = 'fail';
-    setSt('a-gpu', 'contexto WebGL falhou', 'no');
+    // API exposta mas contexto recusado — não dá para distinguir blocklist/
+    // política de uma GPU morta, e a regra é nunca falhar por limitação de
+    // plataforma: 'noctx' → skipped com nota própria no relatório.
+    result.gpu = 'noctx';
+    setSt('a-gpu', 'contexto não criado', 'no');
     return;
   }
   setSt('a-gpu', 'a renderizar…', 'warn');
@@ -560,6 +589,8 @@ const camRow = { front: 'a-camf', back: 'a-camb' };
 const camKey = { front: 'cameraFront', back: 'cameraBack' };
 
 function stopCam(){
+  camReq++; // invalida getUserMedia em voo — um pedido pendente não pode
+            // abrir stream depois do finish/confirmar com o painel oculto
   if (camStream) { camStream.getTracks().forEach(t => t.stop()); camStream = null; }
   camVideo.srcObject = null;
   camStage.style.display = 'none';
@@ -583,14 +614,22 @@ async function testCamera(which){
     });
     if (req !== camReq) { stream.getTracks().forEach(t => t.stop()); return; }
     camStream = stream;
-    pendingCam = which;
+    // facingMode é preferência: num telemóvel com uma só câmara o browser
+    // abre a que existe. O check que vale é o do lado que ABRIU de facto —
+    // a pedida sai 'skip' (indisponível) e a confirmação escreve no lado real.
+    const actual = D.cameraSideFromTrack(stream.getVideoTracks()[0]) || which;
+    if (actual !== which) {
+      result[camKey[which]] = 'skip';
+      setSt(camRow[which], 'câmara pedida indisponível', 'no');
+    }
+    pendingCam = actual;
     camVideo.srcObject = camStream;
     camStage.style.display = 'block';
     // play() pode rejeitar (política de autoplay) ou nem existir como
     // Promise nalguns browsers — o preview está muted, por isso é raro.
     try { const p = camVideo.play(); if (p && p.catch) p.catch(() => {}); }
     catch (err) { /* sem play — o frame aparece na mesma */ }
-    setSt(camRow[which], 'a confirmar…', 'warn');
+    setSt(camRow[actual], 'a confirmar…', 'warn');
   } catch (e) {
     if (req !== camReq) return; // pedido superado — não pisa no mais recente
     result[camKey[which]] = 'skip';
@@ -640,7 +679,9 @@ document.getElementById('gpsBtn').onclick = () => {
       clearTimeout(safety);
       result.gps = 'ok';
       result.gpsAccuracyM = Math.round(pos.coords.accuracy);
-      setSt('a-gps', 'fix ±' + result.gpsAccuracyM + ' m', 'ok');
+      // A API resolve por GPS, Wi-Fi ou rede — o check prova geolocalização,
+      // não isola o chip GPS. O relatório diz-o explicitamente.
+      setSt('a-gps', '±' + result.gpsAccuracyM + ' m', 'ok');
     },
     err => {
       clearTimeout(safety);

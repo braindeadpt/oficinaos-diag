@@ -92,6 +92,23 @@
       && typeof nav.mediaDevices.getUserMedia === 'function' ? 'available' : 'skip';
   }
 
+  /* facingMode no getUserMedia é PREFERÊNCIA, não garantia: num telemóvel
+     com uma só câmara o browser abre a que existe, mesmo pedindo a outra.
+     Aprovar a pedida era falso positivo — o lado que conta é o que abriu.
+     getSettings().facingMode ('user'/'environment') é a fonte; o label do
+     track é o fallback. Devolve 'front'|'back'|null (null = indeterminável,
+     a página fica com o lado pedido — não há como fazer melhor). */
+  function cameraSideFromTrack(track) {
+    if (!track) return null;
+    var s = typeof track.getSettings === 'function' ? track.getSettings() : null;
+    var fm = s && s.facingMode;
+    if (fm === 'user' || fm === 'environment') return fm === 'user' ? 'front' : 'back';
+    var label = (track.label || '').toLowerCase();
+    if (/back|rear|traseir|environment|trasera|trás/.test(label)) return 'back';
+    if (/front|user|facetime|selfie/.test(label)) return 'front';
+    return null;
+  }
+
   function micStatusFromPeak(peak) { return peak > MIC_PEAK_OK ? SENSOR_OK : 'fail'; }
 
   /* ── testes avançados (câmara, GPU, GPS, brilho, taxa de toque) ── */
@@ -166,6 +183,7 @@
     micAvailability: micAvailability,
     micStatusFromPeak: micStatusFromPeak,
     mediaAvailability: mediaAvailability,
+    cameraSideFromTrack: cameraSideFromTrack,
     GPU_STRESS_MS: GPU_STRESS_MS,
     GPU_MIN_FPS: GPU_MIN_FPS,
     gpuApiAvailable: gpuApiAvailable,

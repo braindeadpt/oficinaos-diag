@@ -513,7 +513,7 @@ public static class ReportBuilder
         "test.camera_front" => "Câmara frontal — teste no telefone",
         "test.camera_back" => "Câmara traseira — teste no telefone",
         "test.gpu" => "GPU — stress WebGL",
-        "test.gps" => "GPS — geolocalização",
+        "test.gps" => "Localização — geolocalização (GPS/Wi-Fi)",
         "test.brightness" => "Brilho — API do ecrã",
         "test.touchrate" => "Toque — taxa de amostragem",
         "usb.stability" => "Ligação USB — estabilidade",

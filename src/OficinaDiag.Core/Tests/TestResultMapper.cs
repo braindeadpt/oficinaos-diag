@@ -146,7 +146,9 @@ public static class TestResultMapper
         }
 
         // GPU — stress WebGL de ~3 s. 'warn' = fps a rasar do mínimo
-        // (RAF estrangulado por poupança de bateria, não defeito). O fps
+        // (RAF estrangulado por poupança de bateria, não defeito). 'noctx' =
+        // API exposta mas contexto recusado — bloqueio de plataforma
+        // indistinguível de avaria, por isso skipped com nota própria. O fps
         // pode faltar num payload malformado — o valor cai num texto simples.
         if (data.TryGetValue("gpu", out var gpu))
         {
@@ -160,6 +162,7 @@ public static class TestResultMapper
                     : gs == "warn"
                         ? fps is { } wf ? L10n.F("test.gpu.warnval", wf.ToString("0")) : L10n.T("test.gpu.warnplain")
                         : gs == "fail" ? L10n.T("test.gpu.fail")
+                        : gs == "noctx" ? L10n.T("test.gpu.noctx")
                         : L10n.T("test.gpu.skip"),
                 L10n.T("test.gpu.detail"));
         }

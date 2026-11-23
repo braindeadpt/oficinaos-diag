@@ -336,8 +336,19 @@ test('decisões avançadas: média partilhada, GPU, GPS, brilho e taxa de toque'
   assert.equal(D.mediaAvailability({ ...comMedia, isSecureContext: false }), 'skip');
   assert.equal(D.micAvailability(comMedia), 'available');
 
+  // Câmara: facingMode é preferência — o lado que conta é o do track real
+  // (getSettings().facingMode, label como fallback, null = indeterminável).
+  assert.equal(D.cameraSideFromTrack(null), null);
+  assert.equal(D.cameraSideFromTrack({}), null);
+  assert.equal(D.cameraSideFromTrack({ getSettings: () => ({ facingMode: 'user' }) }), 'front');
+  assert.equal(D.cameraSideFromTrack({ getSettings: () => ({ facingMode: 'environment' }) }), 'back');
+  assert.equal(D.cameraSideFromTrack({ getSettings: () => ({}), label: 'camera2 0, facing back' }), 'back');
+  assert.equal(D.cameraSideFromTrack({ label: 'Front Camera' }), 'front');
+  assert.equal(D.cameraSideFromTrack({ label: 'Integrated Camera' }), null);
+
   // GPU: a decisão é sobre o render, não sobre a API (gpuApiAvailable é
-  // testada na página — aqui ficam os limiares).
+  // testada na página — aqui ficam os limiares). O contexto que a API
+  // não cria é 'noctx' na página → skipped; 'fail' é só pós-criação.
   assert.equal(D.gpuApiAvailable({}), false);
   assert.equal(D.gpuApiAvailable({ WebGLRenderingContext: function () {} }), true);
   assert.equal(D.gpuApiAvailable({ WebGL2RenderingContext: function () {} }), true);
@@ -402,8 +413,13 @@ test('página: câmara confirmada vira ok e a faixa é libertada', async () => {
   try {
     const w = dom.window;
     const tracks = [{ stop() { this.stopped = true; } }];
+    // facingMode 'user' = frontal — o lado pedido e o real coincidem.
+    const videoTrack = { getSettings: () => ({ facingMode: 'user' }) };
     Object.defineProperty(w.navigator, 'mediaDevices', {
-      value: { getUserMedia: () => Promise.resolve({ getTracks: () => tracks }) },
+      value: { getUserMedia: () => Promise.resolve({
+        getTracks: () => tracks,
+        getVideoTracks: () => [videoTrack],
+      }) },
       configurable: true,
     });
     const doc = advanceToAdvanced(dom);
@@ -463,7 +479,10 @@ test('página: câmara confirmada como má vira fail', async () => {
   try {
     const w = dom.window;
     Object.defineProperty(w.navigator, 'mediaDevices', {
-      value: { getUserMedia: () => Promise.resolve({ getTracks: () => [{ stop() {} }] }) },
+      value: { getUserMedia: () => Promise.resolve({
+        getTracks: () => [{ stop() {} }],
+        getVideoTracks: () => [{ getSettings: () => ({ facingMode: 'user' }) }],
+      }) },
       configurable: true,
     });
     const doc = advanceToAdvanced(dom);
@@ -483,6 +502,74 @@ test('página: câmara confirmada como má vira fail', async () => {
   }
 });
 
+test('página: browser abre a câmara do outro lado — aprova o lado que abriu', async () => {
+  // Regressão Devin Review: facingMode é preferência, não garantia. Pedir
+  // 'back' num telemóvel com uma só câmara abre a frontal — aprovar a
+  // pedida era falso positivo. O lado real vem de getSettings().facingMode.
+  const dom = openPage({ secureContext: true });
+  const chamadas = [];
+  try {
+    const w = dom.window;
+    Object.defineProperty(w.navigator, 'mediaDevices', {
+      value: { getUserMedia: () => Promise.resolve({
+        getTracks: () => [{ stop() {} }],
+        getVideoTracks: () => [{ getSettings: () => ({ facingMode: 'user' }) }],
+      }) },
+      configurable: true,
+    });
+    const doc = advanceToAdvanced(dom);
+    doc.getElementById('camBBtn').onclick(); // pede traseira
+    await new Promise((r) => setTimeout(r, 0));
+
+    // A pedida sai 'skip' (indisponível); a confirmação escreve no lado real.
+    assert.equal(doc.getElementById('a-camb').textContent, 'câmara pedida indisponível');
+    assert.equal(doc.getElementById('a-camf').textContent, 'a confirmar…');
+    doc.getElementById('camOk').onclick();
+
+    w.fetch = (url, opts) => {
+      chamadas.push(JSON.parse(opts.body));
+      return Promise.resolve({ ok: true });
+    };
+    doc.getElementById('endBtn').onclick();
+    await new Promise((r) => setTimeout(r, 0));
+    assert.equal(chamadas[0].cameraFront, 'ok');   // a que abriu de facto
+    assert.equal(chamadas[0].cameraBack, 'skip');  // a pedida, indisponível
+  } finally {
+    dom.window.close();
+  }
+});
+
+test('página: pedido de câmara pendente é invalidado no finish', async () => {
+  // Regressão Devin Review: um getUserMedia lento não pode abrir stream com
+  // o painel já escondido — finish() tem de invalidar o pedido (camReq).
+  const dom = openPage({ secureContext: true });
+  try {
+    const w = dom.window;
+    let resolver;
+    const tracks = [{ stop() { this.stopped = true; } }];
+    Object.defineProperty(w.navigator, 'mediaDevices', {
+      value: { getUserMedia: () => new Promise((r) => { resolver = r; }) },
+      configurable: true,
+    });
+    w.fetch = () => Promise.resolve({ ok: true });
+    const doc = advanceToAdvanced(dom);
+    doc.getElementById('camFBtn').onclick(); // pedido fica pendente
+    doc.getElementById('endBtn').onclick();   // finish invalida camReq
+
+    // O browser resolve DEPOIS do finish — o stream morre na hora.
+    resolver({
+      getTracks: () => tracks,
+      getVideoTracks: () => [{ getSettings: () => ({ facingMode: 'user' }) }],
+    });
+    await new Promise((r) => setTimeout(r, 0));
+
+    assert.equal(tracks[0].stopped, true);
+    assert.equal(doc.getElementById('camStage').style.display, 'none');
+  } finally {
+    dom.window.close();
+  }
+});
+
 test('página: GPS com fix vira ok com precisão; erro padrão vira skip', async () => {
   const dom = openPage();
   const chamadas = [];
@@ -495,7 +582,8 @@ test('página: GPS com fix vira ok com precisão; erro padrão vira skip', async
     const doc = advanceToAdvanced(dom);
     doc.getElementById('gpsBtn').onclick();
     await new Promise((r) => setTimeout(r, 0));
-    assert.equal(doc.getElementById('a-gps').textContent, 'fix ±23 m');
+    // O check prova geolocalização (GPS/Wi-Fi/rede), não o chip GPS.
+    assert.equal(doc.getElementById('a-gps').textContent, '±23 m');
 
     w.fetch = (url, opts) => {
       chamadas.push(JSON.parse(opts.body));
@@ -544,15 +632,18 @@ test('página: GPS sem permissão fica skip; erro fora do padrão fica fail', as
   }
 });
 
-test('página: WebGL API presente mas contexto falha → gpu fail', async () => {
+test('página: WebGL API presente mas contexto não criado → gpu noctx (skipped)', async () => {
+  // Regressão Devin Review: a interface existir ≠ contexto criável. getContext
+  // a devolver null é bloqueio da plataforma (blocklist, política, poupança)
+  // indistinguível de avaria — nunca 'fail', sai 'noctx' → skipped.
   const dom = openPage();
   const chamadas = [];
   try {
     // gpuApiAvailable passa; o canvas.getContext do jsdom devolve null —
-    // o mesmo que uma GPU/driver a recusar o contexto num telemóvel real.
+    // o mesmo que um browser a recusar o contexto num telemóvel real.
     dom.window.WebGLRenderingContext = function () {};
     const doc = advanceToAdvanced(dom); // showAdvanced já correu runGpuTest
-    assert.equal(doc.getElementById('a-gpu').textContent, 'contexto WebGL falhou');
+    assert.equal(doc.getElementById('a-gpu').textContent, 'contexto não criado');
 
     dom.window.fetch = (url, opts) => {
       chamadas.push(JSON.parse(opts.body));
@@ -560,26 +651,44 @@ test('página: WebGL API presente mas contexto falha → gpu fail', async () => 
     };
     doc.getElementById('endBtn').onclick();
     await new Promise((r) => setTimeout(r, 0));
-    assert.equal(chamadas[0].gpu, 'fail');
+    assert.equal(chamadas[0].gpu, 'noctx');
   } finally {
     dom.window.close();
   }
 });
 
-test('página: pointermove com getCoalescedEvents mede a taxa de toque', async () => {
+/** Despacha um pointer event com timeStamp e getCoalescedEvents controlados. */
+function pointer(w, type, t, coalesced) {
+  const ev = new w.Event(type);
+  Object.defineProperty(ev, 'timeStamp', { value: t });
+  if (coalesced !== undefined) ev.getCoalescedEvents = () => new Array(coalesced).fill({});
+  w.document.dispatchEvent(ev);
+}
+
+test('página: taxa de toque mede por contacto — pausas entre gestos não entram', async () => {
+  // Regressão Devin Review: medir do primeiro ao último pointermove da página
+  // punha o dedo levantado (pausa entre gestos) no denominador — um swipe de
+  // 2 s + 10 s de pausa dava taxa 6× mais baixa. Agora mede-se por segmento
+  // pointerdown→pointerup.
   const dom = openPage();
   const chamadas = [];
   try {
     const doc = advanceToSensors(dom); // o sampler está ativo desde o início
     const w = dom.window;
-    // 6 movimentos a 1 s de intervalo, 59 coalesced cada → 360 amostras
-    // em 5 s = 72 Hz — acima do limiar de 60.
-    for (let i = 1; i <= 6; i++) {
-      const ev = new w.Event('pointermove');
-      Object.defineProperty(ev, 'timeStamp', { value: i * 1000 });
-      ev.getCoalescedEvents = () => new Array(59).fill({});
-      w.document.dispatchEvent(ev);
-    }
+    // Contacto A: down@0, 2 moves a 60 amostras (coalesced inclui o próprio
+    // evento), up@2000 → 120 amostras / 2000 ms.
+    pointer(w, 'pointerdown', 0);
+    pointer(w, 'pointermove', 1000, 60);
+    pointer(w, 'pointermove', 2000, 60);
+    pointer(w, 'pointerup', 2000);
+    // Pausa de 10 s — dedo levantado, não é amostragem.
+    // Contacto B: down@12000, 1 move a 60, up@13000 → 60 / 1000 ms.
+    pointer(w, 'pointerdown', 12000);
+    pointer(w, 'pointermove', 13000, 60);
+    pointer(w, 'pointerup', 13000);
+    // pointermove sem contacto (hover) — ignorado.
+    pointer(w, 'pointermove', 14000, 60);
+
     w.fetch = (url, opts) => {
       chamadas.push(JSON.parse(opts.body));
       return Promise.resolve({ ok: true });
@@ -588,9 +697,44 @@ test('página: pointermove com getCoalescedEvents mede a taxa de toque', async (
     doc.getElementById('endBtn').onclick();
     await new Promise((r) => setTimeout(r, 0));
 
-    assert.equal(chamadas[0].touchHz, 72);
+    // 180 amostras / 3000 ms = 60 Hz → 'ok'. Com a medição página toda
+    // seria 180/13000 ≈ 14 Hz → 'warn'.
+    assert.equal(chamadas[0].touchHz, 60);
     assert.equal(chamadas[0].touchSample, 'ok');
-    assert.equal(doc.getElementById('a-touchhz').textContent, '≈72 Hz');
+    assert.equal(doc.getElementById('a-touchhz').textContent, '≈60 Hz');
+  } finally {
+    dom.window.close();
+  }
+});
+
+test('página: getCoalescedEvents já inclui o evento — sem +1 fantasma', async () => {
+  // Regressão Devin Review: a lista coalesced inclui o próprio pointermove
+  // como última amostra; somar +1 contava tudo a dobrar. Com 59 coalesced
+  // por evento o correto é 59 Hz → 'warn'; com o +1 daria 60 Hz → 'ok'.
+  const dom = openPage();
+  const chamadas = [];
+  try {
+    const doc = advanceToSensors(dom);
+    const w = dom.window;
+    pointer(w, 'pointerdown', 0);
+    pointer(w, 'pointermove', 1000, 59);
+    pointer(w, 'pointermove', 2000, 59);
+    pointer(w, 'pointerup', 2000);
+    pointer(w, 'pointerdown', 12000);
+    pointer(w, 'pointermove', 13000, 59);
+    pointer(w, 'pointerup', 13000);
+
+    w.fetch = (url, opts) => {
+      chamadas.push(JSON.parse(opts.body));
+      return Promise.resolve({ ok: true });
+    };
+    doc.getElementById('advBtn').onclick();
+    doc.getElementById('endBtn').onclick();
+    await new Promise((r) => setTimeout(r, 0));
+
+    // 177 amostras / 3000 ms = 59 Hz → 'warn'.
+    assert.equal(chamadas[0].touchHz, 59);
+    assert.equal(chamadas[0].touchSample, 'warn');
   } finally {
     dom.window.close();
   }
