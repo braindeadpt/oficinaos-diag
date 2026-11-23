@@ -60,7 +60,7 @@ public partial class MainWindow : Window
             _history.Add(_report);
             Log(L10n.F("log.scan.done", _report.Results.Count));
             ExportButton.IsEnabled = TestButton.IsEnabled = SendButton.IsEnabled =
-                AiButton.IsEnabled = InsuranceButton.IsEnabled =
+                AiButton.IsEnabled = MaintenanceAiButton.IsEnabled = InsuranceButton.IsEnabled =
                 CompareButton.IsEnabled = LabelButton.IsEnabled =
                 ClientButton.IsEnabled = true;
         }
@@ -97,7 +97,7 @@ public partial class MainWindow : Window
         if (dlg.ShowDialog() != true) return;
         ApplyGrade();
         ExportButton.IsEnabled = SendButton.IsEnabled = AiButton.IsEnabled =
-            InsuranceButton.IsEnabled = CompareButton.IsEnabled =
+            MaintenanceAiButton.IsEnabled = InsuranceButton.IsEnabled = CompareButton.IsEnabled =
             LabelButton.IsEnabled = ClientButton.IsEnabled = true;
         Log(L10n.T("log.checklist.saved"));
     }

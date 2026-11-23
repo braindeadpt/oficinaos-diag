@@ -88,14 +88,20 @@ public static class ReportBuilder
         return token.Length > 80 ? token[..80] : token;
     }
 
-    /// <summary>Payload for cloud /reports/diagnostic (AI report, shop-side).</summary>
-    public static string ToCloudJson(DeviceReport r, string lang = "pt")
+    /// <summary>
+    /// Payload for cloud /reports/diagnostic (AI report, shop-side).
+    /// <paramref name="purpose"/> overrides the report purpose for one call —
+    /// "maintenance" is an AI-report mode, not an intake purpose stored on the report.
+    /// </summary>
+    public static string ToCloudJson(DeviceReport r, string lang = "pt", string? purpose = null)
     {
+        var requested = purpose is "sale" or "repair" or "maintenance" ? purpose : r.Purpose;
+        var cloudPurpose = requested is "sale" or "repair" or "maintenance" ? requested : null;
         var payload = new
         {
             lang,
-            // "repair" | "sale" — o mesmo enquadramento que o intake e a app usam.
-            purpose = r.Purpose is "sale" or "repair" ? r.Purpose : null,
+            // "repair" | "sale" | "maintenance" — o mesmo contrato da Cloud.
+            purpose = cloudPurpose,
             device = new { brand = r.Device.Brand, model = r.Device.Model, os = r.Device.Os, osVersion = r.Device.OsVersion },
             results = r.Results,
             logs = r.LogsText,

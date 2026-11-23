@@ -324,7 +324,7 @@ public sealed class CloudClient
     /// mascarado à vez — nunca fica em claro em ficheiros.
     /// </summary>
     public async Task<(bool ok, string reportOrError)> GenerateAiReportAsync(
-        string shopToken, DeviceReport report, string lang = "pt")
+        string shopToken, DeviceReport report, string lang = "pt", string? purpose = null)
     {
         if (!IntakeRules.NotesWithinLimit(report.Notes))
             return (false, L10n.F("err.notes.long", IntakeRules.NotesMaxLength));
@@ -336,7 +336,7 @@ public sealed class CloudClient
             {
                 var req = new HttpRequestMessage(HttpMethod.Post, new Uri(BaseUri, "reports/diagnostic"))
                 {
-                    Content = new StringContent(Reports.ReportBuilder.ToCloudJson(report, lang), Encoding.UTF8, "application/json"),
+                    Content = new StringContent(Reports.ReportBuilder.ToCloudJson(report, lang, purpose), Encoding.UTF8, "application/json"),
                 };
                 req.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", shopToken);
                 return req;

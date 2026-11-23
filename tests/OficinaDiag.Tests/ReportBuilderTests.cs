@@ -139,6 +139,7 @@ public class ReportBuilderTests
     [Theory]
     [InlineData("sale", "sale")]
     [InlineData("repair", "repair")]
+    [InlineData("maintenance", "maintenance")]
     public void CloudJsonIncludesPurpose(string purpose, string expected)
     {
         var r = Sample();
@@ -156,5 +157,15 @@ public class ReportBuilderTests
         r.Purpose = purpose;
         using var doc = JsonDocument.Parse(ReportBuilder.ToCloudJson(r, "pt"));
         Assert.False(doc.RootElement.TryGetProperty("purpose", out _));
+    }
+
+    [Fact]
+    public void CloudJsonPurposeOverride_SemGravarNoRelatorio()
+    {
+        var r = Sample();
+        r.Purpose = "sale";
+        using var doc = JsonDocument.Parse(ReportBuilder.ToCloudJson(r, "pt", "maintenance"));
+        Assert.Equal("maintenance", doc.RootElement.GetProperty("purpose").GetString());
+        Assert.Equal("sale", r.Purpose); // o override é só deste pedido à Cloud
     }
 }

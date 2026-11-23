@@ -74,7 +74,7 @@ public partial class MainWindow : Window
                     // do relatório têm de acordar como no scan/bancada, senão
                     // as medições ficavam invisíveis para exportar/enviar.
                     ExportButton.IsEnabled = SendButton.IsEnabled =
-                        AiButton.IsEnabled = InsuranceButton.IsEnabled =
+                        AiButton.IsEnabled = MaintenanceAiButton.IsEnabled = InsuranceButton.IsEnabled =
                         CompareButton.IsEnabled = LabelButton.IsEnabled =
                         ClientButton.IsEnabled = true;
                 }
@@ -211,7 +211,7 @@ public partial class MainWindow : Window
         res.ApplyTo(_report);
         ApplyGrade();
         ExportButton.IsEnabled = SendButton.IsEnabled = AiButton.IsEnabled =
-            InsuranceButton.IsEnabled = CompareButton.IsEnabled =
+            MaintenanceAiButton.IsEnabled = InsuranceButton.IsEnabled = CompareButton.IsEnabled =
             LabelButton.IsEnabled = ClientButton.IsEnabled = true;
         Log(L10n.F("log.bench.saved", res.ChargeValue, res.SampleCount));
     }
