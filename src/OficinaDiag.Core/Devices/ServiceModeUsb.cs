@@ -21,12 +21,16 @@ internal sealed record ServiceModeMatch(DeviceKind Kind, string State, string La
 /// </summary>
 internal static class ServiceModeUsb
 {
-    private sealed record Rule(string State, DeviceKind Kind, string Label, string[] Needles);
+    /// <param name="Vid">Se não-null, o DeviceID tem de conter este prefixo
+    /// (ex.: "vid_04e8") — obrigatório quando o nome do driver é genérico e
+    /// periféricos de outros fabricantes o podem usar ("Gadget Serial",
+    /// "DFU Mode").</param>
+    private sealed record Rule(string State, DeviceKind Kind, string Label, string[] Needles, string? Vid = null);
 
     // Needles são comparadas (case-insensitive) contra Name e DeviceID do
     // Win32_PnPEntity. Cuidado com VID/PID partilhados: Samsung usa
     // VID_04E8&PID_685D tanto no ADB normal como no Download mode — por isso
-    // o Odin só casa pelo nome do driver ("Gadget Serial"), nunca pelo PID.
+    // o Odin exige VID Samsung + nome "Gadget Serial", nunca o PID sozinho.
     private static readonly Rule[] Rules =
     [
         // Qualcomm HS-USB QDLoader 9008 — EDL/Sahara genérico (inclui muitos
@@ -37,19 +41,24 @@ internal static class ServiceModeUsb
         // fastboot/MTP+ADB e não devem casar aqui).
         new("edl", DeviceKind.Android, "Android em modo download (EDL)",
             ["vid_2717&pid_ff18"]),
-        // MediaTek bootrom/preloader — "MediaTek USB Port".
+        // MediaTek bootrom/preloader — "MediaTek USB Port"/"PreLoader".
+        // O MT65xx PreLoader enumera como PID_0003 ou PID_2000 (usb.ids).
         new("edl", DeviceKind.Android, "Android em modo download (preloader)",
-            ["vid_0e8d&pid_0003"]),
+            ["vid_0e8d&pid_0003", "vid_0e8d&pid_2000", "preloader usb vcom"]),
         // SPD/Unisoc download — "SCI USB2Serial".
         new("edl", DeviceKind.Android, "Android em modo download (preloader)",
             ["vid_1782&pid_4d00"]),
         // Samsung Download Mode (Odin) — "Gadget Serial". O PID 685D é
-        // partilhado com o ADB normal: só o nome do driver distingue.
+        // partilhado com o ADB normal e o nome existe em periféricos Linux:
+        // exige VID Samsung + nome de modo.
         new("odin", DeviceKind.Android, "Android em modo Download (Odin)",
-            ["gadget serial"]),
-        // iPhone/iPad DFU — VID_05AC PID_1227 é exclusivo do modo DFU.
+            ["gadget serial"], "vid_04e8"),
+        // iPhone/iPad DFU — PID_1227 é exclusivo do modo DFU; o nome
+        // "DFU Mode" sozinho aparece em STM32 e outros — exige VID Apple.
         new("dfu", DeviceKind.Ios, "iPhone/iPad em DFU",
-            ["vid_05ac&pid_1227", "dfu mode"]),
+            ["vid_05ac&pid_1227"]),
+        new("dfu", DeviceKind.Ios, "iPhone/iPad em DFU",
+            ["dfu mode"], "vid_05ac"),
         // iPhone/iPad Recovery — nome do driver é fiável; o PID 1281 também
         // aparece em modos normais de iPads antigos, por isso só o nome.
         new("iosrecovery", DeviceKind.Ios, "iPhone/iPad em recovery",
@@ -63,11 +72,17 @@ internal static class ServiceModeUsb
     internal static ServiceModeMatch? MatchServiceMode(string? name, string? deviceId)
     {
         if (string.IsNullOrEmpty(deviceId) && string.IsNullOrEmpty(name)) return null;
+        var id = deviceId ?? "";
         foreach (var r in Rules)
+        {
+            if (r.Vid is not null
+                && !id.Contains(r.Vid, StringComparison.OrdinalIgnoreCase))
+                continue;
             foreach (var n in r.Needles)
                 if ((name?.Contains(n, StringComparison.OrdinalIgnoreCase) ?? false)
-                    || (deviceId?.Contains(n, StringComparison.OrdinalIgnoreCase) ?? false))
+                    || id.Contains(n, StringComparison.OrdinalIgnoreCase))
                     return new ServiceModeMatch(r.Kind, r.State, r.Label);
+        }
         return null;
     }
 

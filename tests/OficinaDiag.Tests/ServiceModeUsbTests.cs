@@ -49,6 +49,19 @@ public sealed class ServiceModeUsbTests
     }
 
     [Fact]
+    public void MediaTekPreloader2000_DetetaAndroidEmEdl()
+    {
+        // MT65xx PreLoader enumera como PID_2000 (usb.ids), não só 0003.
+        var m = ServiceModeUsb.MatchServiceMode(
+            "MediaTek PreLoader USB VCOM (Android) (COM7)",
+            @"USB\VID_0E8D&PID_2000\6&2A1B3C4D&0&9");
+
+        Assert.NotNull(m);
+        Assert.Equal(DeviceKind.Android, m.Kind);
+        Assert.Equal("edl", m.State);
+    }
+
+    [Fact]
     public void SamsungGadgetSerial_DetetaOdin()
     {
         var m = ServiceModeUsb.MatchServiceMode(
@@ -73,6 +86,18 @@ public sealed class ServiceModeUsbTests
     }
 
     [Fact]
+    public void GadgetSerialSemVidSamsung_NaoCasaOdin()
+    {
+        // Gadget serial de periférico Linux (ex.: 0525:A4A6) — o nome
+        // genérico só conta com VID Samsung.
+        var m = ServiceModeUsb.MatchServiceMode(
+            "Gadget Serial",
+            @"USB\VID_0525&PID_A4A6\6&2A1B3C4D&0&8");
+
+        Assert.Null(m);
+    }
+
+    [Fact]
     public void AppleDfu_DetetaIosEmDfu()
     {
         var m = ServiceModeUsb.MatchServiceMode(
@@ -82,6 +107,17 @@ public sealed class ServiceModeUsbTests
         Assert.NotNull(m);
         Assert.Equal(DeviceKind.Ios, m.Kind);
         Assert.Equal("dfu", m.State);
+    }
+
+    [Fact]
+    public void StmDfu_NaoCasaIosDfu()
+    {
+        // STM32 em DFU (0483:DF11) — "DFU Mode" no nome não chega: exige VID Apple.
+        var m = ServiceModeUsb.MatchServiceMode(
+            "STM Device in DFU Mode",
+            @"USB\VID_0483&PID_DF11\6&2A1B3C4D&0&A");
+
+        Assert.Null(m);
     }
 
     [Fact]
