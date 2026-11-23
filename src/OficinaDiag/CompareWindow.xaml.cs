@@ -53,8 +53,12 @@ public sealed partial class CompareWindow : Window
             var checks = p.Results.Count;
             var grade = p.Results.TryGetValue("grade.overall", out var g)
                 ? L10n.F("cmp.grade", g.Value) : "";
+            // Health score gravado no scan (scans antigos não têm — a etiqueta
+            // simplesmente omite; a evolução aparece quando há dois valores).
+            var health = p.Results.TryGetValue("health.score", out var hc) && hc.Value != "—"
+                ? $" · saúde {hc.Value}" : "";
             ScanList.Items.Add(new ScanEntry(p,
-                $"{p.CollectedAt:dd-MM-yyyy HH:mm} · {L10n.F("cmp.checks", checks)}{grade}"));
+                $"{p.CollectedAt:dd-MM-yyyy HH:mm} · {L10n.F("cmp.checks", checks)}{grade}{health}"));
         }
         if (ScanList.Items.Count > 0) ScanList.SelectedIndex = ScanList.Items.Count - 1;
     }

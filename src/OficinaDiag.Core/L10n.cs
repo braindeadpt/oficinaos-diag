@@ -138,6 +138,14 @@ public static class L10n
             ["log.label.cancel"] = "> impressão da etiqueta cancelada",
             ["log.client.saved"] = "> relatório de cliente guardado: {0}",
 
+            // health score 0–100 — índice de vitrine, não substitui o grau
+            ["health.summary"] = "SAÚDE {0}/100 — {1}",
+            ["health.band.healthy"] = "Saudável",
+            ["health.band.fair"] = "Razoável",
+            ["health.band.concerning"] = "Preocupante",
+            ["health.band.none"] = "sem dados",
+            ["log.health"] = "> saúde do aparelho: {0}/100 — {1}",
+
             // resultados do teste no telefone (escritos no relatório via UI)
             ["test.touch.zones"] = "{0}/{1} zonas",
             ["test.touch.detail"] = "grelha de toque preenchida no telefone",
@@ -488,6 +496,14 @@ public static class L10n
             ["log.label.printed"] = "> label sent to the printer",
             ["log.label.cancel"] = "> label print cancelled",
             ["log.client.saved"] = "> customer report saved: {0}",
+
+            // health score 0–100 — showcase index, does not replace the grade
+            ["health.summary"] = "HEALTH {0}/100 — {1}",
+            ["health.band.healthy"] = "Healthy",
+            ["health.band.fair"] = "Fair",
+            ["health.band.concerning"] = "Concerning",
+            ["health.band.none"] = "no data",
+            ["log.health"] = "> device health: {0}/100 — {1}",
 
             ["test.touch.zones"] = "{0}/{1} zones",
             ["test.touch.detail"] = "touch grid filled on the phone",

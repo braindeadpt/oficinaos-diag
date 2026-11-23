@@ -5,6 +5,15 @@ Versões seguem o tag `v*` do release.
 
 ## Unreleased
 
+- Saúde do aparelho: novo **health score 0–100** (`OficinaDiag.Health`) —
+  índice de vitrine que soma bateria, armazenamento, segurança,
+  estabilidade, temperatura e teste no aparelho. Não substitui o grau A–D:
+  checks ausentes/skipped saem do cálculo (o peso redistribui, logo um
+  iPhone com menos dados visíveis não é penalizado). Aparece na janela
+  (percentagem + etiqueta Saudável/Razoável/Preocupante), no relatório
+  HTML/JSON como checks `health.*` com breakdown por categoria, na vista
+  cliente e na etiqueta antes/depois do comparar scans. Fase A.2 do plano
+  Diag Pro.
 - Relatórios: o HTML exportado segue agora o tema escolhido em Opções —
   Moderno (claro, Segoe UI, acentos azuis), Terminal (verde-fósforo) ou
   Windows 95 (claro, Tahoma). Aplica-se ao relatório normal e ao relatório
