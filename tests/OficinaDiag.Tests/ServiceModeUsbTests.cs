@@ -62,6 +62,30 @@ public sealed class ServiceModeUsbTests
     }
 
     [Fact]
+    public void MediaTekPreloader2000_SoPeloDeviceId()
+    {
+        // Se o Windows só der o DeviceID (sem nome de driver útil), o PID chega.
+        var m = ServiceModeUsb.MatchServiceMode(
+            "USB Serial Device",
+            @"USB\VID_0E8D&PID_2000\6&2A1B3C4D&0&9");
+
+        Assert.NotNull(m);
+        Assert.Equal("edl", m.State);
+    }
+
+    [Fact]
+    public void MediaTekPreloader2000_SoPeloNome()
+    {
+        // E se o DeviceID vier sem o PID esperado, o nome do driver chega.
+        var m = ServiceModeUsb.MatchServiceMode(
+            "MediaTek PreLoader USB VCOM (Android) (COM7)",
+            @"USB\VID_0E8D&PID_6000\6&2A1B3C4D&0&A");
+
+        Assert.NotNull(m);
+        Assert.Equal("edl", m.State);
+    }
+
+    [Fact]
     public void SamsungGadgetSerial_DetetaOdin()
     {
         var m = ServiceModeUsb.MatchServiceMode(
@@ -130,6 +154,30 @@ public sealed class ServiceModeUsbTests
         Assert.NotNull(m);
         Assert.Equal(DeviceKind.Ios, m.Kind);
         Assert.Equal("iosrecovery", m.State);
+    }
+
+    [Fact]
+    public void AppleRecovery_NomeAlternativoComVidApple()
+    {
+        // A regra nova apanha variantes do INF que não usam o nome completo.
+        var m = ServiceModeUsb.MatchServiceMode(
+            "Apple Recovery Mode",
+            @"USB\VID_05AC&PID_1281\000081100001234ABC");
+
+        Assert.NotNull(m);
+        Assert.Equal(DeviceKind.Ios, m.Kind);
+        Assert.Equal("iosrecovery", m.State);
+    }
+
+    [Fact]
+    public void AppleRecovery_NomeAlternativoSemVidApple_NaoCasa()
+    {
+        // O mesmo nome num periférico de outro fabricante não é um iPhone.
+        var m = ServiceModeUsb.MatchServiceMode(
+            "Apple Recovery Mode",
+            @"USB\VID_1234&PID_5678\6&2A1B3C4D&0&B");
+
+        Assert.Null(m);
     }
 
     [Fact]
