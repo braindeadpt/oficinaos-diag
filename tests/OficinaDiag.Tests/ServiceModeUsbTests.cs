@@ -62,6 +62,30 @@ public sealed class ServiceModeUsbTests
     }
 
     [Fact]
+    public void MediaTekPreloader2000_SoPeloDeviceId()
+    {
+        // Se o Windows só der o DeviceID (sem nome de driver útil), o PID chega.
+        var m = ServiceModeUsb.MatchServiceMode(
+            "USB Serial Device",
+            @"USB\VID_0E8D&PID_2000\6&2A1B3C4D&0&9");
+
+        Assert.NotNull(m);
+        Assert.Equal("edl", m.State);
+    }
+
+    [Fact]
+    public void MediaTekPreloader2000_SoPeloNome()
+    {
+        // E se o DeviceID vier sem o PID esperado, o nome do driver chega.
+        var m = ServiceModeUsb.MatchServiceMode(
+            "MediaTek PreLoader USB VCOM (Android) (COM7)",
+            @"USB\VID_0E8D&PID_6000\6&2A1B3C4D&0&A");
+
+        Assert.NotNull(m);
+        Assert.Equal("edl", m.State);
+    }
+
+    [Fact]
     public void SamsungGadgetSerial_DetetaOdin()
     {
         var m = ServiceModeUsb.MatchServiceMode(

@@ -63,6 +63,10 @@ internal static class ServiceModeUsb
         // aparece em modos normais de iPads antigos, por isso só o nome.
         new("iosrecovery", DeviceKind.Ios, "iPhone/iPad em recovery",
             ["apple mobile device (recovery mode)"]),
+        // Variante com o nome genérico — exige VID Apple porque "recovery
+        // mode" sozinho também aparece noutros drivers USB.
+        new("iosrecovery", DeviceKind.Ios, "iPhone/iPad em recovery",
+            ["recovery mode"], "vid_05ac"),
     ];
 
     /// <summary>
@@ -86,28 +90,17 @@ internal static class ServiceModeUsb
         return null;
     }
 
-    private static readonly object Gate = new();
-    private static List<DetectedDevice>? _cache;
-    private static DateTime _cacheAt = DateTime.MinValue;
-
     /// <summary>
-    /// Snapshot dos dispositivos USB em modo de serviço. Cache de 8 s: a WMI
-    /// enumera todas as entidades PnP (~1k linhas) e o poll corre a cada 2 s —
-    /// sem cache era trabalho desperdiçado quando não há telefone nenhum.
+    /// Snapshot dos dispositivos USB em modo de serviço. Sem cache: a WMI
+    /// enumera as entidades PnP (~1k linhas) mas o adb já spawna um processo
+    /// por poll — e um cache de segundos podia esconder uma entrada breve
+    /// num modo de serviço logo após uma ronda vazia.
     /// </summary>
     internal static IReadOnlyList<DetectedDevice> List()
     {
         if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
             return Array.Empty<DetectedDevice>();
-        lock (Gate)
-        {
-            if (_cache is not null && (DateTime.UtcNow - _cacheAt).TotalSeconds < 8)
-                return _cache;
-            var list = Query();
-            _cache = list;
-            _cacheAt = DateTime.UtcNow;
-            return list;
-        }
+        return Query();
     }
 
     /// <summary>WMI real — isolado para o matcher puro ficar testável sem Windows.</summary>
