@@ -239,11 +239,6 @@ public sealed class IosCollector
                 // componente de hardware a falhar; crashes de apps são info.
                 if (!cts.IsCancellationRequested)
                     CollectCrashLogs(r, udid, cts.Token);
-
-                // Inventário de apps via installation_proxy — "o que ocupa
-                // espaço" no iPhone sem jailbreak (Fase D do Diag Pro).
-                if (!cts.IsCancellationRequested)
-                    CollectAppInventory(r, udid, cts.Token);
             }
         });
 
@@ -282,6 +277,16 @@ public sealed class IosCollector
         // A task órfã pode continuar viva (o Kill só mata os filhos que o
         // token apanhou): o CTS só pode ser libertado quando ela terminar.
         _ = collect.ContinueWith(_ => cts.Dispose(), TaskScheduler.Default);
+
+        // Inventário de apps via installation_proxy — "o que ocupa espaço"
+        // no iPhone sem jailbreak (Fase D do Diag Pro). Corre DEPOIS do
+        // prazo do scan e com orçamento próprio: um browse lento ou um
+        // serviço que não responde marca só ios.apps.* como skipped —
+        // nunca scan=fail (o timeout global já não o pode alcançar).
+        var apps = await new IosAppManager()
+            .ListBoundedAsync(udid, IosAppManager.ScanBudgetMs);
+        foreach (var (key, reading) in IosAppDecisions.Checks(apps))
+            r.Set(key, reading.Status, reading.Value, reading.Note);
 
         return r;
     }
@@ -531,20 +536,6 @@ public sealed class IosCollector
         if (mg.TryGetValue("TelephonyCapability", out var telephony))
             r.Set("device.telephony", "info",
                 telephony == "true" ? "SIM/móvel" : "Wi-Fi only (iPad)");
-    }
-
-    /// <summary>
-    /// Apps instaladas (utilizador + sistema) com versões e uso de disco —
-    /// <c>ideviceinstaller -l -o list_all,xml</c> por trás do serviço
-    /// com.apple.mobile.installation_proxy. O serviço pode não responder
-    /// (iOS antigo, iPhone bloqueado, pairing sem desbloqueio): os checks
-    /// ficam skipped com a razão, nunca "0 apps" inventado.
-    /// </summary>
-    private void CollectAppInventory(DeviceReport r, string udid, CancellationToken ct)
-    {
-        var inv = new IosAppManager().List(udid, ct);
-        foreach (var (key, reading) in IosAppDecisions.Checks(inv))
-            r.Set(key, reading.Status, reading.Value, reading.Note);
     }
 
     /// <summary>

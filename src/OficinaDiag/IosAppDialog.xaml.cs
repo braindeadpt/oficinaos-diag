@@ -120,7 +120,9 @@ public sealed partial class IosAppDialog : Window
             if (_inventory.Error is not null)
             {
                 AddLog(L10n.F("apps.log.error", InventoryErrorText(_inventory.Error)));
-                _allRows = [];
+                // Refresh falhado: a grelha não pode continuar a mostrar o
+                // inventário anterior como se fosse actual — limpa já.
+                ClearGrid();
             }
             else
             {
@@ -135,6 +137,7 @@ public sealed partial class IosAppDialog : Window
         catch (Exception ex)
         {
             AddLog(L10n.F("apps.log.error", ex.Message));
+            ClearGrid();
         }
         finally
         {
@@ -142,6 +145,17 @@ public sealed partial class IosAppDialog : Window
             StatusText.Text = "";
             UpdateActions();
         }
+    }
+
+    /// <summary>Inventário inválido: limpa linhas, selecção e detalhe —
+    /// uma lista velha nunca pode parecer o estado actual do iPhone.</summary>
+    private void ClearGrid()
+    {
+        AppsList.ItemsSource = null;
+        _allRows = [];
+        _inventory = null;
+        _selected = null;
+        DetailsText.Text = "";
     }
 
     private AppRow ToRow(IosAppEntry e)
@@ -154,9 +168,12 @@ public sealed partial class IosAppDialog : Window
             Kind = kind,
             Version = e.Version ?? "—",
             Size = e.HasUsage ? IosAppDecisions.FormatSize(e.TotalBytes) : "—",
+            // Componente não reportado é "—", nunca "0 KB" — zero medido
+            // pelo iOS é diferente de medição em falta.
             Note = e.HasUsage
-                ? L10n.F("iosapps.usage", IosAppDecisions.FormatSize(e.StaticBytes ?? 0),
-                    IosAppDecisions.FormatSize(e.DynamicBytes ?? 0))
+                ? L10n.F("iosapps.usage",
+                    e.StaticBytes is long s ? IosAppDecisions.FormatSize(s) : "—",
+                    e.DynamicBytes is long d ? IosAppDecisions.FormatSize(d) : "—")
                 : L10n.T("iosapps.usage.none"),
         };
     }
@@ -257,6 +274,7 @@ public sealed partial class IosAppDialog : Window
         "protected" => L10n.T("iosapps.err.protected"),
         "notfound" => L10n.T("iosapps.err.notfound"),
         "verify" => L10n.T("iosapps.err.verify"),
+        "parse" => L10n.T("iosapps.err.parse"),
         "empty" => L10n.T("iosapps.err.empty"),
         _ => L10n.T("iosapps.err.tool"),
     };

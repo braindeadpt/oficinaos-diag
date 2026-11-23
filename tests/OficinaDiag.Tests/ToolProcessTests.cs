@@ -33,6 +33,33 @@ public class ToolProcessTests
     }
 
     [Fact]
+    public void StdoutEncodingUtf8_PreservaAcentos()
+    {
+        // O plist do ideviceinstaller sai em UTF-8; sem encoding explícito
+        // o .NET lê com a página de códigos do Windows e "Médis" corrompe.
+        // Emissor real: `dotnet fsi` com Console.OutputEncoding=UTF8 — o
+        // `cmd /c chcp 65001` NÃO serve: o echo fica na codepage OEM
+        // (verificado a bytes: 0x82 em vez de C3 A9).
+        var dir = Directory.CreateTempSubdirectory("oficinadiag-utf8-");
+        try
+        {
+            var script = Path.Combine(dir.FullName, "emit.fsx");
+            File.WriteAllText(script, """
+                open System
+                open System.Text
+                Console.OutputEncoding <- Encoding.UTF8
+                Console.Out.Write("Médis-Ação")
+                """, new System.Text.UTF8Encoding(true));
+
+            var saida = ToolProcess.Run("dotnet", $"fsi \"{script}\"", 20_000,
+                outputEncoding: System.Text.Encoding.UTF8);
+
+            Assert.Contains("Médis-Ação", saida);
+        }
+        finally { dir.Delete(true); }
+    }
+
+    [Fact]
     public async Task TimeoutMataAFilhaToda()
     {
         var dir = Directory.CreateTempSubdirectory("oficinadiag-kill-");

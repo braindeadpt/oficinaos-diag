@@ -297,6 +297,41 @@ public sealed class IosAppsTests
         Assert.Equal(0, calls);
     }
 
+    // ── orçamento próprio do scan (review PR #56) ────────────────────────
+
+    [Fact]
+    public async Task ListBounded_Rapido_DevolveInventario()
+    {
+        var manager = new IosAppManager((_, args, _, _) =>
+            args.Contains("list_all") ? Plist : null);
+
+        var inv = await manager.ListBoundedAsync("00008101-0002390A3600801E", 5_000);
+
+        Assert.Null(inv.Error);
+        Assert.Equal(3, inv.Apps.Count);
+    }
+
+    [Fact]
+    public async Task ListBounded_Lento_EsgotaOOrcamentoSemEsperarOTool()
+    {
+        // Seam que bloqueia para lá do orçamento — simula um browse
+        // empacado. O inventário tem de devolver "tool" já, sem esperar
+        // os 30 s do ToolProcess: é isto que impede um inventário lento
+        // de invalidar o scan inteiro.
+        var manager = new IosAppManager((_, _, _, _) =>
+        {
+            Thread.Sleep(10_000);
+            return Plist;
+        });
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+
+        var inv = await manager.ListBoundedAsync("00008101-0002390A3600801E", 200);
+
+        Assert.Equal("tool", inv.Error);
+        Assert.True(sw.ElapsedMilliseconds < 5_000,
+            $"demorou {sw.ElapsedMilliseconds} ms — o orçamento não segurou");
+    }
+
     private const string PlistSemExemplo = """
         <?xml version="1.0" encoding="UTF-8"?>
         <plist version="1.0">
@@ -396,6 +431,24 @@ public sealed class IosAppsTests
         {
             calls.Add(args);
             return args.StartsWith("-U ", StringComparison.Ordinal) ? null : Plist;
+        });
+        var r = await manager.UninstallAsync("00008101-0002390A3600801E", "com.exemplo.app");
+
+        Assert.False(r.Ok);
+        Assert.Equal("tool", r.Error);
+    }
+
+    [Fact]
+    public async Task Uninstall_RelistaFalha_ErroDeFetchNaoVerify()
+    {
+        // O -U correu mas a relista não respondeu: é erro de fetch
+        // ("tool"), não "verify" — a app pode até ter saído e não sabemos.
+        var listCalls = 0;
+        var manager = new IosAppManager((_, args, _, _) =>
+        {
+            if (args.StartsWith("-U ", StringComparison.Ordinal)) return "done";
+            listCalls++;
+            return listCalls == 1 ? Plist : null; // a relista falha
         });
         var r = await manager.UninstallAsync("00008101-0002390A3600801E", "com.exemplo.app");
 

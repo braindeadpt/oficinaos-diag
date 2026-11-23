@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Text;
 using System.Text.RegularExpressions;
 using System.Xml.Linq;
 
@@ -211,6 +212,13 @@ public sealed class IosAppManager
     private const int ListTimeoutMs = 30_000;
     private const int UninstallTimeoutMs = 60_000;
 
+    /// <summary>
+    /// Orçamento do inventário dentro de um scan — acima do ListTimeoutMs
+    /// para o timeout do próprio tool produzir o erro primeiro; o WhenAny
+    /// é só a rede de segurança para um bloqueio fora do ToolProcess.
+    /// </summary>
+    internal const int ScanBudgetMs = ListTimeoutMs + 5_000;
+
     /// <summary>Inventário síncrono — o coletor já corre fora da UI thread.</summary>
     internal IosAppInventory List(string udid, CancellationToken ct = default)
     {
@@ -225,6 +233,32 @@ public sealed class IosAppManager
     /// <summary>Versão para a UI — o browse bloqueia, por isso vai para o thread-pool.</summary>
     public Task<IosAppInventory> ListAsync(string udid, CancellationToken ct = default) =>
         Task.Run(() => List(udid, ct));
+
+    /// <summary>
+    /// Inventário com orçamento próprio — para o scan iOS, cujo prazo global
+    /// de 30 s já expirou quando o inventário começa. Se a listagem exceder
+    /// o orçamento (ou falhar por qualquer via), devolve Error="tool": os
+    /// checks ficam skipped e o estado do scan nunca é substituído. A task
+    /// abandonada continua mas morre sozinha — o ToolProcess mata a árvore
+    /// ao fim do ListTimeoutMs.
+    /// </summary>
+    internal async Task<IosAppInventory> ListBoundedAsync(
+        string udid, int budgetMs, CancellationToken ct = default)
+    {
+        try
+        {
+            var list = Task.Run(() => List(udid, ct));
+            var winner = await Task.WhenAny(list, Task.Delay(budgetMs));
+            // IsCompleted cobre a corrida em que os dois terminam juntos.
+            return winner == list || list.IsCompleted
+                ? await list
+                : new IosAppInventory { Apps = [], Error = "tool" };
+        }
+        catch
+        {
+            return new IosAppInventory { Apps = [], Error = "tool" };
+        }
+    }
 
     /// <summary>
     /// Desinstala uma app de utilizador. O ideviceinstaller sai com código 0
@@ -249,8 +283,13 @@ public sealed class IosAppManager
         var output = Exec(udid, $"-U {bundleId}", UninstallTimeoutMs, ct);
         if (output is null) return new IosAppActionResult(false, null, "tool");
 
+        // A relista é a prova — mas só se ela própria correr bem. Uma
+        // relista falhada (tool/parse/empty) é erro de fetch, não
+        // «a app continua instalada»: propaga-se o motivo real.
         var after = List(udid, ct);
-        if (after.Error is null && after.Apps.All(a => a.BundleId != bundleId))
+        if (after.Error is not null)
+            return new IosAppActionResult(false, output, after.Error);
+        if (after.Apps.All(a => a.BundleId != bundleId))
             return new IosAppActionResult(true, output, null);
         return new IosAppActionResult(false, output, "verify");
     }
@@ -268,6 +307,9 @@ public sealed class IosAppManager
         if (!IosCollector.IsValidUdid(udid)) return null;
         if (_run is not null) return _run(udid, args, timeoutMs, ct);
         var exe = IosCollector.ToolPath("ideviceinstaller.exe");
-        return exe is null ? null : ToolProcess.Run(exe, $"-u {udid} {args}", timeoutMs, ct);
+        // O plist sai em UTF-8 — sem encoding explícito o .NET lê com a
+        // página de códigos do Windows e nomes acentuados corrompem.
+        return exe is null ? null
+            : ToolProcess.Run(exe, $"-u {udid} {args}", timeoutMs, ct, Encoding.UTF8);
     }
 }

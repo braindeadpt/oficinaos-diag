@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Text;
 
 namespace OficinaDiag.Devices;
 
@@ -13,9 +14,12 @@ internal static class ToolProcess
     /// <summary>
     /// Stdout do processo, ou <c>null</c> se não arrancou, estourou o timeout
     /// ou foi cancelado. Em qualquer um dos três a árvore é morta.
+    /// <paramref name="outputEncoding"/> descodifica o stdout — ferramentas
+    /// que emitem UTF-8 (plist do ideviceinstaller) precisam dele, porque o
+    /// defeito é a página de códigos do Windows, não ASCII.
     /// </summary>
     internal static string? Run(string exe, string arguments, int timeoutMs,
-        CancellationToken ct = default)
+        CancellationToken ct = default, Encoding? outputEncoding = null)
     {
         try
         {
@@ -25,6 +29,7 @@ internal static class ToolProcess
                 RedirectStandardError = true,
                 UseShellExecute = false,
                 CreateNoWindow = true,
+                StandardOutputEncoding = outputEncoding,
             });
             if (p is null) return null;
 
