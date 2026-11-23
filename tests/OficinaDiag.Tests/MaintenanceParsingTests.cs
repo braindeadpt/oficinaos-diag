@@ -88,6 +88,16 @@ public class MaintenanceParsingTests
     }
 
     [Fact]
+    public void ParseSettingsDump_LeituraParcialDevolveDesconhecido()
+    {
+        // Menos de 4 linhas = leitura parcial: as posições já não correspondem
+        // às chaves, por isso nada é reposto com base nelas.
+        var (anim, lowPower) = MaintenanceParsing.ParseSettingsDump("1.0\n0.5");
+        Assert.Null(anim);
+        Assert.Null(lowPower);
+    }
+
+    [Fact]
     public void ParseScale_NullDoSistemaEDistintoDeZero()
     {
         Assert.Null(MaintenanceParsing.ParseScale("null"));

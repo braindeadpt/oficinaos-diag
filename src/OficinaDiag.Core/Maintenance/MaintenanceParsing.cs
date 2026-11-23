@@ -94,7 +94,12 @@ public static class MaintenanceParsing
         if (string.IsNullOrWhiteSpace(dump)) return (null, null);
         var lines = dump
             .Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-        var window = lines.Length > 0 ? ParseScale(lines[0]) : null;
+        // Cada `settings get` imprime sempre uma linha, por isso o dump completo
+        // tem 4. Com menos (leitura parcial) as posições deixavam de corresponder
+        // às chaves — um null na 1.ª linha era lido como a 2.ª chave e a
+        // reposição apagava definições erradas. Desconhecido não se repõe.
+        if (lines.Length != 4) return (null, null);
+        var window = ParseScale(lines[0]);
         var transition = lines.Length > 1 ? ParseScale(lines[1]) : null;
         var animator = lines.Length > 2 ? ParseScale(lines[2]) : null;
         int? lowPower = lines.Length > 3 && int.TryParse(lines[3], NumberStyles.Integer,
