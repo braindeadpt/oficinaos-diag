@@ -118,10 +118,11 @@ public sealed class DeviceReport
     }
 
     // Namespaces que um re-scan NÃO volta a produzir — checklist manual,
-    // teste no ecrã, bancada de potência e perfil de desempenho. Tudo o
-    // resto (battery.*, security.*, device.*, derivados como battery.swap)
+    // teste no ecrã, bancada de potência, perfil de desempenho e o
+    // checklist de serviço (tpl.*/service.template). Tudo o resto
+    // (battery.*, security.*, device.*, derivados como battery.swap)
     // é refeito na recolha e não pode ser arrastado de um scan anterior.
-    private static readonly string[] ManualPrefixes = ["checklist.", "test.", "sensor.", "power.", "perf."];
+    private static readonly string[] ManualPrefixes = ["checklist.", "test.", "sensor.", "power.", "perf.", "tpl.", "service."];
 
     /// <summary>
     /// Copia para ESTE relatório os resultados manuais de

@@ -8,6 +8,7 @@ using Markdig.Syntax;
 using Markdig.Syntax.Inlines;
 using OficinaDiag.Devices;
 using OficinaDiag.Maintenance;
+using OficinaDiag.Templates;
 
 namespace OficinaDiag.Reports;
 
@@ -140,6 +141,56 @@ public static class ReportBuilder
             notes = r.Notes,
         };
         return JsonSerializer.Serialize(payload, JsonOpts);
+    }
+
+    /// <summary>
+    /// Secção do serviço aplicado (Fase E.6): o checklist tpl.* do template
+    /// escolhido, na ordem definida pelo template — não alfabética como a
+    /// grelha geral. Os itens verificados viajam no JSON em results como
+    /// qualquer check; aqui ganham título e rótulos legíveis.
+    /// </summary>
+    private static void AppendService(StringBuilder sb, DeviceReport r)
+    {
+        if (!r.Results.TryGetValue(ServiceTemplates.AppliedKey, out var svc)
+            || svc.Value is null) return;
+        var tpl = ServiceTemplates.Find(svc.Value);
+        var title = tpl?.LabelPt ?? svc.Detail ?? svc.Value;
+        sb.AppendLine($"<h1 style=\"font-size:1em\">SERVIÇO — {System.Net.WebUtility.HtmlEncode(title)}</h1>");
+        sb.AppendLine("<table><tr><th>verificação</th><th>estado</th><th>valor</th><th>detalhe</th></tr>");
+
+        var prefix = $"{ServiceTemplates.Prefix}{svc.Value}.";
+        var shown = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        if (tpl is not null)
+            foreach (var item in tpl.Items)
+            {
+                var key = ServiceTemplates.CheckKey(tpl.Id, item.Key);
+                if (!r.Results.TryGetValue(key, out var c)) continue;
+                shown.Add(key);
+                AppendServiceRow(sb, key, c);
+            }
+        // Chaves tpl.* fora do catálogo actual (template editado depois do
+        // atendimento) não se perdem — caem no fim, por ordem alfabética.
+        foreach (var (key, c) in r.Results
+            .Where(kv => kv.Key.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)
+                      && !shown.Contains(kv.Key))
+            .OrderBy(kv => kv.Key))
+            AppendServiceRow(sb, key, c);
+        sb.AppendLine("</table>");
+    }
+
+    private static void AppendServiceRow(StringBuilder sb, string key, CheckResult c)
+    {
+        var label = ServiceTemplates.LabelPtFor(key);
+        // A primeira coluna mostra o rótulo legível do item; a do detalhe só
+        // quando traz algo além desse rótulo (medição, p.ex. — não repete).
+        var first = label ?? key;
+        var detail = label is not null && string.Equals(c.Detail, label, StringComparison.Ordinal)
+            ? ""
+            : c.Detail ?? "";
+        sb.AppendLine($"<tr><td>{System.Net.WebUtility.HtmlEncode(first)}</td>" +
+            $"<td class=\"{SafeCssToken(c.Status)}\">{c.Status.ToUpperInvariant()}</td>" +
+            $"<td>{System.Net.WebUtility.HtmlEncode(c.Value ?? "—")}</td>" +
+            $"<td>{System.Net.WebUtility.HtmlEncode(detail)}</td></tr>");
     }
 
     /// <summary>
@@ -342,6 +393,7 @@ public static class ReportBuilder
                 $"<td>{System.Net.WebUtility.HtmlEncode(c.Detail ?? "")}</td></tr>");
         }
         sb.AppendLine("</table>");
+        AppendService(sb, r);
         AppendMaintenance(sb, r);
         if (!string.IsNullOrWhiteSpace(r.LogsText))
             sb.AppendLine($"<h1 style=\"font-size:1em\">LOGS DE CRASH/PANIC</h1>" +
@@ -420,7 +472,18 @@ public static class ReportBuilder
     }
 
     /// <summary>Chave técnica → rótulo legível para o documento da seguradora.</summary>
-    private static string FriendlyLabel(string key) => key switch
+    private static string FriendlyLabel(string key)
+    {
+        // Checks de template de serviço (tpl.<id>.<item>) resolvem o rótulo
+        // do catálogo — a chave crua não diz nada a quem lê o relatório.
+        if (key.StartsWith("tpl.", StringComparison.Ordinal))
+            return ServiceTemplates.LabelPtFor(key) ?? key;
+        if (key == ServiceTemplates.AppliedKey)
+            return "Tipo de serviço";
+        return FriendlyLabelCore(key);
+    }
+
+    private static string FriendlyLabelCore(string key) => key switch
     {
         "battery.capacity" => "Bateria — capacidade",
         "battery.capacity_learned" => "Bateria — capacidade estimada",
@@ -608,7 +671,10 @@ public static class ReportBuilder
                       && kv.Key is not "identity.fingerprint" and not "security.selinux"
                              and not "security.build" and not "security.crypto"
                              and not "identity.iccid" and not "identity.partno"
-                             and not "identity.regmodel" and not "identity.region")
+                             and not "identity.regmodel" and not "identity.region"
+                             // meta-dado do atendimento — os itens tpl.* já
+                             // aparecem com os rótulos do serviço
+                             and not "service.template")
             .OrderBy(kv => kv.Key)
             .ToList();
         if (shown.Count > 0)

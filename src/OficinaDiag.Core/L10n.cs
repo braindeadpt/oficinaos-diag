@@ -77,6 +77,7 @@ public static class L10n
             ["btn.log"] = "ENVIAR LOG",
             ["btn.settings"] = "⚙",
             ["btn.checklist"] = "CHECKLIST",
+            ["btn.service"] = "SERVIÇO",
             ["btn.compare"] = "ANTES/DEPOIS",
             ["btn.label"] = "ETIQUETA",
             ["btn.client"] = "CLIENTE",
@@ -344,6 +345,16 @@ public static class L10n
             ["chk.na"] = "n/t",
             ["btn.apply"] = "APLICAR",
 
+            // templates de serviço (Fase E.6)
+            ["svc.title"] = "Serviço — checklist do atendimento",
+            ["svc.header"] = "SERVIÇO — checklist do atendimento",
+            ["svc.desc"] = "Escolhe o tipo de serviço: cada um traz o checklist específico e as medições que o scan deve trazer. Entra no relatório como tpl.* e orienta o relatório IA.",
+            ["svc.pick"] = "tipo de serviço",
+            ["svc.required"] = "medições que o scan deve trazer para este serviço:",
+            ["svc.missing"] = "em falta — corre o scan",
+            ["svc.maint.hint"] = "a otimização medida já existe como janela própria — escolher este serviço abre-a a seguir.",
+            ["log.svc.saved"] = "> checklist de serviço gravado no relatório",
+
             // limpeza / otimização medida
             ["maint.title"] = "Limpeza e otimização",
             ["maint.header"] = "LIMPEZA E OTIMIZAÇÃO — medida antes e depois",
@@ -506,6 +517,7 @@ public static class L10n
             ["btn.log"] = "SEND LOG",
             ["btn.settings"] = "⚙",
             ["btn.checklist"] = "CHECKLIST",
+            ["btn.service"] = "SERVICE",
             ["btn.compare"] = "BEFORE/AFTER",
             ["btn.label"] = "LABEL",
             ["btn.client"] = "CUSTOMER",
@@ -764,6 +776,16 @@ public static class L10n
             ["chk.fail"] = "defect",
             ["chk.na"] = "n/a",
             ["btn.apply"] = "APPLY",
+
+            // service templates (Phase E.6)
+            ["svc.title"] = "Service — job checklist",
+            ["svc.header"] = "SERVICE — job checklist",
+            ["svc.desc"] = "Pick the service type: each brings its own checklist and the measurements the scan should provide. It goes into the report as tpl.* and guides the AI report.",
+            ["svc.pick"] = "service type",
+            ["svc.required"] = "measurements the scan should provide for this service:",
+            ["svc.missing"] = "missing — run the scan",
+            ["svc.maint.hint"] = "measured optimization already exists as its own window — picking this service opens it next.",
+            ["log.svc.saved"] = "> service checklist saved to the report",
 
             // measured cleanup / optimization
             ["maint.title"] = "Cleanup & optimization",
