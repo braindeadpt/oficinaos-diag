@@ -163,7 +163,7 @@ public sealed class AndroidAppsTests
         var manager = new AndroidAppManager("adb", (_, command, _, _) => Task.FromResult<string?>(
             command.StartsWith("pm list", StringComparison.Ordinal) ? ""
             : command == "getprop ro.build.version.sdk" ? "23\n"
-            : command == "pm resolve-activity --brief -a android.intent.action.MAIN -c android.intent.category.HOME"
+            : command == "pm resolve-activity --brief --user 0 -a android.intent.action.MAIN -c android.intent.category.HOME"
                 ? "com.oem.launcher/.Home\n"
             : null));
 

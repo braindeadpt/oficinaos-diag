@@ -205,8 +205,6 @@ public sealed class AndroidAppManager
         "-c android.intent.category.HOME",
         "pm resolve-activity --brief --user 0 -a android.intent.action.MAIN " +
         "-c android.intent.category.HOME",
-        "pm resolve-activity --brief -a android.intent.action.MAIN " +
-        "-c android.intent.category.HOME",
     ];
 
     public async Task<AndroidAppInventory> ListAsync(string serial, CancellationToken ct = default)
@@ -379,7 +377,9 @@ public sealed class AndroidAppManager
             if (exitCode != 0)
             {
                 if (!allowNonZero) return null;
-                return string.IsNullOrWhiteSpace(output) ? error : output;
+                if (string.IsNullOrWhiteSpace(output))
+                    return string.IsNullOrWhiteSpace(error) ? null : error;
+                return output;
             }
             return output;
         }
