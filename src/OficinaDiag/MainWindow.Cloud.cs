@@ -145,6 +145,14 @@ public partial class MainWindow : Window
                 {
                     _config.SetShopToken(token, "diag");
                     _config.Save();
+                    // O emparelhamento acontece a meio do relatório de manutenção,
+                    // depois do scan: a auditoria Pro só entra no próximo scan.
+                    // O estado vem do relatório (não da seleção — o aparelho pode
+                    // já ter sido desligado), iOS não tem auditoria de apps e uma
+                    // checklist sem scan não tem «próximo scan» a repetir.
+                    var scanned = report.Results.Keys.Any(k => !k.StartsWith("checklist.", StringComparison.Ordinal));
+                    if (report.Platform == "android" && scanned)
+                        Log(L10n.T("log.pairing.rescan"));
                 }
             }
             Log(L10n.T("log.ai.gen"));
