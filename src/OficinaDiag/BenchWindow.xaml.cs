@@ -20,6 +20,10 @@ public sealed partial class BenchWindow : Window
     private readonly Func<Task<LiveTelemetry?>> _probe;
     private readonly Func<Task>? _loadOn;
     private readonly Func<Task>? _loadOff;
+    /// <summary>Aviso de nova tentativa — o MainWindow repõe o contador de quedas USB.</summary>
+    private readonly Action? _sessionStarted;
+    /// <summary>Aviso de fim das medições — o MainWindow desarma o contador de quedas.</summary>
+    private readonly Action? _sessionEnded;
     private CancellationTokenSource? _cts;
     // Sessão a decorrer: fechar a meio pede confirmação em vez de deitar
     // fora 60 s de medições com um clique no X.
@@ -29,7 +33,8 @@ public sealed partial class BenchWindow : Window
     public PowerSessionResult? Result { get; private set; }
 
     public BenchWindow(string deviceLabel, Func<Task<LiveTelemetry?>> probe,
-        Func<Task>? loadOn = null, Func<Task>? loadOff = null)
+        Func<Task>? loadOn = null, Func<Task>? loadOff = null,
+        Action? sessionStarted = null, Action? sessionEnded = null)
     {
         InitializeComponent();
         Title = L10n.T("bench.title");
@@ -52,6 +57,8 @@ public sealed partial class BenchWindow : Window
         _probe = probe;
         _loadOn = loadOn;
         _loadOff = loadOff;
+        _sessionStarted = sessionStarted;
+        _sessionEnded = sessionEnded;
         DeviceLabel.Text = deviceLabel;
         Scope.Reset(BaseSec + LoadSec + RecoverSec);
     }
@@ -61,6 +68,12 @@ public sealed partial class BenchWindow : Window
         StartBtn.IsEnabled = false;
         _sessaoACorrer = true;
         _cts = new CancellationTokenSource();
+        // Uma sessão inconclusiva pode ser repetida — o osciloscópio
+        // recomeça limpo em vez de sobrepor as amostras da tentativa morta.
+        Scope.Reset(BaseSec + LoadSec + RecoverSec);
+        // E as quedas USB contam-se por tentativa: as da tentativa anterior
+        // não podem manchar uma repetição estável.
+        _sessionStarted?.Invoke();
         var samples = new List<PowerSample>();
         var sw = Stopwatch.StartNew();
         var loadApplied = false;
@@ -79,12 +92,24 @@ public sealed partial class BenchWindow : Window
 
             Instr.Text = L10n.T("bench.done");
             Result = PowerAnalyzer.Analyze(samples);
-            Verdict.Text = "> " + Result.ChargeDetail +
-                           (Result.InternalResistanceMohm is { } ir
-                               ? L10n.F("bench.verdict.ir", ir)
-                               : Result.VoltageSagMv is { } sag && sag > 0
-                                   ? L10n.F("bench.verdict.sag", sag) : "");
-            DoneBtn.IsEnabled = true;
+            if (Result.SampleCount == 0)
+            {
+                // Zero amostras = o telemóvel não expôs leitura nenhuma em
+                // 60 s. Gravar daria «saúde 100/100» e grau A à custa de
+                // verificações fabricadas — a sessão é inconclusiva e o
+                // técnico repete a bancada (Start volta a ficar ativo).
+                Verdict.Text = "> " + L10n.T("bench.inconclusive");
+                StartBtn.IsEnabled = true;
+            }
+            else
+            {
+                Verdict.Text = "> " + Result.ChargeDetail +
+                               (Result.InternalResistanceMohm is { } ir
+                                   ? L10n.F("bench.verdict.ir", ir)
+                                   : Result.VoltageSagMv is { } sag && sag > 0
+                                       ? L10n.F("bench.verdict.sag", sag) : "");
+                DoneBtn.IsEnabled = true;
+            }
         }
         catch (OperationCanceledException)
         {
@@ -108,7 +133,13 @@ public sealed partial class BenchWindow : Window
             }
             else StartBtn.IsEnabled = true;
         }
-        finally { _sessaoACorrer = false; }
+        finally
+        {
+            _sessaoACorrer = false;
+            // As medições acabaram — quedas a partir daqui (ex.: o técnico
+            // a desligar o cabo para gravar) já não são do teste.
+            _sessionEnded?.Invoke();
+        }
     }
 
     private async Task RunPhase(List<PowerSample> samples, int phase, Stopwatch sw, TimeSpan end)

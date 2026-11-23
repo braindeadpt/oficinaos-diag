@@ -104,6 +104,17 @@ public sealed class DeviceReport
             Results[key] = new CheckResult { Status = status, Value = value, Detail = detail };
     }
 
+    /// <summary>
+    /// Remove uma chave — o HealthScore.Apply usa-a para apagar a entrada
+    /// de uma categoria que ficou sem medições depois de já ter pontuado
+    /// (um "100/100" velho no JSON/HTML já não entraria no total).
+    /// </summary>
+    public void Remove(string key)
+    {
+        lock (_gate)
+            Results.Remove(key);
+    }
+
     // Namespaces que um re-scan NÃO volta a produzir — checklist manual,
     // teste no ecrã e bancada de potência. Tudo o resto (battery.*,
     // security.*, device.*, derivados como battery.swap) é refeito na

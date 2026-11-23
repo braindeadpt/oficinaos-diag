@@ -220,11 +220,18 @@ public static class Grader
         var grade = "ABCD"[ceiling].ToString();
         // "scan" é meta-estado da recolha, não um check do aparelho — sem o
         // excluir, um scan falhado (só com scan:fail) passava no coverage e
-        // recebia grau A.
+        // recebia grau A. "health.*" também é derivado (HealthScore.Apply
+        // grava-o em todo o relatório, mesmo vazio): contá-lo aqui inflava a
+        // cobertura e um relatório sem dados ganhava grau à segunda passada.
+        // "skipped" é uma tentativa sem medição (MDM não consultável, bancada
+        // sem amostras) — não é dado do aparelho; um relatório só com skipped
+        // não tem base para grau e cai em "—" como um relatório vazio.
         var coverage = r.Results.Count(kv =>
             !kv.Key.StartsWith("grade.", StringComparison.Ordinal)
             && !kv.Key.StartsWith("suggest.", StringComparison.Ordinal)
-            && kv.Key != "scan");
+            && !kv.Key.StartsWith("health.", StringComparison.Ordinal)
+            && kv.Key != "scan"
+            && kv.Value.Status != "skipped");
         if (coverage == 0)
         {
             grade = "—";

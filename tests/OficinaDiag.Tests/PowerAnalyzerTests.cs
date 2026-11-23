@@ -1,4 +1,6 @@
 using OficinaDiag.Devices;
+using OficinaDiag.Grading;
+using OficinaDiag.Health;
 using Xunit;
 
 namespace OficinaDiag.Tests;
@@ -21,6 +23,107 @@ public sealed class PowerAnalyzerTests
         var r = PowerAnalyzer.Analyze(s);
         Assert.Equal("warn", r.ChargeStatus);
         Assert.Contains("não entra carga", r.ChargeDetail);
+    }
+
+    [Fact]
+    public void SemTelemetriaDeCorrente_NaoEMedicaoSemCarga()
+    {
+        // Regressão Devin Review: driver que não expõe mA produzia o mesmo
+        // warn "não entra carga" de uma porta morta — e o health score
+        // descontava 45 pts numa medição que nunca aconteceu. Sem nenhuma
+        // amostra de corrente → skipped, neutro no score e na coverage.
+        var s = new List<PowerSample>
+        {
+            S(1, 1, v: 4.95, temp: 30), S(2, 1, v: 4.95, temp: 30),
+            S(15, 2, v: 4.95, temp: 31), S(35, 3, v: 4.95, temp: 30),
+        };
+        var r = PowerAnalyzer.Analyze(s);
+        Assert.Equal("skipped", r.ChargeStatus);
+        Assert.Equal("—", r.ChargeValue); // "0 mA" sugeria leitura real
+
+        var report = new DeviceReport();
+        r.ApplyTo(report);
+        Assert.Equal("skipped", report.Results["power.charge"].Status);
+    }
+
+    [Fact]
+    public void CorrenteBaixaMedida_MantemWarn()
+    {
+        // Contraste: corrente exposta e efetivamente baixa É evidência de
+        // não carregar — o warn fica e o desconto no health score é justo.
+        var s = new List<PowerSample>
+        {
+            S(1, 1, ma: 10, charging: true), S(2, 1, ma: 10, charging: true),
+            S(35, 3, ma: 10, charging: true),
+        };
+        var r = PowerAnalyzer.Analyze(s);
+        Assert.Equal("warn", r.ChargeStatus);
+        Assert.Contains("não entra carga", r.ChargeDetail);
+    }
+
+    [Fact]
+    public void CorrenteSoNaFaseDeEsforco_ContaComoSemTelemetria()
+    {
+        // Regressão Devin Review: o diagnóstico de carga ignora a fase 2
+        // (esforço) mas a verificação de telemetria incluía-na — se só
+        // essa fase tivesse mA, a bancada avisava «sem telemetria» com
+        // corrente medida. Os dois critérios têm de olhar para o mesmo
+        // conjunto de fases.
+        var s = new List<PowerSample>
+        {
+            S(1, 1, v: 4.95, temp: 30), S(15, 2, ma: 500, v: 4.95, temp: 31),
+            S(35, 3, v: 4.95, temp: 30),
+        };
+        var r = PowerAnalyzer.Analyze(s);
+        Assert.Equal("skipped", r.ChargeStatus);
+    }
+
+    [Fact]
+    public void UsbDrops_ContaSoDuranteASessao()
+    {
+        // Regressões Devin Review: (ronda 3) repetir a bancada na mesma
+        // janela mantinha as quedas da tentativa anterior; (ronda 4) o
+        // contador ficava ativo até a janela fechar — desligar o cabo
+        // depois do teste marcava a ligação estável como instável. O
+        // relatório mede estabilidade DURANTE os ~60 s de sessão.
+        var c = new UsbDropCounter("dev-1");
+        // Antes da primeira sessão e depois do fim dela, não conta.
+        c.OnDeviceDetached("dev-1");
+        Assert.Equal(0, c.Count);
+
+        c.Begin();
+        c.OnDeviceDetached("dev-1");
+        c.OnDeviceDetached("outro-dev"); // queda de outro aparelho não conta
+        c.OnDeviceDetached("dev-1");
+        Assert.Equal(2, c.Count);
+
+        c.End(); // fim das medições — o resto já não é do teste
+        c.OnDeviceDetached("dev-1");
+        Assert.Equal(2, c.Count);
+
+        // Repetição: Begin repõe a contagem da tentativa anterior.
+        c.Begin();
+        c.OnDeviceDetached("dev-1");
+        Assert.Equal(1, c.Count);
+    }
+
+    [Fact]
+    public void SessaoVazia_NaoEscreveChecksPositivos()
+    {
+        // Regressão Devin Review: uma bancada sem amostras gravava
+        // usb.stability=pass («ligação estável») e power.session=info —
+        // o relatório saía com grau A e saúde 100/100 sem medir nada.
+        // Agora tudo fica skipped e o efeito dominó fecha: sem checks com
+        // dados não há grau nem score.
+        var r = PowerAnalyzer.Analyze(new List<PowerSample>());
+        var report = new DeviceReport();
+        r.ApplyTo(report);
+
+        Assert.Equal("skipped", report.Results["power.charge"].Status);
+        Assert.Equal("skipped", report.Results["usb.stability"].Status);
+        Assert.Equal("skipped", report.Results["power.session"].Status);
+        Assert.Equal("—", Grader.Compute(report).Grade);
+        Assert.Null(HealthScore.Compute(report).Score);
     }
 
     [Fact]

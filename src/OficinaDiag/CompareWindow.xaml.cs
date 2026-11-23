@@ -2,6 +2,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
 using OficinaDiag.Devices;
+using OficinaDiag.Health;
 
 namespace OficinaDiag;
 
@@ -53,8 +54,12 @@ public sealed partial class CompareWindow : Window
             var checks = p.Results.Count;
             var grade = p.Results.TryGetValue("grade.overall", out var g)
                 ? L10n.F("cmp.grade", g.Value) : "";
+            // Health score gravado no scan (scans antigos não têm — a etiqueta
+            // simplesmente omite; a evolução aparece quando há dois valores).
+            var health = p.Results.TryGetValue("health.score", out var hc) && hc.Value != "—"
+                ? $" · saúde {hc.Value}" : "";
             ScanList.Items.Add(new ScanEntry(p,
-                $"{p.CollectedAt:dd-MM-yyyy HH:mm} · {L10n.F("cmp.checks", checks)}{grade}"));
+                $"{p.CollectedAt:dd-MM-yyyy HH:mm} · {L10n.F("cmp.checks", checks)}{grade}{health}"));
         }
         if (ScanList.Items.Count > 0) ScanList.SelectedIndex = ScanList.Items.Count - 1;
     }
@@ -68,6 +73,17 @@ public sealed partial class CompareWindow : Window
         var pass = (Brush)Application.Current.FindResource("PassBrush");
         var fail = (Brush)Application.Current.FindResource("FailBrush");
 
+        // Cobertura do health score = categorias com medições — recomputada
+        // dos checks (HealthScore.Compute é puro), não das entradas
+        // health.<cat> gravadas: relatórios antigos podem trazê-las
+        // desatualizadas. Uma subida de score com MENOS categorias medidas
+        // não é melhoria confirmada — pode ser um check que falhava e
+        // passou a «não testado».
+        static int Cobertura(DeviceReport r) =>
+            HealthScore.Compute(r).Categories.Count(c => c.Score is not null);
+        var oldCov = Cobertura(past);
+        var newCov = Cobertura(_current);
+
         var rows = new List<DiffRow>();
         foreach (var key in _current.Results.Keys.Union(past.Results.Keys)
                      .Where(k => !k.StartsWith("grade.", StringComparison.Ordinal)
@@ -78,12 +94,32 @@ public sealed partial class CompareWindow : Window
             var hasNew = _current.Results.TryGetValue(key, out var now);
             var before = hasOld ? $"{old!.Value ?? "—"} [{old.Status}]" : "—";
             var nowText = hasNew ? $"{now!.Value ?? "—"} [{now.Status}]" : "—";
-            var oldSev = hasOld ? Severity.GetValueOrDefault(old!.Status) : -1;
-            var newSev = hasNew ? Severity.GetValueOrDefault(now!.Status) : -1;
-            var brush = !hasOld || !hasNew ? dim
-                : newSev > oldSev ? fail
-                : newSev < oldSev ? pass
-                : now!.Value == old!.Value ? dim : pass;
+            Brush brush;
+            if (key.StartsWith("health.", StringComparison.Ordinal))
+            {
+                // health.* é score 0–100: a cor segue o número e a cobertura,
+                // nunca o estado — 96→78 são ambos "pass" mas é descida, e
+                // um score perdido por falta de dados (→ skipped) não é
+                // melhoria nem queda do aparelho: cinza.
+                var isScore = key == "health.score";
+                brush = HealthScore.CompareRow(
+                        hasOld ? old : null, hasNew ? now : null,
+                        isScore ? oldCov : null, isScore ? newCov : null) switch
+                {
+                    HealthRowTrend.Improved => pass,
+                    HealthRowTrend.Declined => fail,
+                    _ => dim,
+                };
+            }
+            else
+            {
+                var oldSev = hasOld ? Severity.GetValueOrDefault(old!.Status) : -1;
+                var newSev = hasNew ? Severity.GetValueOrDefault(now!.Status) : -1;
+                brush = !hasOld || !hasNew ? dim
+                    : newSev > oldSev ? fail
+                    : newSev < oldSev ? pass
+                    : now!.Value == old!.Value ? dim : pass;
+            }
             rows.Add(new DiffRow { Key = key, Before = before, Now = nowText, Brush = brush });
         }
         DiffList.ItemsSource = rows;

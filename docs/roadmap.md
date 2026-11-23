@@ -73,7 +73,10 @@ medida #47, auditoria segurança #48) **feito**. Este plano cobre o resto.
 2. **Health score 0–100** — índice combinando bateria, armazenamento,
    segurança (root/MDM/contas), crashes, temperatura e teste on-device.
    Evolução antes/depois no histórico + export no relatório. Marketing/UX,
-   não substitui grading A–D.
+   não substitui grading A–D. **Feito** — `OficinaDiag.Health.HealthScore`
+   no Core (6 categorias com pesos, dados em falta redistribuem o peso),
+   etiqueta na janela, checks `health.*` no relatório e score na lista
+   antes/depois. Follow-up possível: sparkline de score no histórico.
 
 ### Fase B — teste on-device avançado
 

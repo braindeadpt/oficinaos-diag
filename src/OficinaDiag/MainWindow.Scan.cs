@@ -1,6 +1,8 @@
 using System.Windows;
+using System.Windows.Media;
 using OficinaDiag.Devices;
 using OficinaDiag.Grading;
+using OficinaDiag.Health;
 
 namespace OficinaDiag;
 
@@ -79,8 +81,13 @@ public partial class MainWindow : Window
     {
         if (_report is null) return;
         var g = Grader.Apply(_report);
+        // Health score 0–100 — derivado como o grau: recalcula-se sempre que
+        // o relatório ganha dados (scan, teste no ecrã, bancada, checklist).
+        var h = HealthScore.Apply(_report);
         RefreshResults();
         Log(L10n.F("log.grade", g.Grade, g.Verdict));
+        if (h.Score is { } hs)
+            Log(L10n.F("log.health", hs, L10n.T(h.BandL10nKey)));
     }
 
     /// <summary>Checklist físico — o que o USB não vê; entra no relatório e no grau.</summary>
@@ -138,5 +145,30 @@ public partial class MainWindow : Window
                 Display = $"{kv.Value.Value ?? ""} {kv.Value.Detail ?? ""}".Trim(),
             })
             .OrderBy(r => r.Key).ToList();
+        ShowHealth();
+    }
+
+    /// <summary>
+    /// Linha de saúde junto ao cabeçalho dos resultados — percentagem +
+    /// etiqueta L10n ("SAÚDE 87/100 — Saudável"), cor pela faixa. Corre em
+    /// RefreshResults: troca de idioma/tema reaplica o texto sem recalcular.
+    /// </summary>
+    private void ShowHealth()
+    {
+        var h = HealthScore.Compute(_report!);
+        if (h.Score is not { } s)
+        {
+            HealthText.Visibility = Visibility.Collapsed;
+            return;
+        }
+        HealthText.Text = L10n.F("health.summary", s, L10n.T(h.BandL10nKey));
+        HealthText.Foreground = (Brush)Application.Current.FindResource(
+            h.Band switch
+            {
+                HealthBand.Healthy => "PassBrush",
+                HealthBand.Fair => "WarnBrush",
+                _ => "FailBrush",
+            });
+        HealthText.Visibility = Visibility.Visible;
     }
 }

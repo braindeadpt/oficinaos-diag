@@ -177,6 +177,21 @@ public sealed class GraderTests
     }
 
     [Fact]
+    public void SoSkippedSemDados_GrauIndeterminado()
+    {
+        // Bancada sem amostras ou checks não consultáveis: skipped é
+        // tentativa sem medição — não conta para a coverage. Um relatório
+        // só de skipped não tem base para grau, como um relatório vazio.
+        var r = new DeviceReport { Platform = "android" };
+        r.Set("power.charge", "skipped", "—");
+        r.Set("usb.stability", "skipped", "sem observação");
+        r.Set("power.session", "skipped", "0 amostras");
+        var g = Grader.Compute(r);
+        Assert.Equal("—", g.Grade);
+        Assert.Contains(g.Reasons, x => x.Contains("sem dados"));
+    }
+
+    [Fact]
     public void ScanFalhadoSemCriticos_GrauIndeterminado()
     {
         // Scan morreu a meio: leu só o modelo — sem bateria/IMEI/bootloader

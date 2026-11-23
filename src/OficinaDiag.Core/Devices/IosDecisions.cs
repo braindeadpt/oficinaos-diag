@@ -79,4 +79,23 @@ internal static class IosDecisions
         externalConnected && watts is { } w && w > 0
             ? new Reading("info", $"{w} W", description)
             : null;
+
+    /// <summary>
+    /// Espaço livre do disco (`disk_usage`/`TotalDiskCapacity`, em bytes).
+    /// `null` = capacidade total não lida → check ausente. Total lido mas
+    /// livre por ler → "skipped": um "0 GB livres" por omissão pareceria
+    /// disco cheio e o health score penalizaria um iPhone saudável — a
+    /// leitura que falta é neutra, nunca uma medição.
+    /// </summary>
+    internal static Reading? Storage(string? totalRaw, string? freeRaw)
+    {
+        if (!ulong.TryParse(totalRaw, out var total) || total == 0)
+            return null;
+        if (!ulong.TryParse(freeRaw, out var free))
+            return new Reading("skipped", "indisponível",
+                "espaço livre não exposto por este iOS — utilização do disco por medir");
+        return new Reading("info",
+            $"{free / 1_073_741_824.0:0.#} GB livres de {total / 1_073_741_824.0:0.#} GB",
+            "utilização normal — não é defeito de hardware");
+    }
 }

@@ -323,6 +323,16 @@ public static class ReportBuilder
                 $"{System.Net.WebUtility.HtmlEncode(g.Detail ?? "")}</div>");
         }
 
+        // Health score 0–100 — marketing/UX complementar ao grau; o detalhe
+        // traz o breakdown por categoria ("Saudável — bateria 92 · …").
+        if (r.Results.TryGetValue("health.score", out var hs) && hs.Status != "skipped")
+        {
+            var healthClass = hs.Status == "fail" ? "fail" : hs.Status == "warn" ? "warn" : "pass";
+            sb.AppendLine($"<div style=\"border:2px solid;padding:.8em;margin-bottom:1.5em\" class=\"{healthClass}\">" +
+                $"<b>SAÚDE {System.Net.WebUtility.HtmlEncode(hs.Value)}</b><br>" +
+                $"{System.Net.WebUtility.HtmlEncode(hs.Detail ?? "")}</div>");
+        }
+
         sb.AppendLine("<table><tr><th>verificação</th><th>estado</th><th>valor</th><th>detalhe</th></tr>");
         foreach (var (key, c) in r.Results.OrderBy(kv => kv.Key))
         {
@@ -568,11 +578,17 @@ public static class ReportBuilder
         if (parts is not null)
             sb.AppendLine($"<p><b>Peças prováveis para reparação:</b> {e(parts)}</p>");
 
+        // Saúde do aparelho — o número de vitrine vai proeminente; as linhas
+        // health.* ficam fora da tabela (são derivadas, não verificações).
+        if (r.Results.TryGetValue("health.score", out var health) && health.Status != "skipped")
+            sb.AppendLine($"<p><b>Saúde do aparelho:</b> {e(health.Value)} — {e(health.Detail)}</p>");
+
         // Verificações relevantes para o cliente — agrupadas por estado.
         var shown = r.Results
             .Where(kv => !kv.Key.StartsWith("logs.", StringComparison.Ordinal)
                       && !kv.Key.StartsWith("grade.", StringComparison.Ordinal)
                       && !kv.Key.StartsWith("suggest.", StringComparison.Ordinal)
+                      && !kv.Key.StartsWith("health.", StringComparison.Ordinal)
                       && kv.Key is not "identity.fingerprint" and not "security.selinux"
                              and not "security.build" and not "security.crypto"
                              and not "identity.iccid" and not "identity.partno"
@@ -704,7 +720,11 @@ public static class ReportBuilder
         {
             sb.AppendLine("<h3>Verificações técnicas</h3>" +
                 "<table class=\"checks\"><tr><th>Verificação</th><th>Estado</th><th>Observação</th></tr>");
-            foreach (var (key, c) in r.Results.OrderBy(kv => kv.Key))
+            // health.* é score derivado de marketing — não é verificação
+            // técnica e não entra num documento formal de sinistro.
+            foreach (var (key, c) in r.Results
+                .Where(kv => !kv.Key.StartsWith("health.", StringComparison.Ordinal))
+                .OrderBy(kv => kv.Key))
             {
                 var obs = string.Join(" — ", new[] { c.Value, c.Detail }.Where(s => !string.IsNullOrWhiteSpace(s)));
                 var cls = c.Status switch

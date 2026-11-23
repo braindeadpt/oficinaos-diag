@@ -5,6 +5,42 @@ public sealed record PowerSample(double T, int Phase, int? Milliamps, double? Vo
     double? TempC, int? Percent, bool? Charging, double? NegotiatedWatts,
     double? SocTempC = null);
 
+/// <summary>
+/// Contador de quedas USB do host durante uma sessão SCAN+ — vive no
+/// MainWindow mas a contagem/reposição é testável aqui. Duas regras:
+/// - A contagem é POR TENTATIVA e POR JANELA DE MEDIÇÃO: cada Begin
+///   repõe o contador e End desarma-o. Quedas da tentativa anterior ou
+///   depois do fim das medições (o técnico a desligar o cabo para
+///   gravar) não são do teste — o relatório mede estabilidade DURANTE
+///   os ~60 s de sessão.
+/// </summary>
+public sealed class UsbDropCounter
+{
+    private readonly string _deviceId;
+    private bool _armed;
+
+    public UsbDropCounter(string deviceId) => _deviceId = deviceId;
+
+    /// <summary>Quedas vistas pelo host desde o último Begin.</summary>
+    public int Count { get; private set; }
+
+    /// <summary>Abre a janela de medição — repõe a contagem e arma o contador.</summary>
+    public void Begin()
+    {
+        Count = 0;
+        _armed = true;
+    }
+
+    /// <summary>Fim das medições — quedas depois disto já não pertencem ao teste.</summary>
+    public void End() => _armed = false;
+
+    /// <summary>Evento do detector — só conta quedas DO aparelho, e só armado.</summary>
+    public void OnDeviceDetached(string detachedId)
+    {
+        if (_armed && detachedId == _deviceId) Count++;
+    }
+}
+
 /// <summary>Resultado analisado da sessão — transforma-se em checks do relatório.</summary>
 public sealed class PowerSessionResult
 {
@@ -55,11 +91,22 @@ public sealed class PowerSessionResult
         if (UsbDrops > 0)
             r.Set("usb.stability", "warn", $"{UsbDrops} desconexão(ões)",
                 "o host viu o USB cair durante a sessão — porta com folga, pinos gastos ou cabo do cliente fraco");
+        else if (SampleCount == 0)
+            // Sessão sem amostras não observou nada — «ligação estável»
+            // seria uma verificação fabricada que ainda infla a coverage.
+            r.Set("usb.stability", "skipped", "sem observação",
+                "sessão sem amostras — estabilidade USB não observada");
         else
             r.Set("usb.stability", "pass", "ligação estável",
                 "sem desconexões durante ~60 s de teste contínuo");
-        r.Set("power.session", "info", $"{SampleCount} amostras · {DurationSec}s",
-            "sessão SCAN+ — base · carga de ecrã · recuperação");
+        // Meta da sessão: com zero amostras é skipped — como "info"
+        // contava para a coverage do Grader e uma bancada vazia ganhava
+        // grau A sem ter medido seja o que for.
+        r.Set("power.session", SampleCount == 0 ? "skipped" : "info",
+            $"{SampleCount} amostras · {DurationSec}s",
+            SampleCount == 0
+                ? "bancada inconclusiva — repete a sessão"
+                : "sessão SCAN+ — base · carga de ecrã · recuperação");
     }
 }
 
@@ -84,6 +131,11 @@ public static class PowerAnalyzer
 
         // Carga via porta do PC — honestamente é só isso que o cabo de dados permite medir
         var charging = samples.Where(s => s.Phase != 2 && s.Milliamps is > 30 && s.Charging != false).ToList();
+        // Telemetria de corrente: se NENHUMA amostra das fases de carga
+        // (fora da fase de esforço, como no filtro `charging`) trouxe mA,
+        // o driver não expõe corrente — a lista vazia é falta de medição,
+        // não prova de porta morta. skipped fica neutro no health score.
+        var currentExposed = samples.Any(s => s.Phase != 2 && s.Milliamps is not null);
         double? realW = null;
         var withW = charging.Where(s => s.Volts is { }).ToList();
         if (withW.Count > 2)
@@ -128,8 +180,16 @@ public static class PowerAnalyzer
         string status, detail;
         if (charging.Count == 0)
         {
-            status = "warn";
-            detail = "não entra carga pela porta — cabo sem dados+power, porta suja ou circuito de carga morto";
+            if (!currentExposed)
+            {
+                status = "skipped";
+                detail = "corrente não exposta pelo driver — caminho de carga não medido (não é defeito do aparelho)";
+            }
+            else
+            {
+                status = "warn";
+                detail = "não entra carga pela porta — cabo sem dados+power, porta suja ou circuito de carga morto";
+            }
         }
         else if (realW is { } rw)
         {
@@ -147,7 +207,9 @@ public static class PowerAnalyzer
         return new PowerSessionResult
         {
             ChargeStatus = status,
-            ChargeValue = realW is { } rw2 ? $"{rw2:0.#} W" : $"{avgMa:0} mA",
+            // skipped não tem valor medido — "0 mA" sugeria leitura real.
+            ChargeValue = status == "skipped" ? "—"
+                : realW is { } rw2 ? $"{rw2:0.#} W" : $"{avgMa:0} mA",
             ChargeDetail = detail,
             RealWatts = realW,
             InternalResistanceMohm = irMohm,

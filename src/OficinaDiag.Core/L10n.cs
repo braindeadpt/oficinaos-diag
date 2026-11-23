@@ -138,6 +138,14 @@ public static class L10n
             ["log.label.cancel"] = "> impressão da etiqueta cancelada",
             ["log.client.saved"] = "> relatório de cliente guardado: {0}",
 
+            // health score 0–100 — índice de vitrine, não substitui o grau
+            ["health.summary"] = "SAÚDE {0}/100 — {1}",
+            ["health.band.healthy"] = "Saudável",
+            ["health.band.fair"] = "Razoável",
+            ["health.band.concerning"] = "Preocupante",
+            ["health.band.none"] = "sem dados",
+            ["log.health"] = "> saúde do aparelho: {0}/100 — {1}",
+
             // resultados do teste no telefone (escritos no relatório via UI)
             ["test.touch.zones"] = "{0}/{1} zonas",
             ["test.touch.detail"] = "grelha de toque preenchida no telefone",
@@ -206,6 +214,7 @@ public static class L10n
             ["bench.phase3.auto"] = "fase 3/3 — a retirar carga: observa a recuperação",
             ["bench.phase3.ios"] = "fase 3/3 — desliga o ecrã e deixa o telemóvel quieto",
             ["bench.done"] = "sessão completa",
+            ["bench.inconclusive"] = "sessão sem amostras — o telemóvel não expôs leituras; repete a bancada",
             ["bench.verdict.ir"] = " · resistência interna ~{0} mΩ",
             ["bench.verdict.sag"] = " · queda {0} mV sob carga",
             ["bench.aborted"] = "! sessão abortada: {0}",
@@ -489,6 +498,14 @@ public static class L10n
             ["log.label.cancel"] = "> label print cancelled",
             ["log.client.saved"] = "> customer report saved: {0}",
 
+            // health score 0–100 — showcase index, does not replace the grade
+            ["health.summary"] = "HEALTH {0}/100 — {1}",
+            ["health.band.healthy"] = "Healthy",
+            ["health.band.fair"] = "Fair",
+            ["health.band.concerning"] = "Concerning",
+            ["health.band.none"] = "no data",
+            ["log.health"] = "> device health: {0}/100 — {1}",
+
             ["test.touch.zones"] = "{0}/{1} zones",
             ["test.touch.detail"] = "touch grid filled on the phone",
             ["test.screen.val"] = "colours ok",
@@ -554,6 +571,7 @@ public static class L10n
             ["bench.phase3.auto"] = "phase 3/3 — removing load: watch the recovery",
             ["bench.phase3.ios"] = "phase 3/3 — turn the screen off and keep the phone still",
             ["bench.done"] = "session complete",
+            ["bench.inconclusive"] = "no samples — the phone exposed no readings; run the bench again",
             ["bench.verdict.ir"] = " · internal resistance ~{0} mΩ",
             ["bench.verdict.sag"] = " · {0} mV sag under load",
             ["bench.aborted"] = "! session aborted: {0}",
