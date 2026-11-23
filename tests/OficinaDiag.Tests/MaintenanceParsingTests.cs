@@ -69,10 +69,22 @@ public class MaintenanceParsingTests
     {
         var dump = "1.0\n0.5\nnull\n1";
         var (anim, lowPower) = MaintenanceParsing.ParseSettingsDump(dump);
-        Assert.Equal(1.0, anim.Window);
+        Assert.Equal(1.0, anim!.Window);
         Assert.Equal(0.5, anim.Transition);
         Assert.Null(anim.Animator); // "null" = chave nunca escrita, não escala 0
         Assert.Equal(1, lowPower);
+    }
+
+    [Fact]
+    public void ParseSettingsDump_SemLeituraDevolveAnimacoesDesconhecidas()
+    {
+        // null (adb não respondeu) tem de ficar distinto de "null" por linha
+        // (chave nunca escrita): só o segundo é seguro repor com delete.
+        var (anim, lowPower) = MaintenanceParsing.ParseSettingsDump(null);
+        Assert.Null(anim);
+        Assert.Null(lowPower);
+        var (anim2, _) = MaintenanceParsing.ParseSettingsDump("   ");
+        Assert.Null(anim2);
     }
 
     [Fact]

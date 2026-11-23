@@ -86,9 +86,13 @@ public static class MaintenanceParsing
     }
 
     /// <summary>As 4 linhas de `settings get` em sequência → escalas + low_power.</summary>
-    public static (AnimationScales Animations, int? LowPower) ParseSettingsDump(string? dump)
+    public static (AnimationScales? Animations, int? LowPower) ParseSettingsDump(string? dump)
     {
-        var lines = (dump ?? "")
+        // Sem leitura nenhuma não há nada a repor: null (desconhecido) tem de
+        // ficar distinto de "chave nunca escrita" (que o settings devolve como
+        // "null" por linha) — senão uma reposição apagava definições do cliente.
+        if (string.IsNullOrWhiteSpace(dump)) return (null, null);
+        var lines = dump
             .Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
         var window = lines.Length > 0 ? ParseScale(lines[0]) : null;
         var transition = lines.Length > 1 ? ParseScale(lines[1]) : null;
