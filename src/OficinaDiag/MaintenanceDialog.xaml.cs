@@ -20,6 +20,8 @@ public sealed partial class MaintenanceDialog : Window
     private readonly string _adbPath;
     private readonly string _serial;
     private readonly Action<string> _log;
+    /// <summary>Última limpeza corrida NESTE diálogo, ainda por guardar.</summary>
+    private MaintenanceReport? _lastResult;
 
     /// <summary>True depois de GUARDAR — o MainWindow liga os botões de relatório.</summary>
     public bool Saved { get; private set; }
@@ -54,7 +56,7 @@ public sealed partial class MaintenanceDialog : Window
         // Animações a 0 e repor são mutuamente exclusivas na UI.
         ChkAnimOff.Checked += (_, _) => ChkAnimRestore.IsChecked = false;
         ChkAnimRestore.Checked += (_, _) => ChkAnimOff.IsChecked = false;
-        ChkAnimRestore.Visibility = _report.Maintenance?.AnimationsBefore is null
+        ChkAnimRestore.Visibility = RestoreSource() is null
             ? Visibility.Collapsed : Visibility.Visible;
 
         _ = LoadAppsAsync();
@@ -181,8 +183,14 @@ public sealed partial class MaintenanceDialog : Window
         try
         {
             var maint = new AndroidMaintenance(_adbPath, _serial);
-            var result = await Task.Run(() => maint.RunCleanupAsync(plan));
-            _report.Maintenance = result;
+            // previous = a limpeza já guardada (ou a deste diálogo ainda por
+            // guardar): as origens das animações são as mais antigas conhecidas.
+            var result = await Task.Run(
+                () => maint.RunCleanupAsync(plan, _lastResult ?? _report.Maintenance));
+            // NÃO grava no _report aqui: só se o utilizador carregar em Guardar.
+            // Cancelar não pode deixar uma limpeza descartada no relatório (e
+            // apagar uma limpeza boa guardada antes).
+            _lastResult = result;
             RenderResult(result);
             _log(L10n.F("log.maint.done", result.Actions.Count, result.Deltas.Count));
         }
@@ -211,7 +219,7 @@ public sealed partial class MaintenanceDialog : Window
             KillBackgroundApps = ChkKillAll.IsChecked == true,
             ZeroAnimations = ChkAnimOff.IsChecked == true,
             RestoreAnimations = ChkAnimRestore.IsChecked == true
-                ? _report.Maintenance?.AnimationsBefore : null,
+                ? RestoreSource() : null,
             BatterySaver = saver,
             OpenBatteryOptimization = ChkBatteryOpt.IsChecked == true,
         };
@@ -260,12 +268,19 @@ public sealed partial class MaintenanceDialog : Window
         RunBtn.IsDefault = false;
         // Uma limpeza com animações a 0 guarda os valores anteriores — a opção
         // de repor passa a existir já neste diálogo.
-        ChkAnimRestore.Visibility = result.AnimationsBefore is null
+        ChkAnimRestore.Visibility = RestoreSource() is null
             ? Visibility.Collapsed : Visibility.Visible;
     }
 
+    /// <summary>Os valores originais das animações: a corrida mais recente ganha,
+    /// senão a limpeza já guardada no relatório.</summary>
+    private AnimationScales? RestoreSource()
+        => _lastResult?.AnimationsBefore ?? _report.Maintenance?.AnimationsBefore;
+
     private void Save_Click(object sender, RoutedEventArgs e)
     {
+        // Só aqui a limpeza entra no relatório — Cancelar deita fora o resultado.
+        _report.Maintenance = _lastResult;
         Saved = true;
         DialogResult = true;
         Close();
