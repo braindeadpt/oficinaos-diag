@@ -62,8 +62,9 @@ public partial class MainWindow : Window
     // teste no ecrã e do bench só entram no relatório do MESMO aparelho —
     // trocar de telefone a meio não pode contaminar o diagnóstico do cliente.
     private string? _reportDeviceId;
-    // Último relatório IA gerado para _report — viaja no envio à loja para a
-    // loja o ver no pedido sem gastar outra geração.
+    // Último relatório IA de diagnóstico gerado para _report — viaja no envio
+    // à loja para a loja o ver no pedido sem gastar outra geração. O relatório
+    // de manutenção não entra aqui: é um entregável do técnico, não do intake.
     private string? _lastAiReport;
     // Ticker do header — leitura ambiente da bateria enquanto há dispositivo.
     private CancellationTokenSource? _telemetryCts;
@@ -207,6 +208,7 @@ public partial class MainWindow : Window
         ExportButton.Content = L10n.Btn("btn.export");
         SendButton.Content = L10n.Btn("btn.send");
         AiButton.Content = L10n.Btn("btn.ai");
+        MaintenanceAiButton.Content = L10n.Btn("btn.ai.maint");
         InsuranceButton.Content = L10n.Btn("btn.insurance");
         LogButton.Content = L10n.Btn("btn.log");
         ConfigButton.Content = L10n.Btn("btn.settings");

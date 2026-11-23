@@ -60,9 +60,9 @@ public partial class MainWindow : Window
             _history.Add(_report);
             Log(L10n.F("log.scan.done", _report.Results.Count));
             ExportButton.IsEnabled = TestButton.IsEnabled = SendButton.IsEnabled =
-                AiButton.IsEnabled = InsuranceButton.IsEnabled =
-                CompareButton.IsEnabled = LabelButton.IsEnabled =
+                InsuranceButton.IsEnabled = CompareButton.IsEnabled = LabelButton.IsEnabled =
                 ClientButton.IsEnabled = true;
+            UpdateAiButtons();
         }
         catch (Exception ex) { Log(L10n.F("log.err", ex.Message)); }
         finally { ScanButton.IsEnabled = true; _busy = false; }
@@ -96,9 +96,9 @@ public partial class MainWindow : Window
         var dlg = new ChecklistDialog(_report) { Owner = this };
         if (dlg.ShowDialog() != true) return;
         ApplyGrade();
-        ExportButton.IsEnabled = SendButton.IsEnabled = AiButton.IsEnabled =
-            InsuranceButton.IsEnabled = CompareButton.IsEnabled =
-            LabelButton.IsEnabled = ClientButton.IsEnabled = true;
+        ExportButton.IsEnabled = SendButton.IsEnabled = InsuranceButton.IsEnabled =
+            CompareButton.IsEnabled = LabelButton.IsEnabled = ClientButton.IsEnabled = true;
+        UpdateAiButtons();
         Log(L10n.T("log.checklist.saved"));
     }
 

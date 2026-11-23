@@ -137,6 +137,8 @@
                             Click="Send_Click" IsEnabled="False"/>
                     <Button Style="{DynamicResource TermButton}" x:Name="AiButton"
                             Click="Ai_Click" IsEnabled="False"/>
+                    <Button Style="{DynamicResource TermButton}" x:Name="MaintenanceAiButton"
+                            Click="MaintenanceAi_Click" IsEnabled="False"/>
                     <Button Style="{DynamicResource TermButton}" x:Name="InsuranceButton"
                             Click="Insurance_Click" IsEnabled="False"/>
                     <Button Style="{DynamicResource TermButton}" x:Name="UpdateButton"
