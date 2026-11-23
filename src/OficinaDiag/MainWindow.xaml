@@ -121,6 +121,8 @@
                             Click="Bench_Click" IsEnabled="False"/>
                     <Button Style="{DynamicResource TermButton}" x:Name="TestButton"
                             Click="Test_Click" IsEnabled="False"/>
+                    <Button Style="{DynamicResource TermButton}" x:Name="AppsButton"
+                            Click="Apps_Click" IsEnabled="False" Visibility="Collapsed"/>
                     <Button Style="{DynamicResource TermButton}" x:Name="ChecklistButton"
                             Click="Checklist_Click"/>
                     <Button Style="{DynamicResource TermButton}" x:Name="CompareButton"
