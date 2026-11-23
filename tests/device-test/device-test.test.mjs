@@ -56,6 +56,13 @@ function advanceToSensors(dom) {
   return doc;
 }
 
+/** Percorre tudo até à fase de testes avançados (câmara, GPU, GPS…). */
+function advanceToAdvanced(dom) {
+  const doc = advanceToSensors(dom);
+  doc.getElementById('advBtn').onclick();
+  return doc;
+}
+
 test('cores: 13, cinzentos reconhecidos e tinta legível em fundo escuro', () => {
   assert.equal(D.COLORS.length, 13);
   assert.deepEqual(D.COLORS.slice(0, 4), ['#f00', '#0f0', '#00f', '#fff']);
@@ -161,7 +168,7 @@ test('página: resultado entregue leva as decisões (mic skip sem https, multi-t
   const dom = openPage();
   const chamadas = [];
   try {
-    const doc = advanceToSensors(dom);
+    const doc = advanceToAdvanced(dom);
     dom.window.fetch = (url, opts) => {
       chamadas.push({ url, body: JSON.parse(opts.body) });
       return Promise.resolve({ ok: true });
@@ -235,7 +242,7 @@ test('página: iPhone sem permissão de movimento entrega payload sem accel/gyro
   const chamadas = [];
   try {
     const timers = espiarTimers(dom);
-    const doc = advanceToSensors(dom); // não toca no permBtn
+    const doc = advanceToAdvanced(dom); // não toca no permBtn
     assert.deepEqual(timers.atrasos.filter((ms) => ms >= 6000), []);
     timers.dispararLongos();          // nada a disparar: nenhum timer armado
     dom.window.fetch = (url, opts) => {
@@ -274,7 +281,7 @@ test('página: iPhone que recusa o diálogo de permissão entrega payload sem ac
   const chamadas = [];
   try {
     const timers = espiarTimers(dom);
-    const doc = advanceToSensors(dom);
+    const doc = advanceToAdvanced(dom);
     assert.equal(doc.getElementById('permBtn').style.display, 'block');
 
     doc.getElementById('permBtn').onclick();
@@ -316,6 +323,274 @@ test('página: sem permissão a pedir, os 6 s começam logo', () => {
 
     timers.dispararLongos();
     assert.equal(dom.window.document.getElementById('s-accel').textContent, 'sem leitura');
+  } finally {
+    dom.window.close();
+  }
+});
+
+test('decisões avançadas: média partilhada, GPU, GPS, brilho e taxa de toque', () => {
+  // mediaAvailability = getUserMedia + contexto seguro — partilhada por
+  // microfone e câmaras (micAvailability delega nela).
+  const comMedia = { isSecureContext: true, navigator: { mediaDevices: { getUserMedia() {} } } };
+  assert.equal(D.mediaAvailability(comMedia), 'available');
+  assert.equal(D.mediaAvailability({ ...comMedia, isSecureContext: false }), 'skip');
+  assert.equal(D.micAvailability(comMedia), 'available');
+
+  // GPU: a decisão é sobre o render, não sobre a API (gpuApiAvailable é
+  // testada na página — aqui ficam os limiares).
+  assert.equal(D.gpuApiAvailable({}), false);
+  assert.equal(D.gpuApiAvailable({ WebGLRenderingContext: function () {} }), true);
+  assert.equal(D.gpuApiAvailable({ WebGL2RenderingContext: function () {} }), true);
+  assert.equal(D.gpuStatusFromRender(false, 120, 3000), 'ok');    // 40 fps
+  assert.equal(D.gpuStatusFromRender(true, 120, 3000), 'fail');   // contexto perdido
+  assert.equal(D.gpuStatusFromRender(false, 10, 3000), 'warn');   // ~3 fps
+  assert.equal(D.gpuStatusFromRender(false, 0, 0), 'skip');       // sem decurso
+
+  // GPS: os 3 códigos padrão são ambiente; fora do padrão é falha.
+  assert.equal(D.gpsStatusFromError(1), 'skip');
+  assert.equal(D.gpsStatusFromError(2), 'skip');
+  assert.equal(D.gpsStatusFromError(3), 'skip');
+  assert.equal(D.gpsStatusFromError(0), 'fail');
+
+  // Brilho: screen.brightness raramente existe — null = skip.
+  assert.equal(D.brightnessReading({ screen: {} }), null);
+  assert.equal(D.brightnessReading({}), null);
+  assert.equal(D.brightnessReading({ screen: { brightness: 0.5 } }), 0.5);
+  assert.equal(D.brightnessReading({ screen: { brightness: { value: 0.8 } } }), 0.8);
+
+  // Taxa de toque: ≥60 Hz ok, abaixo warn, fora de gama skip.
+  assert.equal(D.touchSampleStatus(120), 'ok');
+  assert.equal(D.touchSampleStatus(60), 'ok');
+  assert.equal(D.touchSampleStatus(59), 'warn');
+  assert.equal(D.touchSampleStatus(null), 'skip');
+  assert.equal(D.touchSampleStatus(5000), 'skip'); // impossível — medida viciada
+});
+
+test('página: fase avançada sem APIs fica toda skipped', async () => {
+  const dom = openPage();
+  const chamadas = [];
+  try {
+    const doc = advanceToAdvanced(dom);
+    // jsdom não tem WebGLRenderingContext, geolocation, mediaDevices nem
+    // screen.brightness — tudo o que a página mede sai 'skip', nunca fail.
+    dom.window.fetch = (url, opts) => {
+      chamadas.push(JSON.parse(opts.body));
+      return Promise.resolve({ ok: true });
+    };
+    doc.getElementById('endBtn').onclick();
+    await new Promise((r) => setTimeout(r, 0));
+
+    const p = chamadas[0];
+    assert.equal(p.cameraFront, 'skip');
+    assert.equal(p.cameraBack, 'skip');
+    assert.equal(p.gpu, 'skip');
+    assert.equal(p.gpuFps, null);
+    assert.equal(p.gps, 'skip');
+    assert.equal(p.gpsAccuracyM, null);
+    assert.equal(p.brightness, 'skip');
+    assert.equal(p.brightnessValue, null);
+    assert.equal(p.touchSample, 'skip');
+    assert.equal(p.touchHz, null);
+  } finally {
+    dom.window.close();
+  }
+});
+
+test('página: câmara confirmada vira ok e a faixa é libertada', async () => {
+  const dom = openPage({ secureContext: true });
+  const chamadas = [];
+  try {
+    const w = dom.window;
+    const tracks = [{ stop() { this.stopped = true; } }];
+    Object.defineProperty(w.navigator, 'mediaDevices', {
+      value: { getUserMedia: () => Promise.resolve({ getTracks: () => tracks }) },
+      configurable: true,
+    });
+    const doc = advanceToAdvanced(dom);
+    doc.getElementById('camFBtn').onclick();
+    await new Promise((r) => setTimeout(r, 0));
+
+    assert.equal(doc.getElementById('camStage').style.display, 'block');
+    assert.equal(doc.getElementById('a-camf').textContent, 'a confirmar…');
+    doc.getElementById('camOk').onclick();
+
+    w.fetch = (url, opts) => {
+      chamadas.push(JSON.parse(opts.body));
+      return Promise.resolve({ ok: true });
+    };
+    doc.getElementById('endBtn').onclick();
+    await new Promise((r) => setTimeout(r, 0));
+
+    assert.equal(chamadas[0].cameraFront, 'ok');
+    assert.equal(chamadas[0].cameraBack, 'skip'); // nunca testada
+    assert.equal(tracks[0].stopped, true); // stopCam correu no confirmar
+  } finally {
+    dom.window.close();
+  }
+});
+
+test('página: câmara sem permissão fica skip — nunca fail', async () => {
+  const dom = openPage({ secureContext: true });
+  const chamadas = [];
+  try {
+    const w = dom.window;
+    Object.defineProperty(w.navigator, 'mediaDevices', {
+      value: { getUserMedia: () => Promise.reject(new Error('denied')) },
+      configurable: true,
+    });
+    const doc = advanceToAdvanced(dom);
+    doc.getElementById('camBBtn').onclick();
+    await new Promise((r) => setTimeout(r, 0));
+
+    assert.equal(doc.getElementById('a-camb').textContent, 'sem permissão/dispositivo');
+    assert.equal(doc.getElementById('camStage').style.display, 'none');
+
+    w.fetch = (url, opts) => {
+      chamadas.push(JSON.parse(opts.body));
+      return Promise.resolve({ ok: true });
+    };
+    doc.getElementById('endBtn').onclick();
+    await new Promise((r) => setTimeout(r, 0));
+    assert.equal(chamadas[0].cameraBack, 'skip');
+  } finally {
+    dom.window.close();
+  }
+});
+
+test('página: câmara confirmada como má vira fail', async () => {
+  const dom = openPage({ secureContext: true });
+  const chamadas = [];
+  try {
+    const w = dom.window;
+    Object.defineProperty(w.navigator, 'mediaDevices', {
+      value: { getUserMedia: () => Promise.resolve({ getTracks: () => [{ stop() {} }] }) },
+      configurable: true,
+    });
+    const doc = advanceToAdvanced(dom);
+    doc.getElementById('camFBtn').onclick();
+    await new Promise((r) => setTimeout(r, 0));
+    doc.getElementById('camBad').onclick();
+
+    w.fetch = (url, opts) => {
+      chamadas.push(JSON.parse(opts.body));
+      return Promise.resolve({ ok: true });
+    };
+    doc.getElementById('endBtn').onclick();
+    await new Promise((r) => setTimeout(r, 0));
+    assert.equal(chamadas[0].cameraFront, 'fail');
+  } finally {
+    dom.window.close();
+  }
+});
+
+test('página: GPS com fix vira ok com precisão; erro padrão vira skip', async () => {
+  const dom = openPage();
+  const chamadas = [];
+  try {
+    const w = dom.window;
+    Object.defineProperty(w.navigator, 'geolocation', {
+      value: { getCurrentPosition: (ok) => ok({ coords: { accuracy: 23 } }) },
+      configurable: true,
+    });
+    const doc = advanceToAdvanced(dom);
+    doc.getElementById('gpsBtn').onclick();
+    await new Promise((r) => setTimeout(r, 0));
+    assert.equal(doc.getElementById('a-gps').textContent, 'fix ±23 m');
+
+    w.fetch = (url, opts) => {
+      chamadas.push(JSON.parse(opts.body));
+      return Promise.resolve({ ok: true });
+    };
+    doc.getElementById('endBtn').onclick();
+    await new Promise((r) => setTimeout(r, 0));
+    assert.equal(chamadas[0].gps, 'ok');
+    assert.equal(chamadas[0].gpsAccuracyM, 23);
+  } finally {
+    dom.window.close();
+  }
+});
+
+test('página: GPS sem permissão fica skip; erro fora do padrão fica fail', async () => {
+  const dom = openPage();
+  const chamadas = [];
+  try {
+    const w = dom.window;
+    Object.defineProperty(w.navigator, 'geolocation', {
+      value: { getCurrentPosition: (ok, err) => err({ code: 1 }) },
+      configurable: true,
+    });
+    const doc = advanceToAdvanced(dom);
+    doc.getElementById('gpsBtn').onclick();
+    await new Promise((r) => setTimeout(r, 0));
+    assert.equal(doc.getElementById('a-gps').textContent, 'sem fix');
+
+    // Erro fora dos 3 códigos padrão = stack de geolocalização anómala.
+    Object.defineProperty(w.navigator, 'geolocation', {
+      value: { getCurrentPosition: (ok, err) => err({ code: 0 }) },
+      configurable: true,
+    });
+    doc.getElementById('gpsBtn').onclick();
+    await new Promise((r) => setTimeout(r, 0));
+
+    w.fetch = (url, opts) => {
+      chamadas.push(JSON.parse(opts.body));
+      return Promise.resolve({ ok: true });
+    };
+    doc.getElementById('endBtn').onclick();
+    await new Promise((r) => setTimeout(r, 0));
+    assert.equal(chamadas[0].gps, 'fail');
+  } finally {
+    dom.window.close();
+  }
+});
+
+test('página: WebGL API presente mas contexto falha → gpu fail', async () => {
+  const dom = openPage();
+  const chamadas = [];
+  try {
+    // gpuApiAvailable passa; o canvas.getContext do jsdom devolve null —
+    // o mesmo que uma GPU/driver a recusar o contexto num telemóvel real.
+    dom.window.WebGLRenderingContext = function () {};
+    const doc = advanceToAdvanced(dom); // showAdvanced já correu runGpuTest
+    assert.equal(doc.getElementById('a-gpu').textContent, 'contexto WebGL falhou');
+
+    dom.window.fetch = (url, opts) => {
+      chamadas.push(JSON.parse(opts.body));
+      return Promise.resolve({ ok: true });
+    };
+    doc.getElementById('endBtn').onclick();
+    await new Promise((r) => setTimeout(r, 0));
+    assert.equal(chamadas[0].gpu, 'fail');
+  } finally {
+    dom.window.close();
+  }
+});
+
+test('página: pointermove com getCoalescedEvents mede a taxa de toque', async () => {
+  const dom = openPage();
+  const chamadas = [];
+  try {
+    const doc = advanceToSensors(dom); // o sampler está ativo desde o início
+    const w = dom.window;
+    // 6 movimentos a 1 s de intervalo, 59 coalesced cada → 360 amostras
+    // em 5 s = 72 Hz — acima do limiar de 60.
+    for (let i = 1; i <= 6; i++) {
+      const ev = new w.Event('pointermove');
+      Object.defineProperty(ev, 'timeStamp', { value: i * 1000 });
+      ev.getCoalescedEvents = () => new Array(59).fill({});
+      w.document.dispatchEvent(ev);
+    }
+    w.fetch = (url, opts) => {
+      chamadas.push(JSON.parse(opts.body));
+      return Promise.resolve({ ok: true });
+    };
+    doc.getElementById('advBtn').onclick();
+    doc.getElementById('endBtn').onclick();
+    await new Promise((r) => setTimeout(r, 0));
+
+    assert.equal(chamadas[0].touchHz, 72);
+    assert.equal(chamadas[0].touchSample, 'ok');
+    assert.equal(doc.getElementById('a-touchhz').textContent, '≈72 Hz');
   } finally {
     dom.window.close();
   }

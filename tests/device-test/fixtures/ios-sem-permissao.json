@@ -12,5 +12,15 @@
   },
   "vibrate": null,
   "speaker": null,
-  "batteryApi": null
+  "batteryApi": null,
+  "cameraFront": "skip",
+  "cameraBack": "skip",
+  "gpu": "skip",
+  "gpuFps": null,
+  "gps": "skip",
+  "gpsAccuracyM": null,
+  "brightness": "skip",
+  "brightnessValue": null,
+  "touchSample": "skip",
+  "touchHz": null
 }

@@ -318,6 +318,16 @@ public static class HealthScore
             new("sensor.earpiece", 1, (k, c) => ByStatus(c, fail: 15)),
             new("sensor.mic", 1, (k, c) => ByStatus(c, fail: 15)),
             new("sensor.vibrate", 1, (k, c) => ByStatus(c, fail: 25)),
+            // Testes avançados (Fase B): câmara e GPU falhados são defeito
+            // real do aparelho — pesam como speaker/mic. GPS e brilho são
+            // quase sempre skipped (API/permite raream) e ficam fora sozinhos;
+            // touchrate warn = taxa baixa mas funcional, não um defeito.
+            new("test.camera_front", 1, (k, c) => ByStatus(c, fail: 15)),
+            new("test.camera_back", 1, (k, c) => ByStatus(c, fail: 15)),
+            new("test.gpu", 1, (k, c) => ByStatus(c, fail: 20)),
+            new("test.gps", 1, (k, c) => ByStatus(c)),
+            new("test.brightness", 1, (k, c) => ByStatus(c)),
+            new("test.touchrate", 1, (k, c) => ByStatus(c, warn: 75)),
         ]),
     ];
 

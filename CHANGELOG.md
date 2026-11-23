@@ -5,6 +5,15 @@ Versões seguem o tag `v*` do release.
 
 ## Unreleased
 
+- Teste no aparelho: nova fase **testes avançados** na página on-device —
+  câmara frontal/traseira (getUserMedia + confirmação visual), stress WebGL
+  de ~3 s (`test.gpu`), geolocalização com timeout (`test.gps`), brilho via
+  `screen.brightness` e taxa de amostragem de toque por
+  `PointerEvent.getCoalescedEvents` (`test.touchrate`). Regra dura mantida:
+  API ausente ou permissão recusada → `skipped`, nunca `fail` por limitação
+  de plataforma (iOS Safari em HTTP LAN fica quase todo em skip). Os checks
+  entram no health score na categoria "teste no aparelho". Fase B.3 do
+  plano Diag Pro.
 - Saúde do aparelho: novo **health score 0–100** (`OficinaDiag.Health`) —
   índice de vitrine que soma bateria, armazenamento, segurança,
   estabilidade, temperatura e teste no aparelho. Não substitui o grau A–D:

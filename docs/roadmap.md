@@ -84,7 +84,11 @@ medida #47, auditoria segurança #48) **feito**. Este plano cobre o resto.
    `test.camera_back` (getUserMedia), `test.gpu` (WebGL stress),
    `test.gps` (geolocation+precisão), `test.brightness`, touch sampling
    rate se exposto. `skipped` quando a API não existe — nunca `fail` por
-   falta de permissão (Safari iOS é mais restrito).
+   falta de permissão (Safari iOS é mais restrito). **Feito** — fase
+   «testes avançados» na página on-device (câmara com confirmação visual,
+   stress WebGL ~3 s, GPS com timeout, brilho e taxa de toque por
+   getCoalescedEvents); `test.*` novos alimentam a categoria «teste no
+   aparelho» do health score.
 
 ### Fase C — perfil de desempenho/bateria
 

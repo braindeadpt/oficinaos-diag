@@ -81,13 +81,66 @@
   }
 
   /* Microfone precisa de contexto seguro (https ou 127.0.0.1 via adb reverse). */
-  function micAvailability(scope) {
+  function micAvailability(scope) { return mediaAvailability(scope); }
+
+  /* Câmaras partilham o requisito do microfone: contexto seguro +
+     getUserMedia. Em HTTP LAN (Wi-Fi) o browser não expõe — 'skip', e a
+     página nunca deixa uma permissão recusada virar 'fail'. */
+  function mediaAvailability(scope) {
     var nav = scope.navigator;
     return scope.isSecureContext && nav && nav.mediaDevices
       && typeof nav.mediaDevices.getUserMedia === 'function' ? 'available' : 'skip';
   }
 
   function micStatusFromPeak(peak) { return peak > MIC_PEAK_OK ? SENSOR_OK : 'fail'; }
+
+  /* ── testes avançados (câmara, GPU, GPS, brilho, taxa de toque) ── */
+
+  /* GPU: a API existir mas o contexto falhar é defeito de GPU/driver;
+     a API nem existir é limitação do browser → 'skip'. */
+  var GPU_STRESS_MS = 3000;
+  var GPU_MIN_FPS = 5;
+  function gpuApiAvailable(scope) {
+    return typeof scope.WebGLRenderingContext !== 'undefined'
+        || typeof scope.WebGL2RenderingContext !== 'undefined';
+  }
+  /* ~3 s de stress: menos de 5 fps = RAF estrangulado (poupança de
+     bateria, segundo plano) — aviso, não falha: throttling não é defeito. */
+  function gpuStatusFromRender(contextLost, frames, elapsedMs) {
+    if (contextLost) return 'fail';
+    if (typeof elapsedMs !== 'number' || !(elapsedMs > 0)) return 'skip';
+    var fps = frames / (elapsedMs / 1000);
+    return fps >= GPU_MIN_FPS ? SENSOR_OK : 'warn';
+  }
+
+  /* GPS: os 3 códigos padrão (1 permissão, 2 indisponível, 3 timeout) são
+     ambiente — «interior sem sinal» não é defeito. Um código fora do
+     padrão é a stack de geolocalização a reportar algo anómalo → 'fail'. */
+  var GPS_TIMEOUT_MS = 8000;
+  function gpsStatusFromError(code) {
+    return code === 1 || code === 2 || code === 3 ? 'skip' : 'fail';
+  }
+
+  /* Brilho: screen.brightness é um dos APIs menos implementados da web —
+     a maioria dos telemóveis devolve null → 'skip' honesto. */
+  function brightnessReading(scope) {
+    var b = scope.screen && scope.screen.brightness;
+    if (typeof b === 'number') return b;
+    if (b && typeof b.value === 'number') return b.value;
+    return null;
+  }
+
+  /* Taxa de amostragem de toque: PointerEvent.getCoalescedEvents expõe os
+     eventos que o browser fundiu — existe em Chrome/Android e Safari
+     moderno; onde falta → 'skip'. Acima de 1000 Hz a medida é impossível
+     (bug de contagem) — ignora. */
+  var TOUCH_HZ_OK = 60;
+  var TOUCH_HZ_MAX = 1000;
+  function touchSampleStatus(hz) {
+    if (typeof hz !== 'number' || !isFinite(hz) || hz <= 0 || hz > TOUCH_HZ_MAX)
+      return 'skip';
+    return hz >= TOUCH_HZ_OK ? SENSOR_OK : 'warn';
+  }
 
   /* `tries` já conta a tentativa feita; 8 é o teto de envios. */
   function shouldRetryDelivery(tries) { return tries < DELIVERY.maxTries; }
@@ -112,6 +165,17 @@
     armedSensorKeys: armedSensorKeys,
     micAvailability: micAvailability,
     micStatusFromPeak: micStatusFromPeak,
+    mediaAvailability: mediaAvailability,
+    GPU_STRESS_MS: GPU_STRESS_MS,
+    GPU_MIN_FPS: GPU_MIN_FPS,
+    gpuApiAvailable: gpuApiAvailable,
+    gpuStatusFromRender: gpuStatusFromRender,
+    GPS_TIMEOUT_MS: GPS_TIMEOUT_MS,
+    gpsStatusFromError: gpsStatusFromError,
+    brightnessReading: brightnessReading,
+    TOUCH_HZ_OK: TOUCH_HZ_OK,
+    TOUCH_HZ_MAX: TOUCH_HZ_MAX,
+    touchSampleStatus: touchSampleStatus,
     shouldRetryDelivery: shouldRetryDelivery
   };
 

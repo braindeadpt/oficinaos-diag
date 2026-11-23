@@ -510,6 +510,12 @@ public static class ReportBuilder
         "test.screen" => "Ecrã — teste visual",
         "test.touch" => "Toque — teste funcional",
         "test.edges" => "Toque — zonas de borda",
+        "test.camera_front" => "Câmara frontal — teste no telefone",
+        "test.camera_back" => "Câmara traseira — teste no telefone",
+        "test.gpu" => "GPU — stress WebGL",
+        "test.gps" => "GPS — geolocalização",
+        "test.brightness" => "Brilho — API do ecrã",
+        "test.touchrate" => "Toque — taxa de amostragem",
         "usb.stability" => "Ligação USB — estabilidade",
         _ => key,
     };

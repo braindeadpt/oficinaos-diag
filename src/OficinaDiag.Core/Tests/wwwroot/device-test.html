@@ -23,8 +23,15 @@
   .srow{display:flex;justify-content:space-between;border-bottom:1px solid #033;padding:8px 2px;font-size:13px}
   .srow .st{min-width:110px;text-align:right}
   .ok{color:#3f3}.warn{color:#fd3}.no{color:#f55}
-  #sensors button,#mtouch button{background:#020;border:1px solid #0f0;color:#0f0;font:inherit;font-size:15px;padding:12px;margin:10px 0}
-  #sensors button:active,#mtouch button:active{background:#030}
+  #sensors button,#mtouch button,#advanced button{background:#020;border:1px solid #0f0;color:#0f0;font:inherit;font-size:15px;padding:12px;margin:10px 0}
+  #sensors button:active,#mtouch button:active,#advanced button:active{background:#030}
+  #advanced{display:none;position:fixed;inset:0;background:#000;color:#0f0;flex-direction:column;padding:16px;overflow-y:auto}
+  #advanced h2{margin:0 0 10px;font-size:15px}
+  #advanced .srow{display:flex;justify-content:space-between;border-bottom:1px solid #033;padding:8px 2px;font-size:13px}
+  #advanced .st{min-width:110px;text-align:right}
+  #camStage{margin:8px 0}
+  #camVideo{width:100%;max-height:40vh;background:#111;border:1px solid #033;display:block}
+  #camStage button{margin:4px 8px 4px 0}
   #done{display:none;position:fixed;inset:0;background:#000;color:#0f0;align-items:center;justify-content:center;text-align:center}
 </style>
 </head>
@@ -68,6 +75,27 @@
     <button id="vibNo">NÃO vibrou</button>
   </div>
   <button id="permBtn" style="display:none">PERMITIR SENSORES (iPhone)</button>
+  <button id="advBtn">TESTES AVANÇADOS →</button>
+</div>
+<div id="advanced">
+  <h2>TESTES AVANÇADOS</h2>
+  <div class="srow"><span>Câmara frontal</span><span class="st" id="a-camf">…</span></div>
+  <button id="camFBtn">TESTAR CÂMARA FRONTAL</button>
+  <div class="srow"><span>Câmara traseira</span><span class="st" id="a-camb">…</span></div>
+  <button id="camBBtn">TESTAR CÂMARA TRASEIRA</button>
+  <div id="camStage" style="display:none">
+    <video id="camVideo" autoplay playsinline muted></video>
+    <div>
+      <button id="camOk">IMAGEM OK</button>
+      <button id="camBad">SEM IMAGEM</button>
+      <button id="camRetry">REPETIR</button>
+    </div>
+  </div>
+  <div class="srow"><span>GPU — stress WebGL</span><span class="st" id="a-gpu">…</span></div>
+  <div class="srow"><span>GPS</span><span class="st" id="a-gps">…</span></div>
+  <button id="gpsBtn">TESTAR GPS</button>
+  <div class="srow"><span>Brilho do ecrã (API)</span><span class="st" id="a-bright">…</span></div>
+  <div class="srow"><span>Taxa de toque</span><span class="st" id="a-touchhz">…</span></div>
   <button id="endBtn">TERMINAR TESTE</button>
 </div>
 <div id="done">✓ TESTE COMPLETO<br><small id="doneNote">podes voltar ao PC</small></div>
@@ -92,8 +120,37 @@ const result = {
   multiTouch: 0,
   userAgent: navigator.userAgent,
   maxTouchPoints: navigator.maxTouchPoints || 0,
-  sensors: {}, vibrate: null, speaker: null, batteryApi: null
+  sensors: {}, vibrate: null, speaker: null, batteryApi: null,
+  // testes avançados — null = ainda não medido; finish() passa a 'skip'
+  cameraFront: null, cameraBack: null,
+  gpu: null, gpuFps: null,
+  gps: null, gpsAccuracyM: null,
+  brightness: null, brightnessValue: null,
+  touchSample: null, touchHz: null
 };
+
+/* Taxa de amostragem de toque: PointerEvent.getCoalescedEvents expõe os
+   eventos que o browser fundiu — conta-os durante TODO o teste (a fase de
+   grelha já é um swipe contínuo). Sem a API o sampler fica inativo e o
+   check sai 'skip' — limitação de plataforma, nunca falha. */
+window.__touchSampler = { supported: false, moves: 0, coalesced: 0, t0: null, t1: null };
+document.addEventListener('pointermove', e => {
+  if (typeof e.getCoalescedEvents !== 'function') return;
+  const s = window.__touchSampler;
+  let n = 0;
+  try { n = e.getCoalescedEvents().length; } catch (err) { /* ignora */ }
+  s.supported = true;
+  s.moves++;
+  s.coalesced += n + 1; // o PointerEvent atual soma-se aos coalesced
+  if (s.t0 === null) s.t0 = e.timeStamp;
+  s.t1 = e.timeStamp;
+}, { passive: true });
+
+function computeTouchHz() {
+  const s = window.__touchSampler;
+  if (!s.supported || s.moves < 5 || s.t1 <= s.t0) return null;
+  return Math.round(s.coalesced / ((s.t1 - s.t0) / 1000));
+}
 
 /* ── fase 1: cores + cinzentos ── */
 stage.onclick = () => {
@@ -385,12 +442,232 @@ document.getElementById('vibBtn').onclick=()=>{
 document.getElementById('vibYes').onclick=()=>{ result.vibrate='ok'; document.getElementById('vibAsk').style.display='none'; document.getElementById('vibBtn').textContent='VIBROU ✓'; };
 document.getElementById('vibNo').onclick=()=>{ result.vibrate='no-data'; document.getElementById('vibAsk').style.display='none'; document.getElementById('vibBtn').textContent='NÃO vibrou'; };
 
+/* ── fase 5: testes avançados — câmara, GPU, GPS, brilho, taxa de toque ──
+   Regra dura: 'skip' cobre «não testado», «API não exposta» e «permissão
+   recusada» — no iOS Safari em HTTP LAN quase tudo cai aqui e limitação
+   de plataforma nunca é falha de hardware. 'fail' fica reservado a
+   defeito real: imagem confirmada como má, contexto WebGL perdido ou
+   erro de geolocalização fora do padrão. */
+const advPanel = document.getElementById('advanced');
+
+function showAdvanced(){
+  document.getElementById('sensors').style.display='none';
+  advPanel.style.display='flex';
+  paintTouchRate();
+  probeBrightness();
+  runGpuTest(); // stress automático — ~3 s de render enquanto o técnico lê
+}
+document.getElementById('advBtn').onclick = showAdvanced;
+
+function paintTouchRate(){
+  const hz = computeTouchHz();
+  const st = D.touchSampleStatus(hz);
+  if (st === 'skip') { setSt('a-touchhz', 'não medido', 'no'); return; }
+  setSt('a-touchhz', '≈' + hz + ' Hz', st === 'ok' ? 'ok' : 'warn');
+}
+
+function probeBrightness(){
+  const b = D.brightnessReading(window);
+  if (b === null) {
+    result.brightness = 'skip';
+    setSt('a-bright', 'não exposto', 'no');
+    return;
+  }
+  result.brightness = 'ok';
+  result.brightnessValue = Math.round(b * 100);
+  setSt('a-bright', result.brightnessValue + '%', 'ok');
+}
+
+/* GPU — stress WebGL leve: shader a rodar ~3 s. Contexto criado mas
+   perdido/erro a meio = 'fail'; API ausente = 'skip'; fps a menos de
+   5 = 'warn' (RAF estrangulado por poupança de bateria não é defeito). */
+function runGpuTest(){
+  if (!D.gpuApiAvailable(window)) {
+    result.gpu = 'skip';
+    setSt('a-gpu', 'API não exposta', 'no');
+    return;
+  }
+  const canvas = document.createElement('canvas');
+  canvas.width = 96; canvas.height = 96;
+  const gl = canvas.getContext('webgl2') || canvas.getContext('webgl')
+    || canvas.getContext('experimental-webgl');
+  if (!gl) {
+    // A API existe mas a GPU/driver recusou o contexto — defeito real.
+    result.gpu = 'fail';
+    setSt('a-gpu', 'contexto WebGL falhou', 'no');
+    return;
+  }
+  setSt('a-gpu', 'a renderizar…', 'warn');
+  const vs = 'attribute vec2 p;void main(){gl_Position=vec4(p,0.,1.);}';
+  const fs = 'precision mediump float;uniform float t;'
+    + 'void main(){gl_FragColor=vec4(fract(t),fract(t*1.7),fract(t*2.3),1.);}';
+  const compile = (type, src) => {
+    const s = gl.createShader(type);
+    gl.shaderSource(s, src); gl.compileShader(s);
+    return gl.getShaderParameter(s, gl.COMPILE_STATUS) ? s : null;
+  };
+  const v = compile(gl.VERTEX_SHADER, vs), f = compile(gl.FRAGMENT_SHADER, fs);
+  if (!v || !f) { result.gpu = 'fail'; setSt('a-gpu', 'shader falhou', 'no'); return; }
+  const prog = gl.createProgram();
+  gl.attachShader(prog, v); gl.attachShader(prog, f); gl.linkProgram(prog);
+  if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) {
+    result.gpu = 'fail'; setSt('a-gpu', 'link falhou', 'no'); return;
+  }
+  gl.useProgram(prog);
+  const buf = gl.createBuffer();
+  gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 3, -1, -1, 3]), gl.STATIC_DRAW);
+  const loc = gl.getAttribLocation(prog, 'p');
+  gl.enableVertexAttribArray(loc);
+  gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
+  const uT = gl.getUniformLocation(prog, 't');
+  let frames = 0, lost = false;
+  const t0 = performance.now();
+  const onLost = e => { lost = true; if (e.preventDefault) e.preventDefault(); };
+  canvas.addEventListener('webglcontextlost', onLost);
+  const done = () => {
+    canvas.removeEventListener('webglcontextlost', onLost);
+    const elapsed = performance.now() - t0;
+    // getError num contexto perdido pode falhar — o lost já cobre esse caso.
+    let glErr = gl.NO_ERROR;
+    try { glErr = gl.getError(); } catch (err) { /* contexto morto */ }
+    const st = D.gpuStatusFromRender(lost || glErr !== gl.NO_ERROR, frames, elapsed);
+    result.gpu = st;
+    result.gpuFps = elapsed > 0 ? Math.round(frames / (elapsed / 1000)) : 0;
+    if (st === 'fail') setSt('a-gpu', 'falhou', 'no');
+    else setSt('a-gpu', '≈' + result.gpuFps + ' fps', st === 'ok' ? 'ok' : 'warn');
+  };
+  const tick = () => {
+    if (lost || gl.isContextLost()) { done(); return; }
+    gl.uniform1f(uT, (performance.now() - t0) / 1000);
+    gl.drawArrays(gl.TRIANGLES, 0, 3);
+    gl.finish(); // força trabalho real — sem isto o driver pode adiar tudo
+    frames++;
+    if (performance.now() - t0 < D.GPU_STRESS_MS) requestAnimationFrame(tick);
+    else done();
+  };
+  requestAnimationFrame(tick);
+}
+
+/* Câmara — getUserMedia + confirmação visual: o técnico aponta o
+   telemóvel para algo e diz se vê imagem. 'fail' só vem do botão SEM
+   IMAGEM; qualquer erro da API (permissão, dispositivo em falta ou
+   ocupado, constraint) é 'skip' — nunca defeito de hardware. */
+let camStream = null, pendingCam = null, camReq = 0;
+const camStage = document.getElementById('camStage');
+const camVideo = document.getElementById('camVideo');
+const camRow = { front: 'a-camf', back: 'a-camb' };
+const camKey = { front: 'cameraFront', back: 'cameraBack' };
+
+function stopCam(){
+  if (camStream) { camStream.getTracks().forEach(t => t.stop()); camStream = null; }
+  camVideo.srcObject = null;
+  camStage.style.display = 'none';
+  pendingCam = null;
+}
+
+async function testCamera(which){
+  if (D.mediaAvailability(window) !== 'available') {
+    result[camKey[which]] = 'skip';
+    setSt(camRow[which], 'precisa de https/127.0.0.1', 'no');
+    return;
+  }
+  stopCam(); // uma câmara de cada vez — a anterior fica livre
+  setSt(camRow[which], 'a pedir permissão…', 'warn');
+  const req = ++camReq; // pedidos concorrentes: só o mais recente fica com o stream
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: which === 'front' ? 'user' : 'environment',
+               width: { ideal: 640 }, height: { ideal: 480 } },
+      audio: false
+    });
+    if (req !== camReq) { stream.getTracks().forEach(t => t.stop()); return; }
+    camStream = stream;
+    pendingCam = which;
+    camVideo.srcObject = camStream;
+    camStage.style.display = 'block';
+    // play() pode rejeitar (política de autoplay) ou nem existir como
+    // Promise nalguns browsers — o preview está muted, por isso é raro.
+    try { const p = camVideo.play(); if (p && p.catch) p.catch(() => {}); }
+    catch (err) { /* sem play — o frame aparece na mesma */ }
+    setSt(camRow[which], 'a confirmar…', 'warn');
+  } catch (e) {
+    if (req !== camReq) return; // pedido superado — não pisa no mais recente
+    result[camKey[which]] = 'skip';
+    setSt(camRow[which], 'sem permissão/dispositivo', 'no');
+  }
+}
+
+document.getElementById('camFBtn').onclick = () => testCamera('front');
+document.getElementById('camBBtn').onclick = () => testCamera('back');
+document.getElementById('camOk').onclick = () => {
+  if (pendingCam) {
+    result[camKey[pendingCam]] = 'ok';
+    setSt(camRow[pendingCam], 'imagem confirmada', 'ok');
+  }
+  stopCam();
+};
+document.getElementById('camBad').onclick = () => {
+  if (pendingCam) {
+    result[camKey[pendingCam]] = 'fail';
+    setSt(camRow[pendingCam], 'sem imagem', 'no');
+  }
+  stopCam();
+};
+document.getElementById('camRetry').onclick = () => {
+  const w = pendingCam;
+  stopCam();
+  if (w) testCamera(w);
+};
+
+/* GPS — um fix via getCurrentPosition. Permissão, timeout e «sem sinal
+   de satélite» (interior) são 'skip'; só um erro fora do padrão dos 3
+   códigos padrão vira 'fail' (ver gpsStatusFromError). */
+document.getElementById('gpsBtn').onclick = () => {
+  if (!navigator.geolocation) {
+    result.gps = 'skip';
+    setSt('a-gps', 'API não exposta', 'no');
+    return;
+  }
+  setSt('a-gps', 'a procurar…', 'warn');
+  // Rede de segurança: se o browser ignorar o timeout da API o check fica
+  // 'skip' — um fix tardio ainda pode sobrepor (o callback limpa o timer).
+  const safety = setTimeout(() => {
+    if (result.gps === null) { result.gps = 'skip'; setSt('a-gps', 'sem sinal', 'no'); }
+  }, D.GPS_TIMEOUT_MS + 3000);
+  navigator.geolocation.getCurrentPosition(
+    pos => {
+      clearTimeout(safety);
+      result.gps = 'ok';
+      result.gpsAccuracyM = Math.round(pos.coords.accuracy);
+      setSt('a-gps', 'fix ±' + result.gpsAccuracyM + ' m', 'ok');
+    },
+    err => {
+      clearTimeout(safety);
+      result.gps = D.gpsStatusFromError(err.code);
+      setSt('a-gps', result.gps === 'skip' ? 'sem fix' : 'erro', 'no');
+    },
+    { enableHighAccuracy: true, timeout: D.GPS_TIMEOUT_MS, maximumAge: 0 });
+};
+
 document.getElementById('endBtn').onclick=()=>{ finish(); };
 
 function finish(){
+  stopCam(); // liberta a câmara se o técnico terminar com o preview aberto
+  // Testes avançados: o que ficou null é «não medido» — 'skip' honesto,
+  // nunca 'fail'. A taxa de toque calcula-se aqui, com todo o movimento
+  // das fases anteriores já contado pelo sampler.
+  result.touchHz = computeTouchHz();
+  result.touchSample = D.touchSampleStatus(result.touchHz);
+  if (result.cameraFront === null) result.cameraFront = 'skip';
+  if (result.cameraBack === null) result.cameraBack = 'skip';
+  if (result.gpu === null) result.gpu = 'skip';
+  if (result.gps === null) result.gps = 'skip';
+  if (result.brightness === null) result.brightness = 'skip';
   result.colorsViewed = seenColors.size;
   const note = document.getElementById('doneNote');
   document.getElementById('sensors').style.display='none';
+  advPanel.style.display='none';
   document.getElementById('done').style.display='flex';
   // Fire-and-forget escondia falhas: PC adormecido/Wi-Fi trocada = ecrã dizia
   // "completo" e o relatório ficava sem os testes. Retry até entregar; se

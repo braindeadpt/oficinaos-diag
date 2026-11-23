@@ -185,4 +185,136 @@ public sealed class TestResultMapperTests
         Assert.False(r.Results.ContainsKey("sensor.multitouch"));
         Assert.False(r.Results.ContainsKey("sensor.accel"));
     }
+
+    // ── testes avançados (Fase B) ─────────────────────────────────────
+
+    [Fact]
+    public void CameraFrontalETrazeira_okFailESkip()
+    {
+        var r = Map("""{"cameraFront":"ok","cameraBack":"fail"}""");
+
+        Assert.Equal("pass", r.Results["test.camera_front"].Status);
+        Assert.Equal("fail", r.Results["test.camera_back"].Status);
+        Assert.Equal(L10n.T("test.camera.ok"), r.Results["test.camera_front"].Value);
+        Assert.Equal(L10n.T("test.camera.fail"), r.Results["test.camera_back"].Value);
+    }
+
+    [Fact]
+    public void CameraSkipNuncaEViraFail()
+    {
+        // Permissão recusada, câmara em falta ou HTTP sem contexto seguro —
+        // limitação de plataforma/browsers, nunca defeito de hardware.
+        var r = Map("""{"cameraFront":"skip","cameraBack":"skip"}""");
+
+        Assert.Equal("skipped", r.Results["test.camera_front"].Status);
+        Assert.Equal("skipped", r.Results["test.camera_back"].Status);
+        Assert.Equal(L10n.T("test.camera.skip"), r.Results["test.camera_front"].Value);
+    }
+
+    [Fact]
+    public void GpuOkWarnFailESkip()
+    {
+        var ok = Map("""{"gpu":"ok","gpuFps":58}""");
+        Assert.Equal("pass", ok.Results["test.gpu"].Status);
+        Assert.Contains("58", ok.Results["test.gpu"].Value!);
+
+        // fps a rasar do mínimo — warn, não fail (RAF estrangulado).
+        var warn = Map("""{"gpu":"warn","gpuFps":3}""");
+        Assert.Equal("warn", warn.Results["test.gpu"].Status);
+        Assert.Contains("3", warn.Results["test.gpu"].Value!);
+
+        var fail = Map("""{"gpu":"fail"}""");
+        Assert.Equal("fail", fail.Results["test.gpu"].Status);
+
+        var skip = Map("""{"gpu":"skip"}""");
+        Assert.Equal("skipped", skip.Results["test.gpu"].Status);
+        Assert.Equal(L10n.T("test.gpu.skip"), skip.Results["test.gpu"].Value);
+    }
+
+    [Fact]
+    public void GpuOkSemFpsCaiNoTextoSimples()
+    {
+        // Payload malformado (sem gpuFps) não pode mostrar «WebGL não
+        // exposto» num check que passou — cai no valor simples.
+        var r = Map("""{"gpu":"ok"}""");
+        Assert.Equal("pass", r.Results["test.gpu"].Status);
+        Assert.Equal(L10n.T("test.gpu.okplain"), r.Results["test.gpu"].Value);
+    }
+
+    [Fact]
+    public void GpsOkLeAccuracyESkipEmErroPadrao()
+    {
+        var ok = Map("""{"gps":"ok","gpsAccuracyM":14}""");
+        Assert.Equal("pass", ok.Results["test.gps"].Status);
+        Assert.Contains("14", ok.Results["test.gps"].Value!);
+
+        // «interior sem sinal» e permissão recusada chegam como skip.
+        var skip = Map("""{"gps":"skip"}""");
+        Assert.Equal("skipped", skip.Results["test.gps"].Status);
+
+        // Só um erro fora do padrão dos 3 códigos vira fail.
+        var fail = Map("""{"gps":"fail"}""");
+        Assert.Equal("fail", fail.Results["test.gps"].Status);
+    }
+
+    [Fact]
+    public void BrightnessOkLePercentagemESkipSemAPI()
+    {
+        var ok = Map("""{"brightness":"ok","brightnessValue":80}""");
+        Assert.Equal("pass", ok.Results["test.brightness"].Status);
+        Assert.Contains("80", ok.Results["test.brightness"].Value!);
+
+        var skip = Map("""{"brightness":"skip","brightnessValue":null}""");
+        Assert.Equal("skipped", skip.Results["test.brightness"].Status);
+    }
+
+    [Fact]
+    public void TouchrateOkWarnESkip()
+    {
+        var ok = Map("""{"touchSample":"ok","touchHz":120}""");
+        Assert.Equal("pass", ok.Results["test.touchrate"].Status);
+        Assert.Contains("120", ok.Results["test.touchrate"].Value!);
+
+        var warn = Map("""{"touchSample":"warn","touchHz":45}""");
+        Assert.Equal("warn", warn.Results["test.touchrate"].Status);
+        Assert.Equal(L10n.T("test.touchrate.warn.detail"), warn.Results["test.touchrate"].Detail);
+
+        var skip = Map("""{"touchSample":"skip","touchHz":null}""");
+        Assert.Equal("skipped", skip.Results["test.touchrate"].Status);
+    }
+
+    [Fact]
+    public void TestesAvancadosAusentesNaoCriamLinha()
+    {
+        // Payload de página antiga (ou teste que não chegou à fase
+        // avançada): chave ausente = não medido, sem linha no relatório.
+        var r = Map("""{"sensors":{"light":"ok"}}""");
+
+        Assert.False(r.Results.ContainsKey("test.camera_front"));
+        Assert.False(r.Results.ContainsKey("test.camera_back"));
+        Assert.False(r.Results.ContainsKey("test.gpu"));
+        Assert.False(r.Results.ContainsKey("test.gps"));
+        Assert.False(r.Results.ContainsKey("test.brightness"));
+        Assert.False(r.Results.ContainsKey("test.touchrate"));
+    }
+
+    [Fact]
+    public void TestesAvancadosComTiposErradosNaoRebentam()
+    {
+        var r = Map("""
+            {"cameraFront":5,"gpu":"ok","gpuFps":"cem","gps":true,
+             "brightness":"ok","brightnessValue":{},"touchSample":"ok","touchHz":"oitenta"}
+            """);
+
+        // Status fora do padrão ou tipo errado → skipped, nunca exceção.
+        Assert.Equal("skipped", r.Results["test.camera_front"].Status);
+        Assert.False(r.Results.ContainsKey("test.camera_back")); // chave ausente
+        Assert.Equal("pass", r.Results["test.gpu"].Status);       // ok sem fps válido → texto simples
+        Assert.Equal(L10n.T("test.gpu.okplain"), r.Results["test.gpu"].Value);
+        Assert.Equal("skipped", r.Results["test.gps"].Status);    // gps não é string
+        Assert.Equal("pass", r.Results["test.brightness"].Status);
+        Assert.Equal(L10n.T("test.brightness.plain"), r.Results["test.brightness"].Value);
+        Assert.Equal("pass", r.Results["test.touchrate"].Status);
+        Assert.Equal(L10n.T("test.touchrate.plain"), r.Results["test.touchrate"].Value);
+    }
 }
