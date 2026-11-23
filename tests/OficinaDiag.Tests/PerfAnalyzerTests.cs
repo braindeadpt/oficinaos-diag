@@ -20,8 +20,8 @@ public sealed class PerfAnalyzerTests
 
     private static PerfPageStats Page(string engine = "webgl2", int frames = 9000,
         double secs = 300, double? fpsAvg = 30, double? fpsMin = 24,
-        bool lost = false) =>
-        new(engine, frames, secs, fpsAvg, fpsMin, lost);
+        bool lost = false, double hiddenSecs = 0) =>
+        new(engine, frames, secs, fpsAvg, fpsMin, lost, hiddenSecs);
 
     /// <summary>Sessão típica: 15 s base + 300 s stress + 20 s recuperação, a 2 s.</summary>
     private static List<PowerSample> SessaoCompleta(
@@ -111,6 +111,77 @@ public sealed class PerfAnalyzerTests
     {
         var r = PerfAnalyzer.Analyze(SessaoCompleta(), Page(fpsAvg: 4), 300, 0);
         Assert.Equal("warn", RelatorioDe(r).Results["perf.workload"].Status);
+    }
+
+    // ── stress não confirmado → observações são contexto, nunca warn ────
+
+    [Fact]
+    public void PaginaNull_PicoTermicoNaoPenaliza()
+    {
+        // Regressão: a página sinalizou arranque mas nunca devolveu resultado
+        // — uma célula já quente em repouso não pode dar warn de "sob stress"
+        // nem baixar o grau como se a carga tivesse corrido.
+        var report = RelatorioDe(PerfAnalyzer.Analyze(
+            SessaoCompleta(socTemp: 75), page: null, 300, 0));
+        var c = Check(report, "perf.thermal");
+        Assert.Equal("info", c.Status);
+        Assert.Contains("não foi confirmado", c.Detail);
+        Assert.Contains("SoC pico", c.Value); // a observação conserva-se
+    }
+
+    [Fact]
+    public void MotorNone_MetricasDeCargaFicamContexto()
+    {
+        // WebGL/canvas indisponível → workload warn; as medições da janela
+        // existem mas não são de stress — info, nunca warn.
+        var report = RelatorioDe(PerfAnalyzer.Analyze(
+            SessaoCompleta(socTemp: 75), Page(engine: "none", frames: 0, secs: 0.1), 300, 0));
+        Assert.Equal("warn", Check(report, "perf.workload").Status);
+        Assert.Equal("info", Check(report, "perf.thermal").Status);
+        Assert.Contains("contexto", Check(report, "perf.thermal").Detail);
+        Assert.Contains("contexto", Check(report, "perf.current").Detail);
+        Assert.Contains("contexto", Check(report, "perf.battery").Detail);
+    }
+
+    [Fact]
+    public void ContextoPerdido_FrequenciaNaoWarn()
+    {
+        // Queda de 45% na frequência com contexto perdido a meio — pode ser
+        // o sistema a economizar, não throttling sob carga provada.
+        var report = RelatorioDe(PerfAnalyzer.Analyze(
+            SessaoCompleta(freqEarly: 2000, freqLate: 1100), Page(lost: true), 300, 0));
+        Assert.Equal("info", Check(report, "perf.throttle").Status);
+        Assert.Contains("contexto", Check(report, "perf.throttle").Detail);
+    }
+
+    [Fact]
+    public void FpsBaixo_NaoConfirmaCarga()
+    {
+        var report = RelatorioDe(PerfAnalyzer.Analyze(
+            SessaoCompleta(socTemp: 75), Page(fpsAvg: 4), 300, 0));
+        Assert.Equal("info", Check(report, "perf.thermal").Status);
+    }
+
+    [Fact]
+    public void StressRealMesmoCurto_ThermalAindaWarn()
+    {
+        // A página correu frames a fps real mas só 100 s dos 300 pedidos —
+        // a carga existiu (loadRan) e os picos térmicos são mesmo de stress;
+        // a duração incompleta é assunto do perf.workload, não da térmica.
+        var report = RelatorioDe(PerfAnalyzer.Analyze(
+            SessaoCompleta(socTemp: 75), Page(secs: 100), 300, 0));
+        Assert.Equal("warn", Check(report, "perf.workload").Status);
+        Assert.Equal("warn", Check(report, "perf.thermal").Status);
+    }
+
+    [Fact]
+    public void EcramOculto_WorkloadMostraTempoDescontado()
+    {
+        // iPhone por QR sem Wake Lock: 120 s de ecrã bloqueado não são
+        // stress — a página reporta-os à parte e o valor diz-o.
+        var report = RelatorioDe(PerfAnalyzer.Analyze(
+            SessaoCompleta(), Page(hiddenSecs: 120), 300, 0));
+        Assert.Contains("oculto", Check(report, "perf.workload").Value);
     }
 
     // ── honestidade: métricas não expostas → skipped ───────────────────
@@ -266,6 +337,35 @@ public sealed class PerfAnalyzerTests
     }
 
     [Fact]
+    public void PerfilSemScan_SemBaseParaGrau()
+    {
+        // Regressão: perf.* contava na cobertura do grader — um perfil
+        // guardado sem SCAN dava grau A mesmo sem dados do aparelho.
+        // As medições de bancada são contexto, não substituem o scan.
+        var report = RelatorioDe(PerfAnalyzer.Analyze(SessaoCompleta(), Page(), 300, 0));
+        Assert.Equal("—", Grader.Compute(report).Grade);
+    }
+
+    [Fact]
+    public void PerfilComScan_NaoDiminuiCobertura()
+    {
+        // Com scan feito, perf.* não entra na contagem mas também não a
+        // prejudica — o grau vem dos checks do aparelho como antes.
+        var report = new DeviceReport();
+        report.Set("battery.capacity", "pass", "91%");
+        report.Set("battery.health", "pass", "good");
+        report.Set("identity.imei", "pass", "35…");
+        report.Set("security.bootloader", "pass", "locked");
+        report.Set("checklist.frame", "pass", "ok"); // checklistDone>0 → veredicto limpo
+        Copiar(PerfAnalyzer.Analyze(SessaoCompleta(), Page(), 300, 0), report);
+
+        var g = Grader.Compute(report);
+        Assert.Equal("A", g.Grade);
+        // A cobertura conta os 5 checks do aparelho — os 7 perf.* não entram.
+        Assert.Contains("5 verificações", g.Verdict);
+    }
+
+    [Fact]
     public void PerfUsbPass_ContribuiParaACategoriaEstabilidade()
     {
         // perf.usb está na categoria estabilidade do health score — sem ele
@@ -324,5 +424,17 @@ public sealed class PerfAnalyzerTests
         Assert.Null(p!.Engine);
         Assert.Null(p.FpsAvg);
         Assert.False(p.ContextLost);
+        Assert.Equal(0, p.HiddenSecs);
+    }
+
+    [Fact]
+    public void PageStats_EcramOculto_ParseHiddenSecs()
+    {
+        var p = PerfPageStats.FromJson(Payload(
+            "{\"perfEngine\":\"canvas2d\",\"perfFrames\":600,\"perfSecs\":30,"
+            + "\"perfHiddenSecs\":95.5,\"perfFpsAvg\":20}"));
+        Assert.NotNull(p);
+        Assert.Equal(30.0, p!.Secs);        // segundos ATIVOS
+        Assert.Equal(95.5, p.HiddenSecs); // tempo de ecrã oculto à parte
     }
 }

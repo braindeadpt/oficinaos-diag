@@ -77,11 +77,19 @@ public static class PerfAnalyzer
         // ── a página confirma que o stress correu? ──────────────────────
         checks.Add(WorkloadCheck(page, stressSecsRequested));
 
+        // Stress realmente confirmado no aparelho? Sem prova de carga as
+        // observações da fase de stress são contexto (repouso disfarçado
+        // de stress) — medem-se mas nunca produzem warn de "sob stress".
+        var loadRan = page is not null
+            && page.Engine is "webgl2" or "webgl" or "canvas2d"
+            && !page.ContextLost
+            && page.FpsAvg is { } favg && favg >= FpsWarn;
+
         // ── térmica: SoC vs célula, picos durante o stress ──────────────
-        checks.Add(ThermalCheck(stress));
+        checks.Add(ThermalCheck(stress, loadRan));
 
         // ── corrente média durante o stress ────────────────────────────
-        checks.Add(CurrentCheck(stress, samples));
+        checks.Add(CurrentCheck(stress, samples, loadRan));
 
         // ── quedas USB na janela da sessão ──────────────────────────────
         checks.Add(new PerfCheck("perf.usb",
@@ -95,10 +103,10 @@ public static class PerfAnalyzer
                     : "sem desconexões durante a sessão de perfil"));
 
         // ── throttling: frequência de CPU início vs fim do stress ──────
-        checks.Add(ThrottleCheck(stress));
+        checks.Add(ThrottleCheck(stress, loadRan));
 
         // ── autonomia: % de bateria perdida durante o stress ───────────
-        checks.Add(BatteryCheck(stress));
+        checks.Add(BatteryCheck(stress, loadRan));
 
         return new PerfProfileResult
         {
@@ -123,7 +131,10 @@ public static class PerfAnalyzer
             "canvas2d" => "Canvas 2D", _ => "—",
         };
         var fps = page.FpsAvg is { } f ? $"≈{f:0} fps" : "fps n/d";
-        var value = $"{engine} · {fps} · {page.Secs:0}s";
+        // Ecrã oculto não é stress: a página desconta-o de perfSecs — se
+        // houve tempo bloqueado relevante, diz-se no valor.
+        var hidden = page.HiddenSecs >= 5 ? $" · oculto {page.HiddenSecs:0}s" : "";
+        var value = $"{engine} · {fps} · {page.Secs:0}s{hidden}";
 
         if (page.Engine is null or "none")
             return new PerfCheck("perf.workload", "warn", value,
@@ -141,7 +152,7 @@ public static class PerfAnalyzer
             "stress on-device confirmado pela página — as medições são de carga real");
     }
 
-    private static PerfCheck ThermalCheck(List<PowerSample> stress)
+    private static PerfCheck ThermalCheck(List<PowerSample> stress, bool loadRan)
     {
         var batt = stress.Where(s => s.TempC is { }).Select(s => s.TempC!.Value).ToList();
         var soc = stress.Where(s => s.SocTempC is { }).Select(s => s.SocTempC!.Value).ToList();
@@ -155,14 +166,21 @@ public static class PerfAnalyzer
         if (batt.Count > 0) { battMax = batt.Max(); parts.Add($"célula pico {battMax:0.#}°C"); }
 
         var hot = (socMax is > SocWarnC) || (battMax is > BattWarnC);
-        return new PerfCheck("perf.thermal", hot ? "warn" : "info",
-            string.Join(" · ", parts),
-            hot
+        // Sem stress confirmado um pico pode ser repouso — nunca warn: um
+        // telemóvel quente em idle não é prova de dissipação térmica falha.
+        var status = hot && loadRan ? "warn" : "info";
+        var detail = hot
+            ? loadRan
                 ? "temperaturas extremas durante o stress sustentado — verificar dissipação térmica"
-                : "picos medidos durante o stress — comparar com a repetição pós-manutenção");
+                : "pico térmico observado mas o stress não foi confirmado pela página — contexto, não prova de carga"
+            : loadRan
+                ? "picos medidos durante o stress — comparar com a repetição pós-manutenção"
+                : "picos medidos — stress não confirmado pela página, leitura de contexto";
+        return new PerfCheck("perf.thermal", status,
+            string.Join(" · ", parts), detail);
     }
 
-    private static PerfCheck CurrentCheck(List<PowerSample> stress, List<PowerSample> all)
+    private static PerfCheck CurrentCheck(List<PowerSample> stress, List<PowerSample> all, bool loadRan)
     {
         // Mesma honestidade da #53: se NENHUMA amostra trouxe mA, o driver não
         // expõe corrente — skipped, não «0 mA» nem defeito.
@@ -178,10 +196,12 @@ public static class PerfAnalyzer
         var charging = withMa.Count(s => s.Charging == true) > withMa.Count / 2;
         return new PerfCheck("perf.current", "info",
             $"≈{avg:0} mA médios{(charging ? " · a carregar" : "")}",
-            "corrente média durante o stress — comparável antes/depois");
+            loadRan
+                ? "corrente média durante o stress — comparável antes/depois"
+                : "corrente média — stress não confirmado pela página, leitura de contexto");
     }
 
-    private static PerfCheck ThrottleCheck(List<PowerSample> stress)
+    private static PerfCheck ThrottleCheck(List<PowerSample> stress, bool loadRan)
     {
         var freq = stress.Where(s => s.CpuFreqMhz is not null)
             .OrderBy(s => s.T).Select(s => s.CpuFreqMhz!.Value).ToList();
@@ -196,17 +216,20 @@ public static class PerfAnalyzer
         var late = freq.Skip(freq.Count - edge).Average();
         var dropPct = early > 0 ? (early - late) / early * 100 : 0;
         var value = $"~{early:0} → ~{late:0} MHz";
+        var ctx = loadRan ? "" : " — stress não confirmado, leitura de contexto";
 
-        if (dropPct >= ThrottleWarnPct)
+        // Sem carga provada a descida de frequência pode ser o próprio
+        // sistema a economizar em repouso — nunca warn.
+        if (dropPct >= ThrottleWarnPct && loadRan)
             return new PerfCheck("perf.throttle", "warn", value,
                 $"frequência caiu {dropPct:0}% no fim do stress — throttling térmico provável");
         return new PerfCheck("perf.throttle", "info", value,
-            dropPct > 0
+            (dropPct > 0
                 ? $"frequência descent {dropPct:0}% — dentro do esperado sob stress"
-                : "frequência estável ou subiu durante o stress");
+                : "frequência estável ou subiu durante o stress") + ctx);
     }
 
-    private static PerfCheck BatteryCheck(List<PowerSample> stress)
+    private static PerfCheck BatteryCheck(List<PowerSample> stress, bool loadRan)
     {
         var pct = stress.Where(s => s.Percent is not null)
             .OrderBy(s => s.T).Select(s => s.Percent!.Value).ToList();
@@ -223,7 +246,9 @@ public static class PerfAnalyzer
         var secs = stress.Count > 1 ? stress[^1].T - stress[0].T : 0;
         return new PerfCheck("perf.battery", "info",
             $"−{drain:0.#}% em {secs / 60:0.#} min de stress",
-            "percentagem de bateria perdida durante o stress — prova de autonomia comparável");
+            loadRan
+                ? "percentagem de bateria perdida durante o stress — prova de autonomia comparável"
+                : "percentagem de bateria perdida — stress não confirmado, leitura de contexto");
     }
 
     /// <summary>Resumo de uma linha para o veredicto da janela — só números medidos.</summary>

@@ -492,6 +492,21 @@ public sealed class TestServerTests
         Assert.Equal(HttpStatusCode.NotFound, res.StatusCode);
     }
 
+    [Fact]
+    public void SafeUrl_NaoContemOTokenDaSessao()
+    {
+        // O log pode ser enviado à cloud — a URL completa tem o token, que é a
+        // autorização ativa da página. SafeUrl fica só com scheme+host+porta.
+        using var server = new TestServer(TestSession.PerfProfile);
+        Assert.True(server.Start());
+        var token = new Uri(server.LanUrl).AbsolutePath.Trim('/');
+        Assert.False(string.IsNullOrEmpty(token));
+
+        Assert.DoesNotContain(token, server.SafeUrl);
+        Assert.EndsWith("/", server.SafeUrl);
+        Assert.StartsWith("http://", server.SafeUrl);
+    }
+
     private static async Task<HttpResponseMessage> httpPost(
         string root, string token, string route, string json)
     {

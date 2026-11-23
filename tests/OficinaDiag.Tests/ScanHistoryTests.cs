@@ -217,6 +217,72 @@ public sealed class ScanHistoryTests : IDisposable
         Assert.Equal(2, _h.All().Count);
     }
 
+    // ── Update: resultados manuais gravados depois do scan ────────────
+
+    [Fact]
+    public void Update_RegravaOperfilNaEntradaDoScan()
+    {
+        // Regressão do antes/depois: o perfil corria depois do SCAN e a
+        // entrada em disco ficava sem perf.* — o "antes" da manutenção
+        // não aparecia na comparação.
+        var scan = Rep("PERFIL-1");
+        _h.Add(scan);
+
+        scan.Set("perf.thermal", "info", "SoC pico 52°C");
+        scan.Set("checklist.frame", "pass", "ok");
+        Assert.True(_h.Update(scan));
+
+        var guardado = _h.All().Single();
+        Assert.True(guardado.Results.ContainsKey("perf.thermal"));
+        Assert.True(guardado.Results.ContainsKey("checklist.frame"));
+    }
+
+    [Fact]
+    public void Update_SemCorrespondencia_DevolveFalseSemTocar()
+    {
+        _h.Add(Rep("AAA"));
+        var outro = Rep("BBB"); // nunca foi adicionado
+        outro.Set("perf.usb", "pass", "estável");
+
+        Assert.False(_h.Update(outro));
+        var guardado = _h.All().Single();
+        Assert.False(guardado.Results.ContainsKey("perf.usb"));
+    }
+
+    [Fact]
+    public void Update_SerialDiferente_MesmoTimestamp_NaoToca()
+    {
+        // CollectedAt igual mas serial diferente = outro aparelho — a
+        // entrada certa não pode receber medições de um telemóvel vizinho.
+        var scan = Rep("AAA");
+        _h.Add(scan);
+        var intruso = new DeviceReport { Platform = "android" };
+        intruso.Device.Serial = "BBB";
+        intruso.CollectedAt = scan.CollectedAt;
+        intruso.Set("perf.usb", "warn", "3 quedas");
+
+        Assert.False(_h.Update(intruso));
+        Assert.False(_h.All().Single().Results.ContainsKey("perf.usb"));
+    }
+
+    [Fact]
+    public void Update_PreservaLinhasCorrompidasEOutrosAparelhos()
+    {
+        _h.Add(Rep("AAA"));
+        _h.Add(Rep("BBB"));
+        File.AppendAllText(_file, "{linha partida\n");
+        var scan = _h.All().First(r => r.Device.Serial == "AAA");
+        scan.Set("perf.session", "info", "168 amostras");
+
+        Assert.True(_h.Update(scan));
+        var all = _h.All();
+        Assert.Equal(2, all.Count); // a linha corrompida continua ignorada
+        Assert.True(all.Single(r => r.Device.Serial == "AAA")
+            .Results.ContainsKey("perf.session"));
+        Assert.False(all.Single(r => r.Device.Serial == "BBB")
+            .Results.ContainsKey("perf.session"));
+    }
+
     [Fact]
     public void MutexEDoFicheiro_NaoBloqueiaOutroHistorico()
     {

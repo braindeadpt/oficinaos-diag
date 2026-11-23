@@ -240,10 +240,13 @@ public static class Grader
         // "skipped" é uma tentativa sem medição (MDM não consultável, bancada
         // sem amostras) — não é dado do aparelho; um relatório só com skipped
         // não tem base para grau e cai em "—" como um relatório vazio.
+        // "perf.*" são medições de bancada de contexto (perfil de stress) —
+        // sem um scan não há base para grau: um perfil sozinho não pode dar A.
         var coverage = r.Results.Count(kv =>
             !kv.Key.StartsWith("grade.", StringComparison.Ordinal)
             && !kv.Key.StartsWith("suggest.", StringComparison.Ordinal)
             && !kv.Key.StartsWith("health.", StringComparison.Ordinal)
+            && !kv.Key.StartsWith("perf.", StringComparison.Ordinal)
             && kv.Key != "scan"
             && kv.Value.Status != "skipped");
         if (coverage == 0)

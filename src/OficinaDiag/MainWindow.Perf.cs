@@ -73,10 +73,11 @@ public partial class MainWindow : Window
             }
         });
 
-        var url = server.LanUrl;
         if (server.IsLoopbackOnly)
             Log(L10n.T("log.test.nolan"));
-        Log(L10n.F("log.perf.url", url));
+        // SafeUrl: o log pode ir para a cloud — o token da sessão é a
+        // autorização ativa da página e não pode ficar gravado em claro.
+        Log(L10n.F("log.perf.url", server.SafeUrl));
 
         // probe + zonas térmicas + frequência de CPU — três adb por tick a
         // 2 s de cadência é barato; iOS fica só com a bateria (o resto skipped).
@@ -86,6 +87,10 @@ public partial class MainWindow : Window
         {
             var adb = new AndroidCollector(_adbPath);
             var serial = d.Id.TrimEnd('!');
+            // Estado de ecrã lido ANTES de o perfil mexer — no fim repõe-se
+            // o que era (brilho manual/auto, nível, stay-awake), nunca se
+            // escrevem valores fixos que o aparelho não tinha.
+            AndroidCollector.ScreenState? screen = null;
             probe = async () =>
             {
                 var t = await adb.ProbeAsync(serial);
@@ -94,13 +99,24 @@ public partial class MainWindow : Window
                 var freq = await adb.ProbeCpuFreqAsync(serial);
                 return t with { SocTempC = soc, CpuFreqMhz = freq };
             };
-            loadOn = async () => await adb.ShellAsync(serial,
-                "input keyevent KEYCODE_WAKEUP; svc power stayon true; " +
-                "settings put system screen_brightness_mode 0; " +
-                "settings put system screen_brightness 255");
-            loadOff = async () => await adb.ShellAsync(serial,
-                "settings put system screen_brightness_mode 1; " +
-                "svc power stayon false; input keyevent KEYCODE_SLEEP");
+            loadOn = async () =>
+            {
+                screen = await adb.ProbeScreenStateAsync(serial);
+                await adb.ShellAsync(serial,
+                    "input keyevent KEYCODE_WAKEUP; svc power stayon true; " +
+                    "settings put system screen_brightness_mode 0; " +
+                    "settings put system screen_brightness 255");
+            };
+            loadOff = async () =>
+            {
+                // Se a leitura inicial falhou não se inventam valores: fica o
+                // comportamento anterior (stayon off + ecrã a dormir).
+                if (screen is { } st)
+                    await adb.RestoreScreenStateAsync(serial, st);
+                else
+                    await adb.ShellAsync(serial,
+                        "svc power stayon false; input keyevent KEYCODE_SLEEP");
+            };
         }
         else
         {

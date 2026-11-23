@@ -23,6 +23,12 @@ public sealed partial class PerfWindow : Window
     private const int RecoverSec = 20;
     /// <summary>Espera máxima pelo arranque da página — cobre o QR do iOS lido à mão.</summary>
     private const int PageStartTimeoutMs = 120_000;
+    /// <summary>
+    /// Folga extra na fase de stress: a página corre ?secs=N de tempo ATIVO
+    /// (ecrã visível) e tem um teto de relógio de +90 s para ecrã oculto —
+    /// o host espera o mesmo para apanhar o resultado dentro da sessão.
+    /// </summary>
+    private const int PageWallGraceSec = 90;
     /// <summary>Stress pedido fora disto é URL/teclado adulterado — clamp honesto.</summary>
     private const int MinStressSec = 60;
     private const int MaxStressSec = 900;
@@ -109,8 +115,10 @@ public sealed partial class PerfWindow : Window
         StartBtn.IsEnabled = false;
         _sessaoACorrer = true;
         _cts = new CancellationTokenSource();
-        // Janela larga: base + stress + recuperação + espera pela página.
-        Scope.Reset(BaseSec + stressSecs + RecoverSec + PageStartTimeoutMs / 1000.0);
+        // Janela larga: base + stress (+ folga de ecrã oculto) + recuperação
+        // + espera pela página.
+        Scope.Reset(BaseSec + stressSecs + PageWallGraceSec + RecoverSec
+            + PageStartTimeoutMs / 1000.0);
         // Quedas USB contam-se por tentativa e só na janela de medição.
         _sessionStarted?.Invoke();
         var samples = new List<PowerSample>();
@@ -131,10 +139,12 @@ public sealed partial class PerfWindow : Window
             if (started)
             {
                 Instr.Text = L10n.F("perf.phase2.run", stressSecs);
-                // O stress acaba ao fim do tempo OU quando a página entrega
-                // o resultado — um fim antecipado (contexto perdido, motor
-                // 'none') não justifica minutos de amostragem em idle.
-                await RunPhase(samples, 2, sw, sw.Elapsed + TimeSpan.FromSeconds(stressSecs),
+                // O stress acaba ao fim do tempo ativo + folga de relógio
+                // (ecrã oculto) OU quando a página entrega o resultado — um
+                // fim antecipado (contexto perdido, motor 'none') não
+                // justifica minutos de amostragem em idle.
+                await RunPhase(samples, 2, sw,
+                    sw.Elapsed + TimeSpan.FromSeconds(stressSecs + PageWallGraceSec),
                     earlyExit: () => _pageStats?.Invoke() is not null);
 
                 Instr.Text = L10n.T("perf.phase3");
@@ -156,9 +166,12 @@ public sealed partial class PerfWindow : Window
             if (Result.SampleCount == 0)
             {
                 // Zero amostras = o telemóvel não expôs leitura nenhuma.
-                // Gravar daria verificações fabricadas — inconclusivo, repete.
-                Verdict.Text = "> " + L10n.T("perf.inconclusive");
-                StartBtn.IsEnabled = true;
+                // Gravar daria verificações fabricadas — inconclusivo.
+                // StartBtn fica desarmado: os recursos da página (servidor,
+                // sinal de arranque, stats) são da MainWindow e morrem com o
+                // primeiro resultado — uma segunda tentativa nesta janela
+                // reutilizaria uma sessão morta. Repete-se reabrindo o perfil.
+                Verdict.Text = "> " + L10n.T("perf.inconclusive") + " · " + L10n.T("perf.retry");
             }
             else
             {
@@ -183,7 +196,13 @@ public sealed partial class PerfWindow : Window
                     stressSecs, _usbDropCount?.Invoke() ?? 0);
                 DoneBtn.IsEnabled = true;
             }
-            else StartBtn.IsEnabled = true;
+            else
+            {
+                // Mesma regra da sessão vazia: a página pode já ter entregue
+                // o resultado e o servidor estar morto — repetir aqui
+                // reutilizaria stats antigas. Nova janela = nova sessão.
+                Verdict.Text += " · " + L10n.T("perf.retry");
+            }
         }
         finally
         {

@@ -179,6 +179,12 @@ public sealed class TestServer : IDisposable
     public string LanUrl =>
         $"http://{_bindAddress}:{Port}/{_token}/";
 
+    /// <summary>
+    /// Esquema+host+porta da sessão, SEM o token — seguro para o log, que
+    /// pode ser enviado à cloud (o token é a autorização ativa da página).
+    /// </summary>
+    public string SafeUrl => $"http://{_bindAddress}:{Port}/";
+
     /// <summary>Página servida ao telemóvel; no pacote é uma entrada de tools/package-files.txt.</summary>
     private static readonly string PagePath =
         Path.Combine(AppContext.BaseDirectory, PackagePaths.DeviceTestPageRelativePath);

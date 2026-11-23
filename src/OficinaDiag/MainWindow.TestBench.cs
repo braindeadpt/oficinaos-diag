@@ -94,7 +94,9 @@ public partial class MainWindow : Window
             // código condenado a falhar.
             if (server.IsLoopbackOnly)
                 Log(L10n.T("log.test.nolan"));
-            Log(L10n.F("log.test.url", url));
+            // SafeUrl: o log pode ir para a cloud — o token da sessão é a
+            // autorização ativa da página e não pode ficar gravado em claro.
+            Log(L10n.F("log.test.url", server.SafeUrl));
             if (_current?.Kind == DeviceKind.Android)
             {
                 // O cabo USB já está ligado: `adb reverse` faz o telefone chegar

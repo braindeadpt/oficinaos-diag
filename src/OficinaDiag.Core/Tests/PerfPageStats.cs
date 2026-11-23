@@ -12,11 +12,14 @@ public sealed record PerfPageStats(
     /// <summary>"webgl2" | "webgl" | "canvas2d" | "none" — none = stress não arrancou.</summary>
     string? Engine,
     int Frames,
+    /// <summary>Segundos ATIVOS de stress (ecrã visível) — tempo oculto não conta.</summary>
     double Secs,
     double? FpsAvg,
     /// <summary>Pior janela de 1 s em fps — stalls do browser/thermal aparecem aqui.</summary>
     double? FpsMin,
-    bool ContextLost)
+    bool ContextLost,
+    /// <summary>Segundos com o ecrã oculto/bloqueado durante a sessão — excluídos de Secs.</summary>
+    double HiddenSecs = 0)
 {
     /// <summary>
     /// Parse tolerante do payload da LAN — TryGet* em vez de Get*: um tipo
@@ -35,7 +38,8 @@ public sealed record PerfPageStats(
         var lost = data.TryGetValue("perfContextLost", out var l)
             && l.ValueKind is JsonValueKind.True;
         return new PerfPageStats(engine, (int)frames, secs,
-            Num(data, "perfFpsAvg"), Num(data, "perfFpsMin"), lost);
+            Num(data, "perfFpsAvg"), Num(data, "perfFpsMin"), lost,
+            Num(data, "perfHiddenSecs") ?? 0);
     }
 
     /// <summary>Número opcional do payload — tipo errado não rebenta o parse.</summary>

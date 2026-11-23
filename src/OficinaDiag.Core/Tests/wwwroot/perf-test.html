@@ -20,7 +20,7 @@
 <div id="wrap">
   <div id="stage">
     <canvas id="cv"></canvas>
-    <div id="hud">PERFIL DE DESEMPENHO<br><small>a carregar GPU/CPU — não uses o aparelho</small></div>
+    <div id="hud">PERFIL DE DESEMPENHO<br><small>não uses o aparelho · mantém o ecrã ligado</small></div>
     <div id="stat">a preparar…</div>
   </div>
 </div>
@@ -124,8 +124,39 @@
   /* ── medição ─────────────────────────────────────────────────────── */
   var frames = 0, winFrames = 0, winStart = 0, t0 = 0;
   var fpsMin = null;
+  var finished = false;
+  /* Tempo com o ecrã oculto/bloqueado não é stress: o RAF para mas o
+     relógio não — sem este desconto uma sessão "de 5 min" podia reportar
+     5 min de parede com 1 min de frames (iPhone por QR em HTTP não tem
+     Wake Lock — o técnico tem de manter o ecrã ligado). */
+  var hiddenMs = 0, hiddenAt = -1;
+  /* Teto de relógio: se o ecrã ficar oculto a sério, o stress acaba à
+     mesma com o que mediu — sessão parcial honesta em vez de espera
+     infinita (os timers do iOS são estrangulados em segundo plano). */
+  var WALL_GRACE_MS = 90000;
+
+  function hiddenNow(now) { return hiddenAt >= 0 ? now - hiddenAt : 0; }
+  function activeMs(now) {
+    return Math.max(0, (now - t0) - hiddenMs - hiddenNow(now));
+  }
+  function wallMs(now) { return now - t0; }
+
+  /* Salta janelas de fps inválidas: ocultar no meio de uma janela de 1 s
+     punha ~0 fps no mínimo sem o stress ter falhado. */
+  function syncVisibility() {
+    if (document.hidden) {
+      if (hiddenAt < 0) hiddenAt = performance.now();
+      winFrames = 0; winStart = -1;
+    } else if (hiddenAt >= 0) {
+      hiddenMs += performance.now() - hiddenAt;
+      hiddenAt = -1;
+      winFrames = 0; winStart = performance.now();
+    }
+  }
+  document.addEventListener('visibilitychange', syncVisibility);
 
   function windowFps(now) {
+    if (winStart < 0) { winFrames = 0; return; } // janela invalidada por ocultação
     var dt = (now - winStart) / 1000;
     // Janelas <0.5 s (fim de stress a meio, stall do RAF) não entram no
     // mínimo — uma leitura de 3 frames em 0.2 s não é um fps honesto.
@@ -134,7 +165,8 @@
     fpsMin = (fpsMin === null || f < fpsMin) ? f : fpsMin;
     winFrames = 0; winStart = now;
     // Feedback vivo para o técnico — 5–10 min de stress precisam de sinal.
-    var left = Math.max(0, Math.ceil(secs - (now - t0) / 1000));
+    // Os segundos que faltam são de stress ATIVO, não de relógio.
+    var left = Math.max(0, Math.ceil(secs - activeMs(now) / 1000));
     stat.textContent = 'stress a correr — ' + Math.round(f) + ' fps · faltam ' + left + 's';
   }
 
@@ -169,12 +201,15 @@
     finished = true;
     var now = performance.now();
     windowFps(now); // fecha a última janela parcial
-    var ran = (now - t0) / 1000;
+    // perfSecs são segundos ATIVOS de stress — o ecrã oculto não conta.
+    var ran = activeMs(now) / 1000;
+    var hid = (hiddenMs + hiddenNow(now)) / 1000;
     var avg = ran > 0 ? frames / ran : 0;
     var payload = JSON.stringify({
       perfEngine: engine,
       perfFrames: frames,
       perfSecs: Math.round(ran * 10) / 10,
+      perfHiddenSecs: Math.round(hid * 10) / 10,
       perfFpsAvg: Math.round(avg * 10) / 10,
       perfFpsMin: fpsMin === null ? null : Math.round(fpsMin * 10) / 10,
       perfContextLost: lost
@@ -185,11 +220,11 @@
 
   function frame(now) {
     if (finished) return;
-    if (now - winStart >= 1000) windowFps(now);
+    if (winStart >= 0 && now - winStart >= 1000) windowFps(now);
     if (gl) {
       if (lost || gl.isContextLost()) { finish(); return; }
       try {
-        gl.uniform1f(uT, (now - t0) / 1000);
+        gl.uniform1f(uT, activeMs(now) / 1000);
         gl.uniform2f(uR, canvas.width, canvas.height);
         gl.drawArrays(gl.TRIANGLES, 0, 3);
         gl.finish(); // força trabalho real — sem isto o driver pode adiar tudo
@@ -198,13 +233,21 @@
       draw2d(now);
     }
     frames++; winFrames++;
-    if (now - t0 < secs * 1000) requestAnimationFrame(frame);
+    // O stress acaba quando o tempo ATIVO chega ao fim — ou quando o
+    // relógio passa do teto de tolerância (ecrã oculto a sério).
+    if (activeMs(now) < secs * 1000 && wallMs(now) < secs * 1000 + WALL_GRACE_MS)
+      requestAnimationFrame(frame);
     else finish();
   }
 
   /* ── arranque ────────────────────────────────────────────────────── */
   function start() {
     winStart = t0 = performance.now();
+    // A contabilidade de ocultação recomeça com o stress — o que a página
+    // esteve escondida durante o arranque não é tempo de stress.
+    hiddenMs = 0;
+    hiddenAt = document.hidden ? performance.now() : -1;
+    if (hiddenAt >= 0) winStart = -1;
     /* Ecrã acordado enquanto a página estiver visível — o host também faz
        stayon via adb, mas o wakeLock cobre iOS/Wi-Fi. Best-effort: sem
        secure context a API não existe e o stress corre na mesma. */
@@ -215,12 +258,17 @@
     /* Sinal de alinhamento: o host começa a amostrar AGORA. Sem ele as
        medições térmicas/corrente podiam ser de um telemóvel em idle. */
     fetch('perf-started').catch(function () {});
-    stat.textContent = 'stress a correr — ' + secs + 's';
+    stat.textContent = 'stress a correr — ' + secs + 's · mantém o ecrã ligado';
     requestAnimationFrame(frame);
-    /* Failsafe: se o RAF for estrangulado (ecrã apagado, segundo plano) o
-       setTimeout ainda dispara — reporta o que correu de facto em vez de
-       a página ficar muda para sempre. */
-    setTimeout(function () { finish(); }, secs * 1000 + 20000);
+    /* Failsafe por watchdog: termina quando o tempo ATIVO chega ao fim
+       ou quando o relógio passa do teto — cobre RAF estrangulado por
+       segundo plano sem deixar a página muda para sempre. */
+    var watchdog = setInterval(function () {
+      if (finished) { clearInterval(watchdog); return; }
+      var now = performance.now();
+      if (activeMs(now) >= secs * 1000 || wallMs(now) >= secs * 1000 + WALL_GRACE_MS)
+        finish();
+    }, 1000);
   }
 
   /* Tenta WebGL2 → WebGL → Canvas2D. Nenhum motor = 'none': a página
@@ -243,7 +291,7 @@
     fetch('perf-started').catch(function () {});
     var ran0 = 0.1;
     post(JSON.stringify({
-      perfEngine: 'none', perfFrames: 0, perfSecs: ran0,
+      perfEngine: 'none', perfFrames: 0, perfSecs: ran0, perfHiddenSecs: 0,
       perfFpsAvg: 0, perfFpsMin: null, perfContextLost: false
     }));
     stat.textContent = 'sem motor de stress — resultado enviado';

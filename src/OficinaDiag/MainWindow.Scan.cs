@@ -84,6 +84,12 @@ public partial class MainWindow : Window
         // Health score 0–100 — derivado como o grau: recalcula-se sempre que
         // o relatório ganha dados (scan, teste no ecrã, bancada, checklist).
         var h = HealthScore.Apply(_report);
+        // Dados manuais gravam-se depois do scan: sincroniza a entrada de
+        // histórico (o antes/depois não pode perder o perfil do "antes") e
+        // invalida o parecer de IA — foi escrito para os checks de então e
+        // não pode viajar no envio à loja como se fosse actual.
+        _history.Update(_report);
+        _lastAiReport = null;
         RefreshResults();
         Log(L10n.F("log.grade", g.Grade, g.Verdict));
         if (h.Score is { } hs)
