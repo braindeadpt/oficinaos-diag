@@ -23,8 +23,11 @@ public partial class MainWindow : Window
             // Task.Run cada chamada adb bloqueava a UI thread e a janela
             // congelava durante o scan inteiro.
             var scannedId = _current.Id;
+            // Auditoria de segurança das apps é Pro (decisão do dono): sem
+            // token Pro na máquina o scan gratuito não a corre.
+            var securityAudit = _config.GetShopToken() is not null;
             var fresh = _current.Kind == DeviceKind.Android
-                ? await Task.Run(() => new AndroidCollector(_adbPath).CollectAsync(scannedId.TrimEnd('!')))
+                ? await Task.Run(() => new AndroidCollector(_adbPath, securityAudit).CollectAsync(scannedId.TrimEnd('!')))
                 : await Task.Run(() => new IosCollector().CollectAsync(scannedId));
             // O scan substitui o relatório mas há resultados que ele não
             // volta a produzir — checklist manual, teste no ecrã e bancada.

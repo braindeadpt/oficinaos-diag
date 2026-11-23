@@ -11,8 +11,17 @@ namespace OficinaDiag.Devices;
 public sealed class AndroidCollector
 {
     private readonly string _adbPath;
+    private readonly bool _securityAudit;
 
-    public AndroidCollector(string adbPath) => _adbPath = adbPath;
+    /// <param name="securityAudit">
+    /// Falso no scan gratuito: a auditoria de segurança das apps é Pro
+    /// (decisão do dono) e sem ela o scan poupa os dumpsys extra.
+    /// </param>
+    public AndroidCollector(string adbPath, bool securityAudit = true)
+    {
+        _adbPath = adbPath;
+        _securityAudit = securityAudit;
+    }
 
     private async Task<string?> AdbAsync(string serial, string args, int timeoutMs = 8000)
     {
@@ -236,7 +245,8 @@ public sealed class AndroidCollector
 
         // Auditoria de segurança das apps (pacote Pro): origem dos installs,
         // permissões sensíveis, acessibilidade, verificação de pacotes.
-        await CollectAppAuditAsync(r, serial);
+        if (_securityAudit)
+            await CollectAppAuditAsync(r, serial);
 
         // Desgaste NAND (eMMC life_time / pre_eol) — raro sem root, mas quando
         // exposto é um aviso "vai morrer" que nenhuma app de cliente mostra.
