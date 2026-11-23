@@ -22,9 +22,11 @@ Obrigações se for bundled:
 
 **Uso planeado:** botão "Espelhar ecrã" na app — lança `scrcpy.exe -s <serial>`
 numa janela para o técnico operar o telefone (útil para guiar o cliente,
-testar apps, confirmar a funcionalidade pós-reparação). Feature **Pro**
-(`diag` module) — bundling aumenta o zip em ~30 MB; fica para mais tarde,
-após validar procura nas lojas beta.
+testar apps, confirmar a funcionalidade pós-reparação). Implementado na
+Fase F.10 — **local-first**: o Pro é enforced pela cloud (402/token) e não
+há gate client-side para features locais; se um dia se quiser Pro, o
+desenho é um endpoint de entitlement na cloud, não flag local. Bundling
+adiciona ~26 MB ao zip (release win64 v5.0.1, zip pinado por SHA-256).
 
 ## Auto-orçamento (catálogo determinístico)
 
@@ -139,8 +141,19 @@ medida #47, auditoria segurança #48) **feito**. Este plano cobre o resto.
 9. **Auto-orçamento + peças** (desenho acima) — F2–F3 do roadmap:
    match modelo→catálogo, checks→serviços candidatos, integração
    `market-prices` para peças e `diag-intake` para pré-orçamento.
-10. **scrcpy** — bundling ~30 MB, `tools/platform-tools` já existe, Pro
-    (`diag` module). Licença Apache-2.0 OK (nota acima).
+10. **scrcpy** — **Feito** — botão «Espelho» na vista principal, ativo só
+    com Android `ready` (depuração USB ativa; sem isso o scrcpy morre em
+    "device unauthorized"). Lança `tools/scrcpy/scrcpy.exe -s <serial>`
+    com `ADB` apontado ao platform-tools bundled — o adb.exe da release
+    scrcpy tem versão própria e entrava em guerra com o servidor adb do
+    detetor. Binário via `tools/fetch-tools.ps1`: zip win64 da release
+    oficial pinado por SHA-256 (SHA256SUMS do upstream), ~26 MB no
+    pacote, `LICENSE.txt` Apache-2.0 viaja junto — nunca versionado.
+    Gating Pro ficou **pendente de decisão**: o Pro é enforced pela
+    cloud (402 por módulo / token scoped) e não existe mecanismo
+    client-side para features locais — implementado local-first, mesmo
+    padrão de bench/perf/limpeza. Se um dia se quiser gate, o desenho é
+    endpoint de entitlement na cloud, não flag local.
 
 ### Bloqueado — precisa de hardware real
 

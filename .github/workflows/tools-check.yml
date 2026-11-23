@@ -48,4 +48,10 @@ jobs:
           if (-not (Test-Path "tools/platform-tools/adb.exe")) {
             throw "adb.exe não ficou em tools/platform-tools"
           }
-          Write-Host "OK: 50 binários verificados e adb.exe no sítio"
+          if (-not (Test-Path "tools/scrcpy/scrcpy.exe")) {
+            throw "scrcpy.exe não ficou em tools/scrcpy"
+          }
+          if (-not (Test-Path "tools/scrcpy/LICENSE.txt")) {
+            throw "LICENSE.txt do scrcpy (Apache-2.0) não ficou em tools/scrcpy"
+          }
+          Write-Host "OK: 50 binários verificados, adb.exe e scrcpy.exe no sítio"

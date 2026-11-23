@@ -2,6 +2,7 @@ bin/
 obj/
 node_modules/
 tools/platform-tools/
+tools/scrcpy/
 *.user
 .vs/
 publish/

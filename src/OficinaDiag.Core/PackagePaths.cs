@@ -15,6 +15,9 @@ internal static class PackagePaths
     /// <summary>adb do platform-tools trazido por <c>tools/fetch-tools.ps1</c>.</summary>
     internal const string AdbRelativePath = "tools/platform-tools/adb.exe";
 
+    /// <summary>scrcpy do espelho de ecrã — trazido por <c>tools/fetch-tools.ps1</c>.</summary>
+    internal const string ScrcpyExeRelativePath = "tools/scrcpy/scrcpy.exe";
+
     /// <summary>Tabela de nomes de modelo — dados, alargáveis sem rebuild.</summary>
     internal const string ModelsJsonRelativePath = "Data/models.json";
 

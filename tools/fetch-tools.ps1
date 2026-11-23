@@ -143,3 +143,42 @@ if ($badIm.Count -gt 0) {
     throw "imobiledevice-net $imVersion falhou a verificação SHA-256:`n  $($badIm -join "`n  ")`n— refusing to build with unverified iPhone tools"
 }
 Write-Output "OK: imobiledevice-net $imVersion — todos os binários batem no pin SHA-256"
+
+# ── scrcpy (espelho de ecrã Android): zip oficial pinado por SHA-256 ─────
+# O upstream publica SHA256SUMS.txt por release; o pin abaixo é o valor
+# oficial de scrcpy-win64-v5.0.1.zip na tag v5.0.1. Uma release nova pede
+# versão + hash novos — sem pin o script falha, como no iMobileDevice-net.
+# O zip já traz LICENSE.txt (Apache-2.0), que viaja no pacote — a licença
+# cobre o bundling, nada mais é exigido (sem NOTICE upstream).
+$sc = Join-Path $tools "scrcpy"
+if (Test-Path "$sc\scrcpy.exe") {
+    Write-Output "scrcpy already present - skipping download"
+} else {
+    $scVer = "5.0.1"
+    $scAsset = "scrcpy-win64-v$scVer.zip"
+    $scSha = "b12a2c4ee8be317422451fc7dcf8ee20a71b5ea7ef9ad73ddd825a25316227a5"
+    Write-Output "Downloading scrcpy v$scVer (win64)..."
+    $scZip = Join-Path $env:TEMP $scAsset
+    Invoke-WebRequest "https://github.com/Genymobile/scrcpy/releases/download/v$scVer/$scAsset" -OutFile $scZip
+    $scHash = (Get-FileHash $scZip -Algorithm SHA256).Hash.ToLowerInvariant()
+    if ($scHash -ne $scSha) {
+        Remove-Item $scZip -Force
+        throw "scrcpy $scAsset SHA-256 $scHash != pin $scSha (SHA256SUMS oficial da release) — refusing to bundle unverified binaries"
+    }
+    # O zip traz a pasta scrcpy-win64-vX/ na raiz — extrai para TEMP e sobe
+    # o conteúdo para tools/scrcpy, o layout que o csproj publica.
+    $scTmp = Join-Path $env:TEMP "scrcpy-fetch-$scVer"
+    if (Test-Path $scTmp) { Remove-Item $scTmp -Recurse -Force }
+    Expand-Archive $scZip -DestinationPath $scTmp -Force
+    Remove-Item $scZip -Force
+    if (Test-Path $sc) { Remove-Item $sc -Recurse -Force }
+    Move-Item (Join-Path $scTmp "scrcpy-win64-v$scVer") $sc
+    Remove-Item $scTmp -Recurse -Force
+    # Um zip vazio ou com layout diferente passava no Move-Item sem que
+    # nada verificável ficasse — defesa em profundidade como no platform-tools.
+    if (-not (Test-Path "$sc\scrcpy.exe") -or -not (Test-Path "$sc\LICENSE.txt")) {
+        Remove-Item $sc -Recurse -Force -ErrorAction SilentlyContinue
+        throw "scrcpy extraído sem scrcpy.exe/LICENSE.txt — zip com layout inesperado"
+    }
+    Write-Output "OK: scrcpy v$scVer — zip win64 verificado por SHA-256 (SHA256SUMS oficial)"
+}

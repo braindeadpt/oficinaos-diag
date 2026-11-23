@@ -6,6 +6,7 @@
 # O exe sai do publish (PublishSingleFile), não de um Content.
 OficinaDiag.exe
 tools/platform-tools/adb.exe
+tools/scrcpy/scrcpy.exe
 Data/models.json
 Tests/wwwroot/device-test.html
 Tests/wwwroot/device-test-decisions.js
