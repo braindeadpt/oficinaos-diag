@@ -71,6 +71,45 @@ public sealed class ScanHistory
         finally { _writeLock.ReleaseMutex(); }
     }
 
+    /// <summary>
+    /// Regrava a entrada de histórico que corresponde a este relatório.
+    /// Os resultados manuais (checklist, teste no ecrã, bancada, perfil de
+    /// desempenho) são gravados DEPOIS do scan — sem isto a cópia em disco
+    /// ficava congelada no momento do scan e o antes/depois não via o
+    /// "antes" da manutenção. Casa por CollectedAt+serial (o timestamp do
+    /// scan é único); tmp+rename como no Add — crash a meio não trunca.
+    /// Devolve true se uma entrada foi atualizada.
+    /// </summary>
+    public bool Update(DeviceReport report)
+    {
+        if (!TryLock(TimeSpan.FromSeconds(5))) return false;
+        try
+        {
+            if (!File.Exists(_file)) return false;
+            var lines = File.ReadAllLines(_file);
+            var found = false;
+            for (var i = 0; i < lines.Length; i++)
+            {
+                if (string.IsNullOrWhiteSpace(lines[i])) continue;
+                DeviceReport? r = null;
+                try { r = JsonSerializer.Deserialize<DeviceReport>(lines[i]); }
+                catch { /* linha corrompida — fica como está */ }
+                if (r is null || r.CollectedAt != report.CollectedAt) continue;
+                if (!string.Equals(r.Device.Serial, report.Device.Serial,
+                        StringComparison.OrdinalIgnoreCase)) continue;
+                lines[i] = JsonSerializer.Serialize(report, Opts);
+                found = true;
+                break; // uma entrada por scan — o timestamp é único
+            }
+            if (!found) return false;
+            var tmp = _file + ".tmp";
+            File.WriteAllLines(tmp, lines);
+            File.Move(tmp, _file, overwrite: true);
+            return true;
+        }
+        finally { _writeLock.ReleaseMutex(); }
+    }
+
     /// <summary>Remove entradas mais velhas que a retenção. Chamar com o lock tomado.</summary>
     private void PruneExpired()
     {

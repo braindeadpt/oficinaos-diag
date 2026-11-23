@@ -4,7 +4,7 @@
   "description": "Testes jsdom das decisões da device-test.html (ecrã, toque, sensores)",
   "type": "module",
   "scripts": {
-    "test": "node --test device-test.test.mjs"
+    "test": "node --test"
   },
   "devDependencies": {
     "jsdom": "^31.0.1"

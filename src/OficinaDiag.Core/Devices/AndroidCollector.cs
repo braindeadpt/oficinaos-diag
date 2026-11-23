@@ -594,6 +594,77 @@ public sealed class AndroidCollector
         return AdbParsing.ParseSocTemp(o);
     }
 
+    /// <summary>
+    /// Frequência média de CPU (MHz) — só a bancada de perfil a usa: um
+    /// `scaling_cur_freq` por núcleo online, uma shell call. Sem root nem
+    /// nó exposto → null (o check sai skipped, nunca zero).
+    /// </summary>
+    public async Task<double?> ProbeCpuFreqAsync(string serial)
+    {
+        var o = await AdbAsync(serial,
+            "shell for c in /sys/devices/system/cpu/cpu[0-9]*/cpufreq/scaling_cur_freq; " +
+            "do cat $c 2>/dev/null; done", 5000);
+        return AdbParsing.ParseCpuFreqMhz(o);
+    }
+
+    /// <summary>
+    /// Estado de ecrã lido antes de uma sessão (perfil/bancada) mexer nele —
+    /// reposto no fim para o aparelho não ficar com brilho/stay-awake
+    /// alterados. Campos null = definição não lida (não se inventa valor).
+    /// </summary>
+    public sealed record ScreenState(string? Brightness, string? BrightnessMode, string? StayOn);
+
+    /// <summary>
+    /// Lê brilho, modo de brilho e stay-on-while-plugged-in numa shell call.
+    /// `settings get` imprime "null" quando a chave não existe — não é um
+    /// valor e não pode virar um `settings put` inventado.
+    /// </summary>
+    public async Task<ScreenState?> ProbeScreenStateAsync(string serial)
+    {
+        var o = await ShellAsync(serial,
+            "settings get system screen_brightness; settings get system screen_brightness_mode; " +
+            "settings get global stay_on_while_plugged_in", 5000);
+        return ParseScreenState(o);
+    }
+
+    /// <summary>Parse das 3 linhas do probe — "null"/lixo não-numérico → null.</summary>
+    internal static ScreenState? ParseScreenState(string? output)
+    {
+        if (output is null) return null;
+        var lines = output.Split('\n',
+            StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        static string? Val(string[] ls, int i) =>
+            i < ls.Length && ls[i].Length > 0 && ls[i] != "null" && ls[i].All(char.IsDigit)
+                ? ls[i] : null;
+        return new ScreenState(Val(lines, 0), Val(lines, 1), Val(lines, 2));
+    }
+
+    /// <summary>
+    /// Comandos que repõem o estado lido por <see cref="ProbeScreenStateAsync"/>
+    /// — só se escrevem valores realmente capturados; um stay-on desconhecido
+    /// cai no defeito (desligado) em vez de ficar ligado para sempre.
+    /// </summary>
+    internal static List<string> BuildScreenRestoreCommands(ScreenState prior)
+    {
+        var cmds = new List<string>();
+        // Brilho antes do modo: repõe o nível manual mesmo quando o modo
+        // original era automático (o utilizador pode voltar a manual).
+        if (prior.Brightness is { } b) cmds.Add($"settings put system screen_brightness {b}");
+        if (prior.BrightnessMode is { } m) cmds.Add($"settings put system screen_brightness_mode {m}");
+        if (prior.StayOn is { } s) cmds.Add($"settings put global stay_on_while_plugged_in {s}");
+        else cmds.Add("svc power stayon false");
+        cmds.Add("input keyevent KEYCODE_SLEEP");
+        return cmds;
+    }
+
+    /// <summary>Repõe o estado de ecrã capturado — uma shell call, ecrã a dormir.</summary>
+    public async Task RestoreScreenStateAsync(string serial, ScreenState prior)
+    {
+        var cmds = BuildScreenRestoreCommands(prior);
+        if (cmds.Count > 0)
+            await ShellAsync(serial, string.Join("; ", cmds));
+    }
+
     private async Task CollectLogsAsync(DeviceReport r, string serial)
     {
         var crashBuf = await AdbAsync(serial, "logcat -d -b crash -t 80", 10000);

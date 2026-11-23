@@ -157,4 +157,34 @@ public sealed class AdbParsingTests
         Assert.True(AdbParsing.ParsePresent("present: true\nlevel: 80\n"));
         Assert.Null(AdbParsing.ParsePresent("level: 80\n"));
     }
+
+    // ── PERFIL: frequência de CPU (scaling_cur_freq em kHz por núcleo) ──
+
+    [Fact]
+    public void CpuFreq_MediaDosNucleosEmMhz()
+    {
+        // scaling_cur_freq vem em kHz — 8 núcleos a valores plausíveis.
+        var f = AdbParsing.ParseCpuFreqMhz(
+            "1800000\n1800000\n2400000\n2400000\n2800000\n2800000\n3200000\n3200000\n");
+        Assert.Equal(2550.0, f);
+    }
+
+    [Fact]
+    public void CpuFreq_IgnoraValoresImpossiveis()
+    {
+        // Kernels/OEMs que devolvem 0, lixo ou pseudo-frequências fora da
+        // faixa 100 MHz–4 GHz não podem virar uma «medição» de throttling.
+        var f = AdbParsing.ParseCpuFreqMhz("0\n99999999\nabc\n1400000\n");
+        Assert.Equal(1400.0, f);
+    }
+
+    [Fact]
+    public void CpuFreq_SemNosOuRoot_NullNuncaZero()
+    {
+        // Sem nó exposto ou sem permissão a saída é vazia/erro — null é
+        // «não medido»; 0 MHz ler-se-ia como «CPU parada» (defeito falso).
+        Assert.Null(AdbParsing.ParseCpuFreqMhz(""));
+        Assert.Null(AdbParsing.ParseCpuFreqMhz(null));
+        Assert.Null(AdbParsing.ParseCpuFreqMhz("cat: /sys/.../scaling_cur_freq: Permission denied\n"));
+    }
 }

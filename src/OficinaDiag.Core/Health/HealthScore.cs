@@ -289,6 +289,9 @@ public static class HealthScore
             // Panic thermalmonitord = padrão de flex/sensor térmico.
             new("logs.thermal", 1, (k, c) => ByStatus(c, warn: 40)),
             new("usb.stability", 1, (k, c) => ByStatus(c, warn: 45)),
+            // Perfil de desempenho: quedas USB numa janela de minutos são
+            // evidência mais forte que os ~60 s do SCAN+ — mesmo scorer.
+            new("perf.usb", 1, (k, c) => ByStatus(c, warn: 45)),
         ]),
         new("temperature", "temperatura", WTemperature,
         [
@@ -301,6 +304,11 @@ public static class HealthScore
             // "calor do processador" é esperado sob carga, não prova de
             // saúde térmica da bateria).
             new("power.thermal", 1, (k, c) => ByStatus(c, warn: 40, info: 95)),
+            // Perfil de desempenho: picos sob stress sustentado — o info
+            // (dentro do esperado) vale como o power.thermal; o throttling
+            // severo é sinal térmico mas não veredicto — warn a 50, info fora.
+            new("perf.thermal", 1, (k, c) => ByStatus(c, warn: 40, info: 95)),
+            new("perf.throttle", 1, (k, c) => ByStatus(c, warn: 50)),
         ]),
         new("test", "teste no aparelho", WTest,
         [

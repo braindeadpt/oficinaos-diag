@@ -95,7 +95,13 @@ medida #47, auditoria segurança #48) **feito**. Este plano cobre o resto.
 4. **Stress leve 5–10 min** durante scan manutenção: WebGL/canvas com
    temperatura CPU/SoC vs célula, quedas USB; repetir pós-otimização.
    Prova mensurável de autonomia ao cliente (usa PowerSession + medições
-   da limpeza #47).
+   da limpeza #47). **Feito** — janela «Perfil de desempenho» dedicada
+   (botão na vista principal): `perf-test.html` WebGL/canvas na página
+   do aparelho, janela de host ~5 min por defeito (5/7/10 min,
+   configurável), telemetria SCAN+ (corrente/tensão, térmico célula vs
+   SoC, drops USB, frequência CPU Android). Checks `perf.*` entram no
+   relatório e na comparação antes/depois; métricas não expostas pelo
+   dispositivo ficam `skipped`, nunca `fail`.
 
 ### Fase D — iOS
 

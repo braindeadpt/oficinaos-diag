@@ -138,6 +138,20 @@ public static class Grader
             Cap(2, $"ligação USB instável ({Val("usb.stability")}) — porta com folga ou pinos gastos");
             parts.Add("porta de carga");
         }
+        // Perfil de desempenho (Fase C): as mesmas anomalias do SCAN+ mas
+        // medidas numa janela de minutos — evidência mais forte, mesmo teto.
+        // perf.workload/throttle/current/battery são medições de contexto,
+        // não veredictos de defeito — ficam fora do grade de propósito.
+        if (Stat("perf.thermal") is "warn")
+        {
+            Cap(2, "temperaturas extremas durante o perfil de stress — dissipação térmica a falhar");
+            parts.Add("dissipação térmica");
+        }
+        if (Stat("perf.usb") is "warn")
+        {
+            Cap(2, $"ligação USB instável no perfil ({Val("perf.usb")}) — porta com folga ou pinos gastos");
+            parts.Add("porta de carga");
+        }
 
         // ── ecrã / toque ─────────────────────────────────────────────────
         if (Stat("test.touch") is "fail")
@@ -226,10 +240,13 @@ public static class Grader
         // "skipped" é uma tentativa sem medição (MDM não consultável, bancada
         // sem amostras) — não é dado do aparelho; um relatório só com skipped
         // não tem base para grau e cai em "—" como um relatório vazio.
+        // "perf.*" são medições de bancada de contexto (perfil de stress) —
+        // sem um scan não há base para grau: um perfil sozinho não pode dar A.
         var coverage = r.Results.Count(kv =>
             !kv.Key.StartsWith("grade.", StringComparison.Ordinal)
             && !kv.Key.StartsWith("suggest.", StringComparison.Ordinal)
             && !kv.Key.StartsWith("health.", StringComparison.Ordinal)
+            && !kv.Key.StartsWith("perf.", StringComparison.Ordinal)
             && kv.Key != "scan"
             && kv.Value.Status != "skipped");
         if (coverage == 0)

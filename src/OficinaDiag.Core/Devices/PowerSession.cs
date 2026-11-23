@@ -1,9 +1,9 @@
 namespace OficinaDiag.Devices;
 
-/// <summary>Uma amostra da sessão de potência [SCAN+]. Phase: 1=base, 2=carga de trabalho, 3=recuperação.</summary>
+/// <summary>Uma amostra da sessão de potência [SCAN+]/[PERFIL]. Phase: 1=base, 2=carga de trabalho/stress, 3=recuperação.</summary>
 public sealed record PowerSample(double T, int Phase, int? Milliamps, double? Volts,
     double? TempC, int? Percent, bool? Charging, double? NegotiatedWatts,
-    double? SocTempC = null);
+    double? SocTempC = null, double? CpuFreqMhz = null);
 
 /// <summary>
 /// Contador de quedas USB do host durante uma sessão SCAN+ — vive no

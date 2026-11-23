@@ -8,6 +8,13 @@ using System.Text.Json;
 namespace OficinaDiag.Tests;
 
 /// <summary>
+/// Que sessão a página serve — o teste de ecrã/toque ou o perfil de
+/// desempenho [PERFIL]. Cada modo tem a sua página, a sua rota de resultado
+/// e o seu shape mínimo; a segurança (token, bind, rate, origem) é a mesma.
+/// </summary>
+public enum TestSession { DeviceTest, PerfProfile }
+
+/// <summary>
 /// Tiny HTTP server on the LAN that serves the on-device test page
 /// (screen colours + touch grid) and receives its results back.
 /// Pure LAN — no cloud, no account.
@@ -47,6 +54,14 @@ public sealed class TestServer : IDisposable
     public event Action<Dictionary<string, JsonElement>>? ResultReceived;
 
     /// <summary>
+    /// Só no modo PerfProfile: a página fez GET em /perf-started — o stress
+    /// on-device está a correr AGORA. O host usa-o para alinhar a janela de
+    /// amostragem (no iOS o QR pode demorar a ser lido; sem o sinal as
+    /// medições saíam de um telemóvel em idle).
+    /// </summary>
+    public event Action? PerfStarted;
+
+    /// <summary>
     /// Porta consultada ANTES do 200: devolver false → 409 e a página mostra
     /// falha real em vez de «resultado entregue». A sessão fica viva — depois
     /// de corrigida a condição (ex.: relatório aberto de outro aparelho) um
@@ -71,16 +86,6 @@ public sealed class TestServer : IDisposable
     /// <summary>Endereço do bind real do socket — nunca Any: prova de que a porta não está aberta noutras NICs.</summary>
     internal IPAddress BindAddress =>
         _listener.LocalEndpoint is IPEndPoint ep ? ep.Address : _bindAddress;
-
-    public TestServer()
-    {
-        // Liga só aos dois endpoints que servem a sessão — o IP LAN do QR
-        // (iPhone/Wi-Fi) e o loopback do `adb reverse` (Secure Context para
-        // o microfone) — nunca em Any: enquanto o filtro de origem não corre,
-        // uma NIC pública ou VPN ficava com a porta aberta.
-        _bindAddress = ResolveLanAddress() ?? IPAddress.Loopback;
-        _listener = new TcpListener(_bindAddress, 0);
-    }
 
     /// <summary>URL do túnel USB (`adb reverse tcp:<port>`) — sem Wi-Fi nenhum.</summary>
     public string LoopbackUrl => $"http://127.0.0.1:{Port}/{_token}/";
@@ -174,13 +179,29 @@ public sealed class TestServer : IDisposable
     public string LanUrl =>
         $"http://{_bindAddress}:{Port}/{_token}/";
 
+    /// <summary>
+    /// Esquema+host+porta da sessão, SEM o token — seguro para o log, que
+    /// pode ser enviado à cloud (o token é a autorização ativa da página).
+    /// </summary>
+    public string SafeUrl => $"http://{_bindAddress}:{Port}/";
+
     /// <summary>Página servida ao telemóvel; no pacote é uma entrada de tools/package-files.txt.</summary>
     private static readonly string PagePath =
         Path.Combine(AppContext.BaseDirectory, PackagePaths.DeviceTestPageRelativePath);
 
+    /// <summary>Página de stress do perfil de desempenho — mesmo pacote.</summary>
+    private static readonly string PerfPagePath =
+        Path.Combine(AppContext.BaseDirectory, PackagePaths.PerfPageRelativePath);
+
     /// <summary>Decisões da página (cores, grelha, limiares) — mesmo pacote.</summary>
     private static readonly string DecisionsPath =
         Path.Combine(AppContext.BaseDirectory, PackagePaths.DeviceTestDecisionsRelativePath);
+
+    private readonly TestSession _session;
+    private readonly string _pagePath;
+    private readonly string? _decisionsPath;
+    private readonly string _resultRoute;
+    private readonly Func<Dictionary<string, JsonElement>, bool> _shapeOk;
 
     /// <summary>Marca da página onde o módulo de decisões é injetado.</summary>
     private const string DecisionsTag = "<script src=\"decisions.js\"></script>";
@@ -190,10 +211,38 @@ public sealed class TestServer : IDisposable
         page.Replace(DecisionsTag, $"<script>\n{decisions}\n</script>");
 
     /// <summary>Returns false se a página ou as decisões não estiverem junto ao exe.</summary>
+    public TestServer(TestSession session = TestSession.DeviceTest)
+    {
+        _session = session;
+        // A página de perfil é autocontida (sem módulo de decisões) — o
+        // shape mínimo e a rota de resultado são os do modo perf.
+        if (session == TestSession.PerfProfile)
+        {
+            _pagePath = PerfPagePath;
+            _decisionsPath = null;
+            _resultRoute = "/perf-result";
+            _shapeOk = IsPerfResultShape;
+        }
+        else
+        {
+            _pagePath = PagePath;
+            _decisionsPath = DecisionsPath;
+            _resultRoute = "/result";
+            _shapeOk = IsResultShape;
+        }
+        // Liga só aos dois endpoints que servem a sessão — o IP LAN do QR
+        // (iPhone/Wi-Fi) e o loopback do `adb reverse` (Secure Context para
+        // o microfone) — nunca em Any: enquanto o filtro de origem não corre,
+        // uma NIC pública ou VPN ficava com a porta aberta.
+        _bindAddress = ResolveLanAddress() ?? IPAddress.Loopback;
+        _listener = new TcpListener(_bindAddress, 0);
+    }
+
+    /// <summary>Returns false se a página (e as decisões, no modo teste) não estiverem junto ao exe.</summary>
     public bool Start()
     {
-        // As duas: a página é servida com as decisões embutidas.
-        if (!File.Exists(PagePath) || !File.Exists(DecisionsPath))
+        if (!File.Exists(_pagePath)
+            || (_decisionsPath is { } dp && !File.Exists(dp)))
             return false;
         _listener.Start();
         // Loopback noutro listener, mesmo porto: TcpListener já ligado não
@@ -221,9 +270,12 @@ public sealed class TestServer : IDisposable
     {
         // As decisões entram na página servida: um único pedido, e a página
         // não depende de resolver um caminho relativo (que muda quando o
-        // browser corta a barra final do token).
-        var page = InlineDecisions(
-            File.ReadAllText(PagePath), File.ReadAllText(DecisionsPath));
+        // browser corta a barra final do token). A página de perfil é
+        // autocontida — vai tal qual está em disco.
+        var pageText = File.ReadAllText(_pagePath);
+        var page = _decisionsPath is { } dp
+            ? InlineDecisions(pageText, File.ReadAllText(dp))
+            : pageText;
         var loops = new List<Task> { AcceptLoopAsync(_listener, page) };
         if (_loopbackListener is not null)
             loops.Add(AcceptLoopAsync(_loopbackListener, page));
@@ -355,7 +407,7 @@ public sealed class TestServer : IDisposable
                 // a barra final — os dois servem a mesma página.
                 var cleanPath = rawPath.Split('?')[0].TrimEnd('/');
 
-                if (method == "POST" && cleanPath == $"/{_token}/result")
+                if (method == "POST" && cleanPath == $"/{_token}{_resultRoute}")
                 {
                     // lê o corpo conforme Content-Length (com teto — ver const acima)
                     var lenMatch = System.Text.RegularExpressions.Regex.Match(
@@ -395,11 +447,12 @@ public sealed class TestServer : IDisposable
                     {
                         data = null;
                     }
-                    // Shape check antes de fechar: a página envia sempre
-                    // touchHit/touchTotal/colorsViewed. Um JSON qualquer de
-                    // um peer da LAN (scanner, curl curioso) não pode matar
-                    // a sessão antes de o telemóvel entregar o resultado.
-                    if (data is null || !IsResultShape(data))
+                    // Shape check antes de fechar: a página de teste envia
+                    // sempre touchHit/touchTotal/colorsViewed e a de perfil
+                    // perfFrames/perfSecs. Um JSON qualquer de um peer da
+                    // LAN (scanner, curl curioso) não pode matar a sessão
+                    // antes de o telemóvel entregar o resultado.
+                    if (data is null || !_shapeOk(data))
                     {
                         Respond(stream, "400 Bad Request", "unexpected payload", "text/plain");
                         return;
@@ -418,6 +471,15 @@ public sealed class TestServer : IDisposable
                     // dispara o evento e se fecha o servidor (one-shot).
                     ResultReceived?.Invoke(data!);
                     Complete();
+                }
+                else if (_session == TestSession.PerfProfile
+                    && method == "GET" && cleanPath == $"/{_token}/perf-started")
+                {
+                    // Sinal de alinhamento do perfil: a página acabou de
+                    // arrancar o stress on-device. Não fecha a sessão —
+                    // é só um aviso; o resultado continua a vir por POST.
+                    Respond(stream, "200 OK", "ok", "text/plain");
+                    PerfStarted?.Invoke();
                 }
                 else if (method == "GET" && cleanPath == $"/{_token}")
                 {
@@ -442,6 +504,15 @@ public sealed class TestServer : IDisposable
         && data.TryGetValue("touchHit", out var th) && th.ValueKind == JsonValueKind.Number
         && data.TryGetValue("touchTotal", out var tt) && tt.ValueKind == JsonValueKind.Number
         && data.TryGetValue("colorsViewed", out var cv) && cv.ValueKind == JsonValueKind.Number;
+
+    /// <summary>
+    /// A página de perfil define sempre estes dois campos numéricos — o
+    /// mínimo que distingue um resultado real de ruído JSON de outro peer.
+    /// </summary>
+    private static bool IsPerfResultShape(Dictionary<string, JsonElement>? data) =>
+        data is not null
+        && data.TryGetValue("perfFrames", out var pf) && pf.ValueKind == JsonValueKind.Number
+        && data.TryGetValue("perfSecs", out var ps) && ps.ValueKind == JsonValueKind.Number;
 
     private void Respond(NetworkStream stream, string status, string body, string contentType)
     {

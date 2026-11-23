@@ -20,6 +20,11 @@ public class ReportMergeTests
         r.Set("sensor.multitouch", "pass", "5 pontos");
         r.Set("power.charge", "warn", "450 mA");
         r.Set("usb.stability", "warn", "2 desconexão(ões)");
+        // Perfil de desempenho — medição manual como a bancada, tem de
+        // sobreviver ao re-scan para o antes/depois continuar comparável.
+        r.Set("perf.session", "info", "168 amostras · 336s");
+        r.Set("perf.thermal", "info", "SoC pico 52.1°C");
+        r.Set("perf.usb", "pass", "ligação estável");
         // Produzidos pelo scan/derivados — NÃO podem ser arrastados
         r.Set("security.root", "warn", "su encontrado");
         r.Set("battery.swap", "info", "célula diferente");
@@ -44,6 +49,9 @@ public class ReportMergeTests
         Assert.True(novo.Results.ContainsKey("sensor.multitouch"));
         Assert.True(novo.Results.ContainsKey("power.charge"));
         Assert.True(novo.Results.ContainsKey("usb.stability"));
+        Assert.True(novo.Results.ContainsKey("perf.session"));
+        Assert.True(novo.Results.ContainsKey("perf.thermal"));
+        Assert.True(novo.Results.ContainsKey("perf.usb"));
         Assert.Equal("cliente quer orçamento", novo.Notes);
         Assert.Equal("sale", novo.Purpose);
         Assert.Contains(@"C:\fotos\ecra.jpg", novo.PhotoPaths);

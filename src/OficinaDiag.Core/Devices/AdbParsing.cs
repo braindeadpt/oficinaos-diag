@@ -144,6 +144,24 @@ public static class AdbParsing
         return soc;
     }
 
+    /// <summary>
+    /// Frequência de CPU: `scaling_cur_freq` vem em kHz por núcleo — faz-se a
+    /// média dos valores plausíveis (100 MHz–4 GHz). Kernels que exigem root
+    /// ou OEMs que escondem o nó devolvem lista vazia → null, nunca 0 MHz
+    /// (0 ler-se-ia como «CPU parada»).
+    /// </summary>
+    public static double? ParseCpuFreqMhz(string? output)
+    {
+        var vals = new List<double>();
+        foreach (var line in (output ?? "").Split('\n', StringSplitOptions.RemoveEmptyEntries))
+        {
+            if (!TryDouble(line.Trim(), out var khz)) continue;
+            if (khz is < 100_000 or > 4_000_000) continue; // kHz — fora = lixo
+            vals.Add(khz / 1000.0);
+        }
+        return vals.Count == 0 ? null : vals.Average();
+    }
+
     /// <summary>Capacidade: kernels reportam µAh ou mAh — normaliza para mAh.</summary>
     public static double NormalizeMah(double value) => value > 100_000 ? value / 1000.0 : value;
 

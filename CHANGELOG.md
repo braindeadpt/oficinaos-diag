@@ -5,6 +5,23 @@ Versões seguem o tag `v*` do release.
 
 ## Unreleased
 
+- Perfil de desempenho/bateria (Fase C do plano Diag Pro): novo botão
+  «Perfil» na vista principal abre uma janela dedicada com stress leve
+  WebGL/Canvas2D na página do aparelho (`perf-test.html`, sessão própria do
+  TestServer, ~5 min por defeito — 5/7/10 min ou 1–15 editável; o tempo
+  corre só com o ecrã visível — tempo oculto é descontado e reportado).
+  Durante a stress a telemetria SCAN+ corre no host: corrente/tensão,
+  temperatura da célula vs SoC, quedas USB (`UsbDropCounter`) e frequência
+  de CPU no Android (`cpu_freq` via ADB). A página devolve motor usado,
+  frames, fps médio/pior janela e segundos ativos — junta-se às medições
+  do host e grava checks `perf.*` — `perf.workload`, `perf.thermal`,
+  `perf.current`, `perf.throttle`, `perf.battery`, `perf.usb` — que
+  aparecem no relatório e na comparação antes/depois (repetir após a
+  manutenção dá prova mensurável de autonomia). Sem stress confirmado
+  pela página, as métricas de carga ficam em contexto (nunca warn);
+  métrica não exposta pelo dispositivo fica `skipped`, nunca `fail`.
+  Preservado entre rescans e sincronizado com o histórico (o antes/depois
+  vê o perfil do "antes").
 - Teste no aparelho: nova fase **testes avançados** na página on-device —
   câmara frontal/traseira (getUserMedia + confirmação visual), stress WebGL
   de ~3 s (`test.gpu`), geolocalização com timeout (`test.gps`), brilho via
