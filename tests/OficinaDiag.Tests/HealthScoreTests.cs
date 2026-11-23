@@ -343,6 +343,41 @@ public sealed class HealthScoreTests
     }
 
     [Fact]
+    public void CompareRow_ScorePerdidoOuNovo_NuncaEMelhoria()
+    {
+        // Regressão Devin Review: score anterior «Razoável» (warn) que
+        // virava skipped por cobertura insuficiente caía na lógica de
+        // severidade do CompareWindow e pintava VERDE — perda de dados
+        // não é melhoria. E o contrário também não é queda do aparelho.
+        var old = new CheckResult { Status = "warn", Value = "62/100" };
+        var gone = new CheckResult { Status = "skipped", Value = "—" };
+        Assert.Equal(HealthRowTrend.Neutral, HealthScore.CompareRow(old, gone));
+        Assert.Equal(HealthRowTrend.Neutral, HealthScore.CompareRow(gone, old));
+        Assert.Equal(HealthRowTrend.Neutral, HealthScore.CompareRow(null, old));
+        Assert.Equal(HealthRowTrend.Neutral, HealthScore.CompareRow(old, null));
+    }
+
+    [Fact]
+    public void CompareRow_DescidaEMelhoriaSegueOCobertura()
+    {
+        static CheckResult S(string v) => new() { Status = "pass", Value = v };
+        Assert.Equal(HealthRowTrend.Declined,
+            HealthScore.CompareRow(S("96/100"), S("78/100")));
+        Assert.Equal(HealthRowTrend.Improved,
+            HealthScore.CompareRow(S("78/100"), S("96/100"), 5, 5));
+        Assert.Equal(HealthRowTrend.Neutral,
+            HealthScore.CompareRow(S("87/100"), S("87/100")));
+        // Subida com menos categorias medidas = não confirmada.
+        Assert.Equal(HealthRowTrend.Unconfirmed,
+            HealthScore.CompareRow(S("62/100"), S("95/100"), 5, 3));
+        Assert.Equal(HealthRowTrend.Improved,
+            HealthScore.CompareRow(S("62/100"), S("95/100"), 3, 5));
+        // Linhas de categoria (sem cobertura): a subida é real.
+        Assert.Equal(HealthRowTrend.Improved,
+            HealthScore.CompareRow(S("40/100"), S("90/100")));
+    }
+
+    [Fact]
     public void StorageIOS_LeGBLivres()
     {
         var r = Report();

@@ -20,6 +20,8 @@ public sealed partial class BenchWindow : Window
     private readonly Func<Task<LiveTelemetry?>> _probe;
     private readonly Func<Task>? _loadOn;
     private readonly Func<Task>? _loadOff;
+    /// <summary>Aviso de nova tentativa — o MainWindow repõe o contador de quedas USB.</summary>
+    private readonly Action? _sessionStarted;
     private CancellationTokenSource? _cts;
     // Sessão a decorrer: fechar a meio pede confirmação em vez de deitar
     // fora 60 s de medições com um clique no X.
@@ -29,7 +31,7 @@ public sealed partial class BenchWindow : Window
     public PowerSessionResult? Result { get; private set; }
 
     public BenchWindow(string deviceLabel, Func<Task<LiveTelemetry?>> probe,
-        Func<Task>? loadOn = null, Func<Task>? loadOff = null)
+        Func<Task>? loadOn = null, Func<Task>? loadOff = null, Action? sessionStarted = null)
     {
         InitializeComponent();
         Title = L10n.T("bench.title");
@@ -52,6 +54,7 @@ public sealed partial class BenchWindow : Window
         _probe = probe;
         _loadOn = loadOn;
         _loadOff = loadOff;
+        _sessionStarted = sessionStarted;
         DeviceLabel.Text = deviceLabel;
         Scope.Reset(BaseSec + LoadSec + RecoverSec);
     }
@@ -64,6 +67,9 @@ public sealed partial class BenchWindow : Window
         // Uma sessão inconclusiva pode ser repetida — o osciloscópio
         // recomeça limpo em vez de sobrepor as amostras da tentativa morta.
         Scope.Reset(BaseSec + LoadSec + RecoverSec);
+        // E as quedas USB contam-se por tentativa: as da tentativa anterior
+        // não podem manchar uma repetição estável.
+        _sessionStarted?.Invoke();
         var samples = new List<PowerSample>();
         var sw = Stopwatch.StartNew();
         var loadApplied = false;

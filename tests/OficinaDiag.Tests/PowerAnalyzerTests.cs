@@ -79,6 +79,24 @@ public sealed class PowerAnalyzerTests
     }
 
     [Fact]
+    public void UsbDrops_ResetNaoHerdaTentativaAnterior()
+    {
+        // Regressão Devin Review: repetir a bancada na mesma janela
+        // mantinha as quedas USB da tentativa anterior — uma repetição
+        // estável saía «usb.stability warn» e o grau caía para C.
+        var c = new UsbDropCounter("dev-1");
+        c.OnDeviceDetached("dev-1");
+        c.OnDeviceDetached("dev-1");
+        c.OnDeviceDetached("outro-dev"); // queda de outro aparelho não conta
+        Assert.Equal(2, c.Count);
+
+        c.Reset(); // novo Iniciar = nova contagem
+        Assert.Equal(0, c.Count);
+        c.OnDeviceDetached("dev-1");
+        Assert.Equal(1, c.Count);
+    }
+
+    [Fact]
     public void SessaoVazia_NaoEscreveChecksPositivos()
     {
         // Regressão Devin Review: uma bancada sem amostras gravava

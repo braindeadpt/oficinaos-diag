@@ -5,6 +5,32 @@ public sealed record PowerSample(double T, int Phase, int? Milliamps, double? Vo
     double? TempC, int? Percent, bool? Charging, double? NegotiatedWatts,
     double? SocTempC = null);
 
+/// <summary>
+/// Contador de quedas USB do host durante uma sessão SCAN+ — vive no
+/// MainWindow mas a contagem/reposição é testável aqui. A contagem é
+/// POR TENTATIVA: cada clique em Iniciar repõe o contador, porque quedas
+/// da tentativa anterior não podem manchar a repetição (uma sessão
+/// estável após uma instável não é «ligação instável»).
+/// </summary>
+public sealed class UsbDropCounter
+{
+    private readonly string _deviceId;
+
+    public UsbDropCounter(string deviceId) => _deviceId = deviceId;
+
+    /// <summary>Quedas vistas pelo host desde o último Reset.</summary>
+    public int Count { get; private set; }
+
+    /// <summary>Evento do detector — só conta quedas DO aparelho da sessão.</summary>
+    public void OnDeviceDetached(string detachedId)
+    {
+        if (detachedId == _deviceId) Count++;
+    }
+
+    /// <summary>Nova tentativa de sessão — as quedas anteriores não se herdam.</summary>
+    public void Reset() => Count = 0;
+}
+
 /// <summary>Resultado analisado da sessão — transforma-se em checks do relatório.</summary>
 public sealed class PowerSessionResult
 {

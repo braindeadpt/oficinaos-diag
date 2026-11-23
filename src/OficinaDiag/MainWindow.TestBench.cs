@@ -175,16 +175,18 @@ public partial class MainWindow : Window
 
         _busy = true; // ticker pausa durante a sessão
         // O host conta as quedas USB durante a sessão — cruz com o fuel gauge
-        // distingue porta/cabo instável de bateria fraca.
-        var drops = 0;
-        var benchId = d.Id;
-        void OnDrop(DetectedDevice dd) { if (dd.Id == benchId) drops++; }
+        // distingue porta/cabo instável de bateria fraca. A contagem é por
+        // tentativa: a bancada repõe-na a cada Iniciar (sessionStarted),
+        // para uma repetição estável não herdar quedas da tentativa morta.
+        var drops = new UsbDropCounter(d.Id);
+        void OnDrop(DetectedDevice dd) => drops.OnDeviceDetached(dd.Id);
         _detector!.Detached += OnDrop;
         bool saved;
         Devices.PowerSessionResult? res;
         try
         {
-            var bench = new BenchWindow(d.Label, probe, loadOn, loadOff) { Owner = this };
+            var bench = new BenchWindow(d.Label, probe, loadOn, loadOff,
+                drops.Reset) { Owner = this };
             saved = bench.ShowDialog() == true;
             res = bench.Result;
         }
@@ -207,7 +209,7 @@ public partial class MainWindow : Window
             };
             _reportDeviceId = d.Id;
         }
-        res.UsbDrops = drops;
+        res.UsbDrops = drops.Count;
         res.ApplyTo(_report);
         ApplyGrade();
         ExportButton.IsEnabled = SendButton.IsEnabled = InsuranceButton.IsEnabled =

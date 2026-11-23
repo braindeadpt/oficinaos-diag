@@ -18,6 +18,19 @@ public enum HealthBand
     Concerning,
 }
 
+/// <summary>Direção de uma linha health.* na comparação antes/depois.</summary>
+public enum HealthRowTrend
+{
+    /// <summary>Sem comparação possível — falta um lado ou o score não é número.</summary>
+    Neutral,
+    /// <summary>Score subiu com cobertura igual ou maior — melhoria real.</summary>
+    Improved,
+    /// <summary>Score desceu — regressão real.</summary>
+    Declined,
+    /// <summary>Score subiu mas com menos categorias medidas — não confirmado.</summary>
+    Unconfirmed,
+}
+
 /// <summary>Uma categoria do score — Score null = sem dados (fora do peso).</summary>
 public sealed record HealthCategoryScore(string Key, int? Score, string? Detail);
 
@@ -439,5 +452,38 @@ public static class HealthScore
             .Select(x => x.Trace!)
             .ToList();
         return descontos.Count == 0 ? null : string.Join(" · ", descontos);
+    }
+
+    /// <summary>Extrai o número de um valor "87/100" — null para "—"/skipped/lixo.</summary>
+    private static int? ParseScore(string? value)
+    {
+        if (value is null) return null;
+        var head = value.Split('/')[0].Trim();
+        return int.TryParse(head, out var n) && n >= 0 ? n : null;
+    }
+
+    /// <summary>
+    /// Compara duas linhas health.* (health.score ou health.&lt;categoria&gt;)
+    /// para a janela antes/depois. Regras honestas:
+    /// - Sem os dois números não há comparação — uma pontuação perdida por
+    ///   falta de dados (score → skipped) nunca é melhoria nem queda do
+    ///   aparelho: é neutro.
+    /// - Subida com MENOS categorias medidas não é confirmada — pode ser um
+    ///   check que falhava e passou a «não testado» (só se aplica a
+    ///   health.score, via <paramref name="beforeCoverage"/>/
+    ///   <paramref name="nowCoverage"/>; para categorias passa-se null).
+    /// </summary>
+    public static HealthRowTrend CompareRow(CheckResult? before, CheckResult? now,
+        int? beforeCoverage = null, int? nowCoverage = null)
+    {
+        if (before is null || now is null) return HealthRowTrend.Neutral;
+        if (ParseScore(before.Value) is not { } b || ParseScore(now.Value) is not { } n)
+            return HealthRowTrend.Neutral;
+        if (n < b) return HealthRowTrend.Declined;
+        if (n > b)
+            return beforeCoverage is { } bc && nowCoverage is { } nc && nc < bc
+                ? HealthRowTrend.Unconfirmed
+                : HealthRowTrend.Improved;
+        return HealthRowTrend.Neutral;
     }
 }

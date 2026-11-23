@@ -94,38 +94,35 @@ public sealed partial class CompareWindow : Window
             var hasNew = _current.Results.TryGetValue(key, out var now);
             var before = hasOld ? $"{old!.Value ?? "—"} [{old.Status}]" : "—";
             var nowText = hasNew ? $"{now!.Value ?? "—"} [{now.Status}]" : "—";
-            var oldSev = hasOld ? Severity.GetValueOrDefault(old!.Status) : -1;
-            var newSev = hasNew ? Severity.GetValueOrDefault(now!.Status) : -1;
-            // health.* é um score 0–100: 96→78 são ambos "pass" mas é uma
-            // descida real — a cor segue o número, não o estado.
-            var healthTrend = key.StartsWith("health.", StringComparison.Ordinal)
-                && hasOld && hasNew
-                && TryScore(old!.Value, out var oldScore)
-                && TryScore(now!.Value, out var newScore)
-                ? newScore.CompareTo(oldScore)
-                : 0;
-            // health.score a subir com menos categorias medidas = dados em
-            // falta, não reparação — cinza em vez de verde.
-            var unconfirmedGain = key == "health.score"
-                && healthTrend > 0 && newCov < oldCov;
-            var brush = !hasOld || !hasNew ? dim
-                : unconfirmedGain ? dim
-                : healthTrend != 0 ? (healthTrend > 0 ? pass : fail)
-                : newSev > oldSev ? fail
-                : newSev < oldSev ? pass
-                : now!.Value == old!.Value ? dim : pass;
+            Brush brush;
+            if (key.StartsWith("health.", StringComparison.Ordinal))
+            {
+                // health.* é score 0–100: a cor segue o número e a cobertura,
+                // nunca o estado — 96→78 são ambos "pass" mas é descida, e
+                // um score perdido por falta de dados (→ skipped) não é
+                // melhoria nem queda do aparelho: cinza.
+                var isScore = key == "health.score";
+                brush = HealthScore.CompareRow(
+                        hasOld ? old : null, hasNew ? now : null,
+                        isScore ? oldCov : null, isScore ? newCov : null) switch
+                {
+                    HealthRowTrend.Improved => pass,
+                    HealthRowTrend.Declined => fail,
+                    _ => dim,
+                };
+            }
+            else
+            {
+                var oldSev = hasOld ? Severity.GetValueOrDefault(old!.Status) : -1;
+                var newSev = hasNew ? Severity.GetValueOrDefault(now!.Status) : -1;
+                brush = !hasOld || !hasNew ? dim
+                    : newSev > oldSev ? fail
+                    : newSev < oldSev ? pass
+                    : now!.Value == old!.Value ? dim : pass;
+            }
             rows.Add(new DiffRow { Key = key, Before = before, Now = nowText, Brush = brush });
         }
         DiffList.ItemsSource = rows;
-    }
-
-    /// <summary>Extrai o número de um valor "87/100" — -1 quando não é score.</summary>
-    private static bool TryScore(string? value, out int score)
-    {
-        score = -1;
-        if (value is null) return false;
-        var head = value.Split('/')[0].Trim();
-        return int.TryParse(head, out score) && score >= 0;
     }
 
     private void Close_Click(object sender, RoutedEventArgs e) => Close();
