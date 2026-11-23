@@ -147,7 +147,9 @@ public partial class MainWindow : Window
                     _config.Save();
                     // O emparelhamento acontece a meio do relatório de manutenção,
                     // depois do scan: a auditoria Pro só entra no próximo scan.
-                    Log(L10n.T("log.pairing.rescan"));
+                    // iOS não tem auditoria de apps — o aviso seria enganador.
+                    if (_current?.Kind == Devices.DeviceKind.Android)
+                        Log(L10n.T("log.pairing.rescan"));
                 }
             }
             Log(L10n.T("log.ai.gen"));
