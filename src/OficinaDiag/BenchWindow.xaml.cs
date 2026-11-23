@@ -61,6 +61,9 @@ public sealed partial class BenchWindow : Window
         StartBtn.IsEnabled = false;
         _sessaoACorrer = true;
         _cts = new CancellationTokenSource();
+        // Uma sessão inconclusiva pode ser repetida — o osciloscópio
+        // recomeça limpo em vez de sobrepor as amostras da tentativa morta.
+        Scope.Reset(BaseSec + LoadSec + RecoverSec);
         var samples = new List<PowerSample>();
         var sw = Stopwatch.StartNew();
         var loadApplied = false;
@@ -79,12 +82,24 @@ public sealed partial class BenchWindow : Window
 
             Instr.Text = L10n.T("bench.done");
             Result = PowerAnalyzer.Analyze(samples);
-            Verdict.Text = "> " + Result.ChargeDetail +
-                           (Result.InternalResistanceMohm is { } ir
-                               ? L10n.F("bench.verdict.ir", ir)
-                               : Result.VoltageSagMv is { } sag && sag > 0
-                                   ? L10n.F("bench.verdict.sag", sag) : "");
-            DoneBtn.IsEnabled = true;
+            if (Result.SampleCount == 0)
+            {
+                // Zero amostras = o telemóvel não expôs leitura nenhuma em
+                // 60 s. Gravar daria «saúde 100/100» e grau A à custa de
+                // verificações fabricadas — a sessão é inconclusiva e o
+                // técnico repete a bancada (Start volta a ficar ativo).
+                Verdict.Text = "> " + L10n.T("bench.inconclusive");
+                StartBtn.IsEnabled = true;
+            }
+            else
+            {
+                Verdict.Text = "> " + Result.ChargeDetail +
+                               (Result.InternalResistanceMohm is { } ir
+                                   ? L10n.F("bench.verdict.ir", ir)
+                                   : Result.VoltageSagMv is { } sag && sag > 0
+                                       ? L10n.F("bench.verdict.sag", sag) : "");
+                DoneBtn.IsEnabled = true;
+            }
         }
         catch (OperationCanceledException)
         {

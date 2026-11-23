@@ -55,11 +55,22 @@ public sealed class PowerSessionResult
         if (UsbDrops > 0)
             r.Set("usb.stability", "warn", $"{UsbDrops} desconexão(ões)",
                 "o host viu o USB cair durante a sessão — porta com folga, pinos gastos ou cabo do cliente fraco");
+        else if (SampleCount == 0)
+            // Sessão sem amostras não observou nada — «ligação estável»
+            // seria uma verificação fabricada que ainda infla a coverage.
+            r.Set("usb.stability", "skipped", "sem observação",
+                "sessão sem amostras — estabilidade USB não observada");
         else
             r.Set("usb.stability", "pass", "ligação estável",
                 "sem desconexões durante ~60 s de teste contínuo");
-        r.Set("power.session", "info", $"{SampleCount} amostras · {DurationSec}s",
-            "sessão SCAN+ — base · carga de ecrã · recuperação");
+        // Meta da sessão: com zero amostras é skipped — como "info"
+        // contava para a coverage do Grader e uma bancada vazia ganhava
+        // grau A sem ter medido seja o que for.
+        r.Set("power.session", SampleCount == 0 ? "skipped" : "info",
+            $"{SampleCount} amostras · {DurationSec}s",
+            SampleCount == 0
+                ? "bancada inconclusiva — repete a sessão"
+                : "sessão SCAN+ — base · carga de ecrã · recuperação");
     }
 }
 
@@ -84,10 +95,11 @@ public static class PowerAnalyzer
 
         // Carga via porta do PC — honestamente é só isso que o cabo de dados permite medir
         var charging = samples.Where(s => s.Phase != 2 && s.Milliamps is > 30 && s.Charging != false).ToList();
-        // Telemetria de corrente: se NENHUMA amostra trouxe mA, o driver não
-        // expõe corrente — a lista vazia é falta de medição, não prova de
-        // porta morta. skipped fica neutro no health score e na coverage.
-        var currentExposed = samples.Any(s => s.Milliamps is not null);
+        // Telemetria de corrente: se NENHUMA amostra das fases de carga
+        // (fora da fase de esforço, como no filtro `charging`) trouxe mA,
+        // o driver não expõe corrente — a lista vazia é falta de medição,
+        // não prova de porta morta. skipped fica neutro no health score.
+        var currentExposed = samples.Any(s => s.Phase != 2 && s.Milliamps is not null);
         double? realW = null;
         var withW = charging.Where(s => s.Volts is { }).ToList();
         if (withW.Count > 2)

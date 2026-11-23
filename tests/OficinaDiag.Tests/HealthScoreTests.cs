@@ -107,16 +107,41 @@ public sealed class HealthScoreTests
     [Fact]
     public void DadosParciais_NaoPenalizamCategoriasEmFalta()
     {
-        // Só a bateria foi medida: as outras cinco categorias ficam de fora
-        // e o peso redistribui-se — 80% de capacidade dá 80, não 80×0.25.
+        // Só a bateria foi medida: a categoria pontua no breakdown, mas o
+        // score global exige cobertura mínima — um check solto não é
+        // «saúde do aparelho» e não pode sair com nota.
         var r = Report();
         Set(r, "battery.capacity", "pass", "80%");
         var res = HealthScore.Compute(r);
 
-        Assert.Equal(80, res.Score);
+        Assert.Null(res.Score);
+        Assert.Contains("insuficientes", res.Verdict);
         var battery = Assert.Single(res.Categories, c => c.Score is not null);
         Assert.Equal("battery", battery.Key);
+        Assert.Equal(80, battery.Score);
         Assert.Equal(5, res.Categories.Count(c => c.Score is null));
+
+        // Com uma segunda categoria o peso redistribui-se pelas medidas
+        // que existem — bateria 80 (peso 25) + segurança 100 (peso 20)
+        // dá 89, não uma média diluída pelas cinco em falta.
+        Set(r, "security.mdm", "pass", "sem gestão remota");
+        var res2 = HealthScore.Compute(r);
+        Assert.Equal(89, res2.Score);
+    }
+
+    [Fact]
+    public void CoberturaInsuficiente_ApplyNaoGravaBreakdown()
+    {
+        // Bateria sozinha é cobertura insuficiente: o relatório não pode
+        // mostrar "bateria 80/100" sem um total que a sustente — as
+        // entradas health.<cat> também ficam de fora.
+        var r = Report();
+        Set(r, "battery.capacity", "pass", "80%");
+        HealthScore.Apply(r);
+        Assert.True(r.Results.TryGetValue("health.score", out var hs));
+        Assert.Equal("skipped", hs!.Status);
+        Assert.DoesNotContain(r.Results.Keys,
+            k => k.StartsWith("health.", StringComparison.Ordinal) && k != "health.score");
     }
 
     [Fact]
@@ -153,8 +178,14 @@ public sealed class HealthScoreTests
         var res = HealthScore.Compute(r);
         var battery = res.Categories.Single(c => c.Key == "battery");
         Assert.Equal(55, battery.Score);
-        // 55% de capacidade = bateria a 55 pontos — o resto do score nem existe.
-        Assert.Equal(55, res.Score);
+        // Um check solto não chega para score global — cobertura mínima.
+        Assert.Null(res.Score);
+
+        // Com uma segunda categoria o total existe e a bateria má
+        // continua a puxar a média: (25×55 + 20×100) / 45 = 75.
+        Set(r, "security.mdm", "pass", "sem gestão remota");
+        var res2 = HealthScore.Compute(r);
+        Assert.Equal(75, res2.Score);
     }
 
     [Fact]
@@ -259,8 +290,11 @@ public sealed class HealthScoreTests
     {
         // Regressão Devin Review: marcar o único teste como «não testado»
         // depois de já ter pontuado deixava health.test=100/100 no JSON/HTML
-        // exportado, embora a categoria já não entrasse no total.
+        // exportado, embora a categoria já não entrasse no total. A bateria
+        // entra para a cobertura mínima (25+15=40) — sem ela o score global
+        // nem existiria e nenhuma entrada health.<cat> seria gravada.
         var r = Report();
+        Set(r, "battery.capacity", "pass", "90%");
         Set(r, "test.touch", "pass", "60/60 zonas");
         HealthScore.Apply(r);
         Assert.True(r.Results.ContainsKey("health.test"));

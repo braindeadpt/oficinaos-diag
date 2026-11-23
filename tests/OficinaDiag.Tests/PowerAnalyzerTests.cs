@@ -1,4 +1,6 @@
 using OficinaDiag.Devices;
+using OficinaDiag.Grading;
+using OficinaDiag.Health;
 using Xunit;
 
 namespace OficinaDiag.Tests;
@@ -57,6 +59,42 @@ public sealed class PowerAnalyzerTests
         var r = PowerAnalyzer.Analyze(s);
         Assert.Equal("warn", r.ChargeStatus);
         Assert.Contains("não entra carga", r.ChargeDetail);
+    }
+
+    [Fact]
+    public void CorrenteSoNaFaseDeEsforco_ContaComoSemTelemetria()
+    {
+        // Regressão Devin Review: o diagnóstico de carga ignora a fase 2
+        // (esforço) mas a verificação de telemetria incluía-na — se só
+        // essa fase tivesse mA, a bancada avisava «sem telemetria» com
+        // corrente medida. Os dois critérios têm de olhar para o mesmo
+        // conjunto de fases.
+        var s = new List<PowerSample>
+        {
+            S(1, 1, v: 4.95, temp: 30), S(15, 2, ma: 500, v: 4.95, temp: 31),
+            S(35, 3, v: 4.95, temp: 30),
+        };
+        var r = PowerAnalyzer.Analyze(s);
+        Assert.Equal("skipped", r.ChargeStatus);
+    }
+
+    [Fact]
+    public void SessaoVazia_NaoEscreveChecksPositivos()
+    {
+        // Regressão Devin Review: uma bancada sem amostras gravava
+        // usb.stability=pass («ligação estável») e power.session=info —
+        // o relatório saía com grau A e saúde 100/100 sem medir nada.
+        // Agora tudo fica skipped e o efeito dominó fecha: sem checks com
+        // dados não há grau nem score.
+        var r = PowerAnalyzer.Analyze(new List<PowerSample>());
+        var report = new DeviceReport();
+        r.ApplyTo(report);
+
+        Assert.Equal("skipped", report.Results["power.charge"].Status);
+        Assert.Equal("skipped", report.Results["usb.stability"].Status);
+        Assert.Equal("skipped", report.Results["power.session"].Status);
+        Assert.Equal("—", Grader.Compute(report).Grade);
+        Assert.Null(HealthScore.Compute(report).Score);
     }
 
     [Fact]

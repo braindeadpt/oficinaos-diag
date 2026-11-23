@@ -27,7 +27,7 @@ public sealed record HealthCategoryScore(string Key, int? Score, string? Detail)
 /// </summary>
 public sealed class HealthScoreResult
 {
-    /// <summary>0–100, ou null quando nenhum sinal foi medido.</summary>
+    /// <summary>0–100, ou null quando não há dados ou a cobertura é insuficiente.</summary>
     public required int? Score { get; init; }
     public required HealthBand Band { get; init; }
     /// <summary>As seis categorias sempre — Score null marca as que ficaram de fora.</summary>
@@ -63,6 +63,9 @@ public sealed class HealthScoreResult
 ///   onde é só contexto (logs.crashes de apps, storage.wear por baixo do
 ///   limiar) fica fora — caso contrário todo o scan Android nascia com
 ///   pontos em falta.
+/// - Cobertura mínima: o score só existe com peso medido suficiente —
+///   uma ou duas leituras soltas («só a estabilidade de uma bancada sem
+///   amostras») não são saúde do aparelho e não podem sair 100/100.
 ///
 /// Mapeamento base status → pontos: pass=100 · warn=55 · fail=20. Os desvios
 /// por check estão documentados em cada scorer — são decisões de produto
@@ -80,6 +83,15 @@ public static class HealthScore
     private const double WStability = 15;
     private const double WTemperature = 10;
     private const double WTest = 15;
+
+    /// <summary>
+    /// Peso mínimo medido para o score existir. A categoria mais pesada
+    /// sozinha chega a 25 — exigir 40 garante pelo menos duas categorias
+    /// com dados reais. Abaixo disto o relatório mostra "dados
+    /// insuficientes" em vez de um número que só mede uma fatia do
+    /// aparelho (uma bancada vazia não pode sair 100/100).
+    /// </summary>
+    private const double MinCoverageWeight = 40;
 
     /// <summary>Faixa → check status: a linha health.score colore como os outros.</summary>
     private static string StatusFor(int score) => score >= 75 ? "pass" : score >= 50 ? "warn" : "fail";
@@ -349,18 +361,20 @@ public static class HealthScore
             breakdown.Add(new HealthCategoryScore(cat.Key, score, detail));
         }
 
-        if (scored.Count == 0)
+        var wTotal = scored.Sum(x => x.Cat.Weight);
+        if (scored.Count == 0 || wTotal < MinCoverageWeight)
         {
             return new HealthScoreResult
             {
                 Score = null,
                 Band = HealthBand.None,
                 Categories = breakdown,
-                Verdict = "sem dados de saúde — liga um telefone ou corre o SCAN primeiro",
+                Verdict = scored.Count == 0
+                    ? "sem dados de saúde — liga um telefone ou corre o SCAN primeiro"
+                    : $"dados insuficientes — cobertura {wTotal:0}/100 medida",
             };
         }
 
-        var wTotal = scored.Sum(x => x.Cat.Weight);
         var overall = scored.Sum(x => x.Cat.Weight * x.Score) / wTotal;
         var total = (int)Math.Round(overall, MidpointRounding.AwayFromZero);
         var band = total >= 75 ? HealthBand.Healthy : total >= 50 ? HealthBand.Fair : HealthBand.Concerning;
@@ -400,16 +414,16 @@ public static class HealthScore
             res.Verdict);
         foreach (var cat in res.Categories)
         {
-            if (cat.Score is not { } cs)
+            var key = $"health.{cat.Key}";
+            // Sem score global não há breakdown a mostrar — e uma categoria
+            // que já não pontua (ou nunca pontuou num score inválido) não
+            // pode deixar a entrada velha no JSON/HTML.
+            if (res.Score is null || cat.Score is not { } cs)
             {
-                // A categoria pode ter ficado sem medições depois de já ter
-                // pontuado (ex.: o único teste do checklist voltou a
-                // «não testado»). A entrada velha sai do relatório — senão
-                // o JSON/HTML mostravam um número que já não entra no total.
-                r.Remove($"health.{cat.Key}");
+                r.Remove(key);
                 continue;
             }
-            r.Set($"health.{cat.Key}", StatusFor(cs), $"{cs}/100", cat.Detail);
+            r.Set(key, StatusFor(cs), $"{cs}/100", cat.Detail);
         }
         return res;
     }

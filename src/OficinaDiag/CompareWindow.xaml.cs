@@ -2,6 +2,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
 using OficinaDiag.Devices;
+using OficinaDiag.Health;
 
 namespace OficinaDiag;
 
@@ -72,6 +73,17 @@ public sealed partial class CompareWindow : Window
         var pass = (Brush)Application.Current.FindResource("PassBrush");
         var fail = (Brush)Application.Current.FindResource("FailBrush");
 
+        // Cobertura do health score = categorias com medições — recomputada
+        // dos checks (HealthScore.Compute é puro), não das entradas
+        // health.<cat> gravadas: relatórios antigos podem trazê-las
+        // desatualizadas. Uma subida de score com MENOS categorias medidas
+        // não é melhoria confirmada — pode ser um check que falhava e
+        // passou a «não testado».
+        static int Cobertura(DeviceReport r) =>
+            HealthScore.Compute(r).Categories.Count(c => c.Score is not null);
+        var oldCov = Cobertura(past);
+        var newCov = Cobertura(_current);
+
         var rows = new List<DiffRow>();
         foreach (var key in _current.Results.Keys.Union(past.Results.Keys)
                      .Where(k => !k.StartsWith("grade.", StringComparison.Ordinal)
@@ -92,7 +104,12 @@ public sealed partial class CompareWindow : Window
                 && TryScore(now!.Value, out var newScore)
                 ? newScore.CompareTo(oldScore)
                 : 0;
+            // health.score a subir com menos categorias medidas = dados em
+            // falta, não reparação — cinza em vez de verde.
+            var unconfirmedGain = key == "health.score"
+                && healthTrend > 0 && newCov < oldCov;
             var brush = !hasOld || !hasNew ? dim
+                : unconfirmedGain ? dim
                 : healthTrend != 0 ? (healthTrend > 0 ? pass : fail)
                 : newSev > oldSev ? fail
                 : newSev < oldSev ? pass
