@@ -234,6 +234,10 @@ public sealed class AndroidCollector
         else if (flashLocked == "1" || oemUnlock == "0")
             r.Set("security.oemunlock", "pass", "bootloader bloqueado");
 
+        // Auditoria de segurança das apps (pacote Pro): origem dos installs,
+        // permissões sensíveis, acessibilidade, verificação de pacotes.
+        await CollectAppAuditAsync(r, serial);
+
         // Desgaste NAND (eMMC life_time / pre_eol) — raro sem root, mas quando
         // exposto é um aviso "vai morrer" que nenhuma app de cliente mostra.
         var nand = (await AdbAsync(serial,
@@ -452,6 +456,81 @@ public sealed class AndroidCollector
                 "estimativa aprendida pelo Android — compara com a capacidade de design");
         }
     }
+
+    /// <summary>
+    /// Auditoria de apps do pacote Pro — só leitura, nenhuma ação no
+    /// aparelho. Checks que dependem da lista de apps ficam `skipped`
+    /// quando o `pm` não responde; nunca se escreve "tudo bem" às cegas.
+    /// </summary>
+    private async Task CollectAppAuditAsync(DeviceReport r, string serial)
+    {
+        var apps = AndroidSecurityAudit.ParseUserPackages(
+            await AdbAsync(serial, "shell pm list packages -3 -i", 15000));
+
+        if (apps is null)
+        {
+            foreach (var key in AppAuditKeys)
+                r.Set(key, "skipped", "apps ilegíveis",
+                    "pm list packages não respondeu — auditoria de apps incompleta");
+        }
+        else
+        {
+            var sideload = AndroidSecurityAudit.Sideloaded(apps);
+            r.Set("security.audit.sideload", sideload.Status, sideload.Value, sideload.Note);
+
+            // Um só `dumpsys package`: por app seriam ~100 arranques de JVM
+            // no telemóvel; o dump completo transfere uma vez e filtra-se no Core.
+            var grants = AndroidSecurityAudit.ParsePackageDumpGrants(
+                await AdbAsync(serial, "shell dumpsys package", 60000));
+            if (grants is null)
+            {
+                r.Set("security.audit.permissions", "skipped", "dump ilegível",
+                    "dumpsys package não respondeu — permissões não auditadas");
+                r.Set("security.audit.installpackages", "skipped", "dump ilegível",
+                    "dumpsys package não respondeu — permissões não auditadas");
+            }
+            else
+            {
+                var perms = AndroidSecurityAudit.SensitivePermissions(apps, grants);
+                r.Set("security.audit.permissions", perms.Status, perms.Value, perms.Note);
+                var inst = AndroidSecurityAudit.InstallPackages(apps, grants);
+                r.Set("security.audit.installpackages", inst.Status, inst.Value, inst.Note);
+            }
+
+            var services = AndroidSecurityAudit.ParseAccessibilityServices(
+                await AdbAsync(serial, "shell settings get secure enabled_accessibility_services"));
+            var access = AndroidSecurityAudit.Accessibility(services,
+                apps.Select(a => a.Package).ToHashSet(StringComparer.Ordinal));
+            r.Set("security.audit.accessibility", access.Status, access.Value, access.Note);
+        }
+
+        // Apps de utilizador desativadas (-3): as de sistema desativadas são
+        // ruído de OEM (NFC, etc.) e não são ação do técnico.
+        var disabled = AndroidSecurityAudit.ParseDisabledPackages(
+            await AdbAsync(serial, "shell pm list packages -3 -d", 15000));
+        if (disabled is null)
+            r.Set("security.audit.disabled", "skipped", "pm ilegível",
+                "pm list packages -3 -d não respondeu");
+        else
+        {
+            var dis = AndroidSecurityAudit.DisabledApps(disabled);
+            r.Set("security.audit.disabled", dis.Status, dis.Value, dis.Note);
+        }
+
+        var verifierOut = await AdbAsync(serial,
+            "shell echo V1=$(settings get global package_verifier_enable); " +
+            "echo V2=$(settings get global verifier_verify_adb_installs)");
+        var (enabled, verifyAdb) = AndroidSecurityAudit.ParseVerifierSettings(verifierOut);
+        var ver = AndroidSecurityAudit.Verifier(enabled, verifyAdb);
+        r.Set("security.audit.verifier", ver.Status, ver.Value, ver.Note);
+    }
+
+    /// <summary>Checks da auditoria de apps que dependem da lista `pm list packages -3`.</summary>
+    private static readonly string[] AppAuditKeys =
+    [
+        "security.audit.sideload", "security.audit.permissions",
+        "security.audit.installpackages", "security.audit.accessibility",
+    ];
 
     /// <summary>Shell livre — usado pela bancada para aplicar/retirar carga (ecrã, brilho).</summary>
     public Task<string?> ShellAsync(string serial, string cmd, int timeoutMs = 8000)
