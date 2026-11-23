@@ -79,19 +79,30 @@ public sealed class PowerAnalyzerTests
     }
 
     [Fact]
-    public void UsbDrops_ResetNaoHerdaTentativaAnterior()
+    public void UsbDrops_ContaSoDuranteASessao()
     {
-        // Regressão Devin Review: repetir a bancada na mesma janela
-        // mantinha as quedas USB da tentativa anterior — uma repetição
-        // estável saía «usb.stability warn» e o grau caía para C.
+        // Regressões Devin Review: (ronda 3) repetir a bancada na mesma
+        // janela mantinha as quedas da tentativa anterior; (ronda 4) o
+        // contador ficava ativo até a janela fechar — desligar o cabo
+        // depois do teste marcava a ligação estável como instável. O
+        // relatório mede estabilidade DURANTE os ~60 s de sessão.
         var c = new UsbDropCounter("dev-1");
+        // Antes da primeira sessão e depois do fim dela, não conta.
         c.OnDeviceDetached("dev-1");
+        Assert.Equal(0, c.Count);
+
+        c.Begin();
         c.OnDeviceDetached("dev-1");
         c.OnDeviceDetached("outro-dev"); // queda de outro aparelho não conta
+        c.OnDeviceDetached("dev-1");
         Assert.Equal(2, c.Count);
 
-        c.Reset(); // novo Iniciar = nova contagem
-        Assert.Equal(0, c.Count);
+        c.End(); // fim das medições — o resto já não é do teste
+        c.OnDeviceDetached("dev-1");
+        Assert.Equal(2, c.Count);
+
+        // Repetição: Begin repõe a contagem da tentativa anterior.
+        c.Begin();
         c.OnDeviceDetached("dev-1");
         Assert.Equal(1, c.Count);
     }

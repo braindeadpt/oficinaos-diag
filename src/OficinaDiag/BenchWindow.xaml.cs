@@ -22,6 +22,8 @@ public sealed partial class BenchWindow : Window
     private readonly Func<Task>? _loadOff;
     /// <summary>Aviso de nova tentativa — o MainWindow repõe o contador de quedas USB.</summary>
     private readonly Action? _sessionStarted;
+    /// <summary>Aviso de fim das medições — o MainWindow desarma o contador de quedas.</summary>
+    private readonly Action? _sessionEnded;
     private CancellationTokenSource? _cts;
     // Sessão a decorrer: fechar a meio pede confirmação em vez de deitar
     // fora 60 s de medições com um clique no X.
@@ -31,7 +33,8 @@ public sealed partial class BenchWindow : Window
     public PowerSessionResult? Result { get; private set; }
 
     public BenchWindow(string deviceLabel, Func<Task<LiveTelemetry?>> probe,
-        Func<Task>? loadOn = null, Func<Task>? loadOff = null, Action? sessionStarted = null)
+        Func<Task>? loadOn = null, Func<Task>? loadOff = null,
+        Action? sessionStarted = null, Action? sessionEnded = null)
     {
         InitializeComponent();
         Title = L10n.T("bench.title");
@@ -55,6 +58,7 @@ public sealed partial class BenchWindow : Window
         _loadOn = loadOn;
         _loadOff = loadOff;
         _sessionStarted = sessionStarted;
+        _sessionEnded = sessionEnded;
         DeviceLabel.Text = deviceLabel;
         Scope.Reset(BaseSec + LoadSec + RecoverSec);
     }
@@ -129,7 +133,13 @@ public sealed partial class BenchWindow : Window
             }
             else StartBtn.IsEnabled = true;
         }
-        finally { _sessaoACorrer = false; }
+        finally
+        {
+            _sessaoACorrer = false;
+            // As medições acabaram — quedas a partir daqui (ex.: o técnico
+            // a desligar o cabo para gravar) já não são do teste.
+            _sessionEnded?.Invoke();
+        }
     }
 
     private async Task RunPhase(List<PowerSample> samples, int phase, Stopwatch sw, TimeSpan end)

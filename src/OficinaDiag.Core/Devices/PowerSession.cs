@@ -7,28 +7,38 @@ public sealed record PowerSample(double T, int Phase, int? Milliamps, double? Vo
 
 /// <summary>
 /// Contador de quedas USB do host durante uma sessão SCAN+ — vive no
-/// MainWindow mas a contagem/reposição é testável aqui. A contagem é
-/// POR TENTATIVA: cada clique em Iniciar repõe o contador, porque quedas
-/// da tentativa anterior não podem manchar a repetição (uma sessão
-/// estável após uma instável não é «ligação instável»).
+/// MainWindow mas a contagem/reposição é testável aqui. Duas regras:
+/// - A contagem é POR TENTATIVA e POR JANELA DE MEDIÇÃO: cada Begin
+///   repõe o contador e End desarma-o. Quedas da tentativa anterior ou
+///   depois do fim das medições (o técnico a desligar o cabo para
+///   gravar) não são do teste — o relatório mede estabilidade DURANTE
+///   os ~60 s de sessão.
 /// </summary>
 public sealed class UsbDropCounter
 {
     private readonly string _deviceId;
+    private bool _armed;
 
     public UsbDropCounter(string deviceId) => _deviceId = deviceId;
 
-    /// <summary>Quedas vistas pelo host desde o último Reset.</summary>
+    /// <summary>Quedas vistas pelo host desde o último Begin.</summary>
     public int Count { get; private set; }
 
-    /// <summary>Evento do detector — só conta quedas DO aparelho da sessão.</summary>
-    public void OnDeviceDetached(string detachedId)
+    /// <summary>Abre a janela de medição — repõe a contagem e arma o contador.</summary>
+    public void Begin()
     {
-        if (detachedId == _deviceId) Count++;
+        Count = 0;
+        _armed = true;
     }
 
-    /// <summary>Nova tentativa de sessão — as quedas anteriores não se herdam.</summary>
-    public void Reset() => Count = 0;
+    /// <summary>Fim das medições — quedas depois disto já não pertencem ao teste.</summary>
+    public void End() => _armed = false;
+
+    /// <summary>Evento do detector — só conta quedas DO aparelho, e só armado.</summary>
+    public void OnDeviceDetached(string detachedId)
+    {
+        if (_armed && detachedId == _deviceId) Count++;
+    }
 }
 
 /// <summary>Resultado analisado da sessão — transforma-se em checks do relatório.</summary>

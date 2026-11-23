@@ -176,8 +176,9 @@ public partial class MainWindow : Window
         _busy = true; // ticker pausa durante a sessão
         // O host conta as quedas USB durante a sessão — cruz com o fuel gauge
         // distingue porta/cabo instável de bateria fraca. A contagem é por
-        // tentativa: a bancada repõe-na a cada Iniciar (sessionStarted),
-        // para uma repetição estável não herdar quedas da tentativa morta.
+        // tentativa e só durante as medições: Begin repõe-a e End desarma-a
+        // (sessionStarted/sessionEnded) — quedas antes do Iniciar ou depois
+        // do fim do teste não são do relatório.
         var drops = new UsbDropCounter(d.Id);
         void OnDrop(DetectedDevice dd) => drops.OnDeviceDetached(dd.Id);
         _detector!.Detached += OnDrop;
@@ -186,7 +187,7 @@ public partial class MainWindow : Window
         try
         {
             var bench = new BenchWindow(d.Label, probe, loadOn, loadOff,
-                drops.Reset) { Owner = this };
+                drops.Begin, drops.End) { Owner = this };
             saved = bench.ShowDialog() == true;
             res = bench.Result;
         }
