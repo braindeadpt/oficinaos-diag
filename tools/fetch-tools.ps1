@@ -150,17 +150,33 @@ Write-Output "OK: imobiledevice-net $imVersion — todos os binários batem no p
 # versão + hash novos — sem pin o script falha, como no iMobileDevice-net.
 # O zip já traz LICENSE.txt (Apache-2.0), que viaja no pacote — a licença
 # cobre o bundling, nada mais é exigido (sem NOTICE upstream).
+#
+# A versão pinada grava-se em tools/scrcpy/VERSION: um bump do pin
+# re-descarrega mesmo com a pasta já presente. Sem o marker bastava um
+# scrcpy.exe antigo para saltar o download para sempre — a máquina ficava
+# com a versão velha sem ninguém dar por isso.
 $sc = Join-Path $tools "scrcpy"
-if (Test-Path "$sc\scrcpy.exe") {
-    Write-Output "scrcpy already present - skipping download"
+$scVer = "5.0.1"
+$scAsset = "scrcpy-win64-v$scVer.zip"
+$scSha = "b12a2c4ee8be317422451fc7dcf8ee20a71b5ea7ef9ad73ddd825a25316227a5"
+$scMarker = Join-Path $sc "VERSION"
+$scPresente = (Test-Path "$sc\scrcpy.exe") -and (Test-Path $scMarker) -and
+    ([string](Get-Content $scMarker -Raw)).Trim() -eq $scVer
+if ($scPresente) {
+    Write-Output "scrcpy v$scVer already present - skipping download"
 } else {
-    $scVer = "5.0.1"
-    $scAsset = "scrcpy-win64-v$scVer.zip"
-    $scSha = "b12a2c4ee8be317422451fc7dcf8ee20a71b5ea7ef9ad73ddd825a25316227a5"
     Write-Output "Downloading scrcpy v$scVer (win64)..."
     $scZip = Join-Path $env:TEMP $scAsset
-    Invoke-WebRequest "https://github.com/Genymobile/scrcpy/releases/download/v$scVer/$scAsset" -OutFile $scZip
-    $scHash = (Get-FileHash $scZip -Algorithm SHA256).Hash.ToLowerInvariant()
+    $scHash = ""
+    # O CDN do GitHub já serviu bytes diferentes para o MESMO asset (hash
+    # mismatch transitório apanhado na primeira corrida disto) — uma
+    # tentativa extra resolve sem abrir mão do pin.
+    for ($tentativa = 1; $tentativa -le 2; $tentativa++) {
+        Invoke-WebRequest "https://github.com/Genymobile/scrcpy/releases/download/v$scVer/$scAsset" -OutFile $scZip
+        $scHash = (Get-FileHash $scZip -Algorithm SHA256).Hash.ToLowerInvariant()
+        if ($scHash -eq $scSha) { break }
+        Write-Output "  SHA-256 não bate na tentativa $tentativa — a repetir"
+    }
     if ($scHash -ne $scSha) {
         Remove-Item $scZip -Force
         throw "scrcpy $scAsset SHA-256 $scHash != pin $scSha (SHA256SUMS oficial da release) — refusing to bundle unverified binaries"
@@ -180,5 +196,8 @@ if (Test-Path "$sc\scrcpy.exe") {
         Remove-Item $sc -Recurse -Force -ErrorAction SilentlyContinue
         throw "scrcpy extraído sem scrcpy.exe/LICENSE.txt — zip com layout inesperado"
     }
+    # Só depois de verificado: o marker é o que autoriza o skip na próxima
+    # corrida — gravá-lo antes deixava uma pasta truncada parecer completa.
+    Set-Content -Path $scMarker -Value $scVer -Encoding ascii -NoNewline
     Write-Output "OK: scrcpy v$scVer — zip win64 verificado por SHA-256 (SHA256SUMS oficial)"
 }
