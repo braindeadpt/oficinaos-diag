@@ -151,9 +151,11 @@ public partial class MainWindow : Window
         // O perfil de desempenho serve Android e iOS — métricas que a
         // plataforma não expõe saem skipped, nunca falha inventada.
         PerfButton.IsEnabled = ready;
-        var appsAndroid = ready && d.Kind == DeviceKind.Android;
-        AppsButton.IsEnabled = appsAndroid;
-        AppsButton.Visibility = appsAndroid ? Visibility.Visible : Visibility.Collapsed;
+        // Gestor de apps: Android via adb, iOS via ideviceinstaller —
+        // os dois precisam do sistema completo, não de recovery/sideload.
+        var appsCapable = ready && d.Kind is DeviceKind.Android or DeviceKind.Ios;
+        AppsButton.IsEnabled = appsCapable;
+        AppsButton.Visibility = appsCapable ? Visibility.Visible : Visibility.Collapsed;
         // Limpeza/otimização é Android-only (comandos pm/am/settings) e precisa
         // do sistema completo — recovery/sideload não a têm.
         MaintenanceButton.IsEnabled = ready && d.Kind == DeviceKind.Android;
