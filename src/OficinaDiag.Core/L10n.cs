@@ -440,6 +440,24 @@ public static class L10n
             ["apps.log.action.fail"] = "! {0} {1} falhou: {2}",
             ["apps.log.undo.ok"] = "> desfeito: {0} {1}",
 
+            // gestor de apps iOS (installation_proxy via ideviceinstaller)
+            ["iosapps.title"] = "Gestor de apps iOS",
+            ["iosapps.desc"] = "Inventário via installation_proxy — o que ocupa espaço no iPhone. Desinstalar uma app de utilizador remove-a com todos os dados: só funciona com o iPhone desbloqueado e não há undo.",
+            ["iosapps.search"] = "pesquisar app ou bundle id…",
+            ["iosapps.usage"] = "estático {0} · dinâmico {1}",
+            ["iosapps.usage.none"] = "sem dados de uso neste iOS",
+            ["iosapps.details"] = "{0} — {1}\n{2} · v{3} · {4}\n{5}\n{6}",
+            ["iosapps.protect.system"] = "sistema — não desinstalável",
+            ["iosapps.confirm.uninstall"] = "Desinstalar {0}?\nRemove a app e todos os dados do iPhone — só funciona desbloqueado e não há undo.",
+            ["iosapps.log.loading"] = "> a pedir inventário de apps ao iPhone…",
+            ["iosapps.err.tool"] = "ideviceinstaller não respondeu — iPhone bloqueado ou serviço indisponível",
+            ["iosapps.err.parse"] = "resposta do installation_proxy ilegível",
+            ["iosapps.err.empty"] = "lista vazia — confirma que o iPhone está desbloqueado",
+            ["iosapps.err.invalid"] = "bundle id inválido",
+            ["iosapps.err.protected"] = "só apps de utilizador podem ser desinstaladas",
+            ["iosapps.err.notfound"] = "app não encontrada no inventário",
+            ["iosapps.err.verify"] = "a app continua instalada — a desinstalação não se confirmou",
+
             // QR popup
             ["qr.text"] = "LÊ COM A CÂMARA DO TELEMÓVEL",
 
@@ -841,6 +859,24 @@ public static class L10n
             ["apps.log.action.ok"] = "> {0} {1}: {2}",
             ["apps.log.action.fail"] = "! {0} {1} failed: {2}",
             ["apps.log.undo.ok"] = "> undone: {0} {1}",
+
+            // gestor de apps iOS (installation_proxy via ideviceinstaller)
+            ["iosapps.title"] = "iOS app manager",
+            ["iosapps.desc"] = "installation_proxy inventory — what takes up space on the iPhone. Uninstalling a user app removes it with all its data: only works with the iPhone unlocked and there is no undo.",
+            ["iosapps.search"] = "search app or bundle id…",
+            ["iosapps.usage"] = "static {0} · dynamic {1}",
+            ["iosapps.usage.none"] = "no usage data on this iOS",
+            ["iosapps.details"] = "{0} — {1}\n{2} · v{3} · {4}\n{5}\n{6}",
+            ["iosapps.protect.system"] = "system — cannot be uninstalled",
+            ["iosapps.confirm.uninstall"] = "Uninstall {0}?\nRemoves the app and all its data on the iPhone — only works unlocked and there is no undo.",
+            ["iosapps.log.loading"] = "> asking the iPhone for the app inventory…",
+            ["iosapps.err.tool"] = "ideviceinstaller did not respond — iPhone locked or service unavailable",
+            ["iosapps.err.parse"] = "unreadable installation_proxy response",
+            ["iosapps.err.empty"] = "empty list — check that the iPhone is unlocked",
+            ["iosapps.err.invalid"] = "invalid bundle id",
+            ["iosapps.err.protected"] = "only user apps can be uninstalled",
+            ["iosapps.err.notfound"] = "app not found in the inventory",
+            ["iosapps.err.verify"] = "the app is still installed — the uninstall did not confirm",
 
             ["qr.text"] = "SCAN WITH THE PHONE CAMERA",
 

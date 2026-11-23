@@ -182,13 +182,17 @@ public sealed class IosCollector
                         r.Set("security.mdm", Truthy(supervised) ? "warn" : "pass",
                             Truthy(supervised) ? "supervisionado (MDM)" : "sem supervisão",
                             Truthy(supervised)
-                                ? "perfil de gestão — pode estar preso a uma empresa ou leasing"
-                                : null);
+                                ? "perfil de gestão (supervisionado) — pode estar preso a uma empresa ou leasing; confirma em Definições → Geral → VPN e Gestão de Dispositivo"
+                                : "perfis MDM de consumidor são raros — se houver dúvida, confirma em Definições → Geral → VPN e Gestão de Dispositivo");
                     else
                         r.Set("security.mdm", "skipped", "indeterminado",
-                            "não verificável por USB — confirma em Definições → Geral → VPN e Gestão de Dispositivo");
+                            "IsSupervised não veio nos domínios nulo/com.apple.mobile.supervision — " +
+                            "confirma em Definições → Geral → VPN e Gestão de Dispositivo");
+                    // Find My / Activation Lock não existe em nenhum domínio
+                    // lockdown — skipped honesto + o caminho guiado no iPhone.
                     r.Set("security.findmy", "skipped", "indeterminado",
-                        "Find My / Activation Lock não é consultável sem apagar — pede ao cliente para o desativar à tua frente");
+                        "Find My / Activation Lock não é consultável por USB — pede ao cliente para desligar à tua frente: " +
+                        "Definições → [Nome Apple ID] → Find My → Find My iPhone (pede a palavra-passe); alternativa: iCloud.com → Find My");
 
                     // Storage — o espaço de dados vive no domínio disk_usage;
                     // TotalDiskCapacity no domínio nulo serve de fallback.
@@ -235,6 +239,11 @@ public sealed class IosCollector
                 // componente de hardware a falhar; crashes de apps são info.
                 if (!cts.IsCancellationRequested)
                     CollectCrashLogs(r, udid, cts.Token);
+
+                // Inventário de apps via installation_proxy — "o que ocupa
+                // espaço" no iPhone sem jailbreak (Fase D do Diag Pro).
+                if (!cts.IsCancellationRequested)
+                    CollectAppInventory(r, udid, cts.Token);
             }
         });
 
@@ -280,8 +289,9 @@ public sealed class IosCollector
     /// <summary>
     /// Ferramentas idevice*.exe — no publish ficam ao lado do exe; em builds de
     /// dev (`dotnet run`) o NuGet deixa-as em runtimes\win-x64\native\.
+    /// Interna: o IosAppManager usa-a para o ideviceinstaller.
     /// </summary>
-    private static string? ToolPath(string name)
+    internal static string? ToolPath(string name)
     {
         var baseDir = AppContext.BaseDirectory;
         var exe = Path.Combine(baseDir, name);
@@ -393,7 +403,7 @@ public sealed class IosCollector
         return dict;
     }
 
-    private static IEnumerable<(string Key, XElement Value)> Pairs(XElement dict)
+    internal static IEnumerable<(string Key, XElement Value)> Pairs(XElement dict)
     {
         var nodes = dict.Elements().ToList();
         for (var i = 0; i + 1 < nodes.Count; i += 2)
@@ -403,7 +413,7 @@ public sealed class IosCollector
         }
     }
 
-    private static string Scalar(XElement v) =>
+    internal static string Scalar(XElement v) =>
         v.Name.LocalName is "true" or "false" ? v.Name.LocalName : v.Value;
 
     /// <summary>Primeiro valor não vazio entre vários nomes (topo e prefixado).</summary>
@@ -521,6 +531,20 @@ public sealed class IosCollector
         if (mg.TryGetValue("TelephonyCapability", out var telephony))
             r.Set("device.telephony", "info",
                 telephony == "true" ? "SIM/móvel" : "Wi-Fi only (iPad)");
+    }
+
+    /// <summary>
+    /// Apps instaladas (utilizador + sistema) com versões e uso de disco —
+    /// <c>ideviceinstaller -l -o list_all,xml</c> por trás do serviço
+    /// com.apple.mobile.installation_proxy. O serviço pode não responder
+    /// (iOS antigo, iPhone bloqueado, pairing sem desbloqueio): os checks
+    /// ficam skipped com a razão, nunca "0 apps" inventado.
+    /// </summary>
+    private void CollectAppInventory(DeviceReport r, string udid, CancellationToken ct)
+    {
+        var inv = new IosAppManager().List(udid, ct);
+        foreach (var (key, reading) in IosAppDecisions.Checks(inv))
+            r.Set(key, reading.Status, reading.Value, reading.Note);
     }
 
     /// <summary>

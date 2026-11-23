@@ -5,6 +5,23 @@ Versões seguem o tag `v*` do release.
 
 ## Unreleased
 
+- Inventário de apps iOS (Fase D.5 do plano Diag Pro): o scan iOS corre
+  agora `ideviceinstaller -l -o list_all,xml` — o serviço
+  com.apple.mobile.installation_proxy por trás é o mesmo que o iTunes
+  usa, por isso funciona sem jailbreak — e grava checks `ios.apps.*`:
+  total de apps (utilizador vs sistema), espaço estimado ocupado (soma
+  Static+DynamicDiskUsage) e maiores consumidores. iOS que não reporta
+  uso por app, aparelho bloqueado ou serviço indisponível fica
+  `skipped`/`info` com a razão — nunca "0 apps" inventado. O botão Apps
+  passa a abrir também para iOS: novo gestor com inventário pesquisável
+  e filtros utilizador/sistema que permite **desinstalar apps de
+  utilizador** com confirmação — a prova é a app desaparecer da relista,
+  porque o ideviceinstaller sai com código 0 mesmo quando o serviço
+  falha; só apps `User` passam (sistema fica protegido) e o bundle id é
+  validado por reverse-DNS estrito antes de tocar na linha de comando.
+  `security.mdm`/`security.findmy` ganham instruções guiadas no iPhone e
+  os domínios lockdown consultados; Find My continua honestamente
+  `skipped` — não existe domínio que o exponha por USB.
 - Perfil de desempenho/bateria (Fase C do plano Diag Pro): novo botão
   «Perfil» na vista principal abre uma janela dedicada com stress leve
   WebGL/Canvas2D na página do aparelho (`perf-test.html`, sessão própria do

@@ -109,7 +109,18 @@ medida #47, auditoria segurança #48) **feito**. Este plano cobre o resto.
    (CFBundleIdentifier, versões, Static/DynamicDiskUsage) = "o que ocupa
    espaço" no iPhone sem jailbreak. Desinstalação de apps de utilizador
    como Pro com confirmação. `security.mdm`/`findmy` com domínios e
-   instruções guiadas.
+   instruções guiadas. **Feito** — caminho escolhido: o
+   `ideviceinstaller.exe` já bundled pelo pacote iMobileDevice-net
+   (`-l -o list_all,xml`), não a API gerida — parsing do plist XML fica
+   isolado e testável, sem nova dependência. Checks `ios.apps.count`,
+   `ios.apps.space` (Static+Dynamic) e `ios.apps.top`; serviço em falta
+   ou iOS antigo → `skipped` honesto. Gestor de apps iOS no botão Apps:
+   inventário + desinstalação de apps de utilizador com confirmação e
+   verificação por relista (o exit code do tool não é fiável); sem
+   disable/enable — o iOS não expõe isso por esta via. `security.mdm`
+   passa a nomear os domínios lockdown consultados e `findmy` ganha o
+   caminho guiado (Find My iPhone / iCloud.com); continua `skipped`
+   porque nenhum domínio o expõe.
 
 ### Fase E — operador/UX Pro
 
