@@ -92,8 +92,8 @@
     </div>
   </div>
   <div class="srow"><span>GPU — stress WebGL</span><span class="st" id="a-gpu">…</span></div>
-  <div class="srow"><span>GPS</span><span class="st" id="a-gps">…</span></div>
-  <button id="gpsBtn">TESTAR GPS</button>
+  <div class="srow"><span>Localização</span><span class="st" id="a-gps">…</span></div>
+  <button id="gpsBtn">TESTAR LOCALIZAÇÃO</button>
   <div class="srow"><span>Brilho do ecrã (API)</span><span class="st" id="a-bright">…</span></div>
   <div class="srow"><span>Taxa de toque</span><span class="st" id="a-touchhz">…</span></div>
   <button id="endBtn">TERMINAR TESTE</button>
@@ -131,18 +131,18 @@ const result = {
 
 /* Taxa de amostragem de toque: PointerEvent.getCoalescedEvents expõe os
    eventos que o browser fundiu — conta-os durante TODO o teste. Mede-se
-   por SEGMENTO de contacto (pointerdown→pointerup): pausas entre gestos
-   (dedo levantado, technician a ler instruções) não entram no denominador
-   — medido página toda, um swipe de 2 s seguido de 20 s de pausa dava uma
-   taxa 10× mais baixa do que a real.
+   por SEGMENTO de movimento: a janela vai do PRIMEIRO ao ÚLTIMO
+   pointermove, nunca até ao pointerup — um dedo parado na grelha não
+   gera eventos e não pode diluir a taxa. E um gap >TOUCH_GAP_MS entre
+   movimentos fecha o segmento e abre outro: hold no início, no fim ou
+   no meio do contacto fica todo fora do denominador. Pausas entre
+   gestos (dedo levantado) também não entram.
    A lista de coalesced já inclui o próprio pointermove como última
    amostra — somar +1 contava tudo a dobrar. Sem a API o sampler fica
    inativo e o check sai 'skip' — limitação de plataforma, nunca falha. */
-window.__touchSampler = { supported: false, active: 0, segStart: null, segSamples: 0, samples: 0, ms: 0 };
+window.__touchSampler = { supported: false, active: 0, segStart: null, segEnd: null, segSamples: 0, samples: 0, ms: 0 };
 document.addEventListener('pointerdown', e => {
-  const s = window.__touchSampler;
-  s.active++;
-  if (s.active === 1) { s.segStart = e.timeStamp; s.segSamples = 0; }
+  window.__touchSampler.active++;
 }, { passive: true });
 document.addEventListener('pointermove', e => {
   if (typeof e.getCoalescedEvents !== 'function') return;
@@ -153,20 +153,28 @@ document.addEventListener('pointermove', e => {
   // coalesced inclui o próprio evento; lista vazia (stub, ex.: Firefox
   // Android) conta o pointermove despachado como a amostra que é.
   s.supported = true;
+  const now = e.timeStamp;
+  // dedo parado = sem eventos; ao voltar a mexer, o gap fecha o segmento
+  // anterior — o tempo imóvel não entra na janela de amostragem.
+  if (s.segStart !== null && now - s.segEnd > D.TOUCH_GAP_MS) closeTouchSeg();
+  if (s.segStart === null) s.segStart = now;
+  s.segEnd = now;
   s.segSamples += Math.max(n, 1);
 }, { passive: true });
+function closeTouchSeg(){
+  const s = window.__touchSampler;
+  if (s.segStart === null) return;
+  const dur = s.segEnd - s.segStart;
+  // Só contam segmentos com movimento real: janela curta é ruído, não um
+  // swipe — e menos de 5 amostras não mede taxa nenhuma.
+  if (dur >= 100 && s.segSamples >= 5) { s.samples += s.segSamples; s.ms += dur; }
+  s.segStart = null; s.segEnd = null; s.segSamples = 0;
+}
 const endTouchContact = e => {
   const s = window.__touchSampler;
   if (s.active === 0) return;
   s.active--;
-  if (s.active === 0 && s.segStart !== null) {
-    const dur = e.timeStamp - s.segStart;
-    // Só contam segmentos com movimento real: contacto parado não mede
-    // taxa e um toque rápido (<100 ms / <5 amostras) é ruído, não um swipe.
-    if (dur >= 100 && s.segSamples >= 5) { s.samples += s.segSamples; s.ms += dur; }
-    s.segStart = null;
-    s.segSamples = 0;
-  }
+  if (s.active === 0) closeTouchSeg(); // último dedo levantado fecha o segmento
 };
 document.addEventListener('pointerup', endTouchContact, { passive: true });
 document.addEventListener('pointercancel', endTouchContact, { passive: true });

@@ -113,8 +113,11 @@
 
   /* ── testes avançados (câmara, GPU, GPS, brilho, taxa de toque) ── */
 
-  /* GPU: a API existir mas o contexto falhar é defeito de GPU/driver;
-     a API nem existir é limitação do browser → 'skip'. */
+  /* GPU: a API existir não garante contexto criável — getContext() a
+     devolver null é bloqueio de plataforma indistinguível de avaria e sai
+     'noctx' → skipped na página. 'fail' é só o que quebra DEPOIS de o
+     contexto existir (contexto perdido, erro GL). A API nem existir é
+     limitação do browser → 'skip'. */
   var GPU_STRESS_MS = 3000;
   var GPU_MIN_FPS = 5;
   function gpuApiAvailable(scope) {
@@ -153,6 +156,12 @@
      (bug de contagem) — ignora. */
   var TOUCH_HZ_OK = 60;
   var TOUCH_HZ_MAX = 1000;
+  /* Gap >200 ms entre pointermove = dedo PARADO na mesma posição (não há
+     evento) — fecha o segmento de movimento actual. Sem isto, um hold de
+     2 s no meio de um swipe diluía a taxa como se o ecrã amostrasse
+     devagar. 200 ms é muito acima do intervalo normal entre movimentos
+     (~16 ms a 60 Hz) e abaixo de qualquer pausa deliberada. */
+  var TOUCH_GAP_MS = 200;
   function touchSampleStatus(hz) {
     if (typeof hz !== 'number' || !isFinite(hz) || hz <= 0 || hz > TOUCH_HZ_MAX)
       return 'skip';
@@ -193,6 +202,7 @@
     brightnessReading: brightnessReading,
     TOUCH_HZ_OK: TOUCH_HZ_OK,
     TOUCH_HZ_MAX: TOUCH_HZ_MAX,
+    TOUCH_GAP_MS: TOUCH_GAP_MS,
     touchSampleStatus: touchSampleStatus,
     shouldRetryDelivery: shouldRetryDelivery
   };

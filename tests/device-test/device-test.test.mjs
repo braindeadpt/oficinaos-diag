@@ -369,7 +369,9 @@ test('decisões avançadas: média partilhada, GPU, GPS, brilho e taxa de toque'
   assert.equal(D.brightnessReading({ screen: { brightness: 0.5 } }), 0.5);
   assert.equal(D.brightnessReading({ screen: { brightness: { value: 0.8 } } }), 0.8);
 
-  // Taxa de toque: ≥60 Hz ok, abaixo warn, fora de gama skip.
+  // Taxa de toque: ≥60 Hz ok, abaixo warn, fora de gama skip. O gap que
+  // fecha um segmento de movimento (dedo parado) é 200 ms.
+  assert.equal(D.TOUCH_GAP_MS, 200);
   assert.equal(D.touchSampleStatus(120), 'ok');
   assert.equal(D.touchSampleStatus(60), 'ok');
   assert.equal(D.touchSampleStatus(59), 'warn');
@@ -665,29 +667,29 @@ function pointer(w, type, t, coalesced) {
   w.document.dispatchEvent(ev);
 }
 
-test('página: taxa de toque mede por contacto — pausas entre gestos não entram', async () => {
-  // Regressão Devin Review: medir do primeiro ao último pointermove da página
-  // punha o dedo levantado (pausa entre gestos) no denominador — um swipe de
-  // 2 s + 10 s de pausa dava taxa 6× mais baixa. Agora mede-se por segmento
-  // pointerdown→pointerup.
+test('página: taxa de toque — dedo parado e pausas não entram no denominador', async () => {
+  // Regressão Devin Review r2: a janela do segmento é primeiro→último
+  // pointermove, nunca até ao pointerup — um dedo PARADO na grelha não
+  // gera eventos e não pode diluir a taxa. E um gap >TOUCH_GAP_MS fecha
+  // o segmento: hold no início/fim/meio do contacto fica fora.
   const dom = openPage();
   const chamadas = [];
   try {
     const doc = advanceToSensors(dom); // o sampler está ativo desde o início
     const w = dom.window;
-    // Contacto A: down@0, 2 moves a 60 amostras (coalesced inclui o próprio
-    // evento), up@2000 → 120 amostras / 2000 ms.
+    // Contacto: down@0, 11 moves a cada 100 ms (1000→2000), 10 amostras
+    // coalesced cada → 110 amostras; depois o dedo fica PARADO 7 s até
+    // pointerup@9000. A janela certa é 1000→2000 = 1000 ms → 110 Hz.
+    // Medir até ao pointerup dava 110/9 s ≈ 12 Hz — o bug reportado.
     pointer(w, 'pointerdown', 0);
-    pointer(w, 'pointermove', 1000, 60);
-    pointer(w, 'pointermove', 2000, 60);
-    pointer(w, 'pointerup', 2000);
-    // Pausa de 10 s — dedo levantado, não é amostragem.
-    // Contacto B: down@12000, 1 move a 60, up@13000 → 60 / 1000 ms.
-    pointer(w, 'pointerdown', 12000);
-    pointer(w, 'pointermove', 13000, 60);
-    pointer(w, 'pointerup', 13000);
+    for (let t = 1000; t <= 2000; t += 100) pointer(w, 'pointermove', t, 10);
+    pointer(w, 'pointerup', 9000);
+    // 2.º gesto após pausa de 11 s — também conta, também sem a pausa.
+    pointer(w, 'pointerdown', 20000);
+    for (let t = 21000; t <= 22000; t += 100) pointer(w, 'pointermove', t, 10);
+    pointer(w, 'pointerup', 23000);
     // pointermove sem contacto (hover) — ignorado.
-    pointer(w, 'pointermove', 14000, 60);
+    pointer(w, 'pointermove', 24000, 60);
 
     w.fetch = (url, opts) => {
       chamadas.push(JSON.parse(opts.body));
@@ -697,11 +699,44 @@ test('página: taxa de toque mede por contacto — pausas entre gestos não entr
     doc.getElementById('endBtn').onclick();
     await new Promise((r) => setTimeout(r, 0));
 
-    // 180 amostras / 3000 ms = 60 Hz → 'ok'. Com a medição página toda
-    // seria 180/13000 ≈ 14 Hz → 'warn'.
-    assert.equal(chamadas[0].touchHz, 60);
+    // 220 amostras / 2000 ms = 110 Hz → 'ok'.
+    assert.equal(chamadas[0].touchHz, 110);
     assert.equal(chamadas[0].touchSample, 'ok');
-    assert.equal(doc.getElementById('a-touchhz').textContent, '≈60 Hz');
+    assert.equal(doc.getElementById('a-touchhz').textContent, '≈110 Hz');
+  } finally {
+    dom.window.close();
+  }
+});
+
+test('página: hold no meio do contacto fecha o segmento — não dilui a taxa', async () => {
+  // Regressão Devin Review r2: mover, parar >TOUCH_GAP_MS com o dedo na
+  // mesma posição e voltar a mover são DOIS segmentos de movimento —
+  // o tempo imóvel entre eles não entra em nenhum denominador.
+  const dom = openPage();
+  const chamadas = [];
+  try {
+    const doc = advanceToSensors(dom);
+    const w = dom.window;
+    // Swipe A: 11 moves 1000→2000 (10 amostras cada) = 110/1000 ms.
+    // Hold de 5 s (dedo em baixo, sem eventos) — NÃO pode entrar.
+    // Swipe B: 11 moves 8000→9000 (10 amostras cada) = 110/1000 ms.
+    // Total: 220 amostras / 2000 ms = 110 Hz → 'ok'.
+    // Se o hold entrasse: 220/6000 ≈ 37 Hz → 'warn'.
+    pointer(w, 'pointerdown', 0);
+    for (let t = 1000; t <= 2000; t += 100) pointer(w, 'pointermove', t, 10);
+    for (let t = 8000; t <= 9000; t += 100) pointer(w, 'pointermove', t, 10);
+    pointer(w, 'pointerup', 9500);
+
+    w.fetch = (url, opts) => {
+      chamadas.push(JSON.parse(opts.body));
+      return Promise.resolve({ ok: true });
+    };
+    doc.getElementById('advBtn').onclick();
+    doc.getElementById('endBtn').onclick();
+    await new Promise((r) => setTimeout(r, 0));
+
+    assert.equal(chamadas[0].touchHz, 110);
+    assert.equal(chamadas[0].touchSample, 'ok');
   } finally {
     dom.window.close();
   }
@@ -709,20 +744,16 @@ test('página: taxa de toque mede por contacto — pausas entre gestos não entr
 
 test('página: getCoalescedEvents já inclui o evento — sem +1 fantasma', async () => {
   // Regressão Devin Review: a lista coalesced inclui o próprio pointermove
-  // como última amostra; somar +1 contava tudo a dobrar. Com 59 coalesced
-  // por evento o correto é 59 Hz → 'warn'; com o +1 daria 60 Hz → 'ok'.
+  // como última amostra; somar +1 contava tudo a dobrar. Com 5 coalesced
+  // por evento o correto é 55 Hz → 'warn'; com o +1 daria 66 Hz → 'ok'.
   const dom = openPage();
   const chamadas = [];
   try {
     const doc = advanceToSensors(dom);
     const w = dom.window;
     pointer(w, 'pointerdown', 0);
-    pointer(w, 'pointermove', 1000, 59);
-    pointer(w, 'pointermove', 2000, 59);
-    pointer(w, 'pointerup', 2000);
-    pointer(w, 'pointerdown', 12000);
-    pointer(w, 'pointermove', 13000, 59);
-    pointer(w, 'pointerup', 13000);
+    for (let t = 1000; t <= 2000; t += 100) pointer(w, 'pointermove', t, 5);
+    pointer(w, 'pointerup', 2100);
 
     w.fetch = (url, opts) => {
       chamadas.push(JSON.parse(opts.body));
@@ -732,8 +763,8 @@ test('página: getCoalescedEvents já inclui o evento — sem +1 fantasma', asyn
     doc.getElementById('endBtn').onclick();
     await new Promise((r) => setTimeout(r, 0));
 
-    // 177 amostras / 3000 ms = 59 Hz → 'warn'.
-    assert.equal(chamadas[0].touchHz, 59);
+    // 11 moves × 5 amostras = 55 / janela de 1000 ms = 55 Hz → 'warn'.
+    assert.equal(chamadas[0].touchHz, 55);
     assert.equal(chamadas[0].touchSample, 'warn');
   } finally {
     dom.window.close();
