@@ -161,6 +161,10 @@ internal static class Program
         // O `App.xaml` não traz recursos nem `StartupUri` (os temas entram pelo
         // `ThemeManager`), por isso basta instanciá-lo: o `OnStartup` dele é que
         // faz o resto, incluindo abrir a `MainWindow`.
+        // Sem rede de actualização: o botão ATUALIZAR aparecia a meio das
+        // capturas conforme o GitHub respondia, e os baselines ficavam ao sabor
+        // do minuto do run. As provas de update injetam `_update` à mão.
+        UpdateChecker.VerificarAtualizacao = false;
         var app = new OficinaDiag.App();
         // O `App` deixa o WPF fechar quando a última janela sai; aqui há janelas
         // a abrir e a fechar todo o tempo e o fim é explícito.

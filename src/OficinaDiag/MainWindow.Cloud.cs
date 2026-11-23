@@ -84,9 +84,25 @@ public partial class MainWindow : Window
         Log($"> cloud: {_config.CloudUrl}");
     }
 
-    private async void Ai_Click(object sender, RoutedEventArgs e)
+    private async void Ai_Click(object sender, RoutedEventArgs e) =>
+        await GenerateAiReportForPurposeAsync(null);
+
+    private async void MaintenanceAi_Click(object sender, RoutedEventArgs e) =>
+        await GenerateAiReportForPurposeAsync("maintenance");
+
+    private bool _aiBusy;
+
+    private void UpdateAiButtons()
+    {
+        var can = _report is not null && !_aiBusy;
+        AiButton.IsEnabled = can;
+        MaintenanceAiButton.IsEnabled = can;
+    }
+
+    private async Task GenerateAiReportForPurposeAsync(string? purpose)
     {
         if (_report is null) return;
+        var report = _report;
         // Aviso de privacidade: crash logs (~40KB com paths e usernames) vão
         // para o LLM via cloud — o técnico confirma antes de enviar.
         if (MessageBox.Show(this, L10n.T("dlg.ai.privacy"),
@@ -94,7 +110,9 @@ public partial class MainWindow : Window
                 MessageBoxButton.YesNo, MessageBoxImage.Information) != MessageBoxResult.Yes)
             return;
         var token = _config.GetShopToken();
+        _aiBusy = true;
         AiButton.IsEnabled = false; // relatório IA é pago — sem double-submit
+        MaintenanceAiButton.IsEnabled = false;
         try
         {
             string lang;
@@ -130,23 +148,30 @@ public partial class MainWindow : Window
                 }
             }
             Log(L10n.T("log.ai.gen"));
-            var (ok, text) = await _cloud.GenerateAiReportAsync(token!, _report, lang);
+            var (ok, text) = await _cloud.GenerateAiReportAsync(token!, report, lang, purpose);
             if (!ok) { Log(L10n.F("log.ai.fail", text)); return; }
-            _lastAiReport = text;
+            // O relatório de manutenção é para o técnico/sala; não sobrescreve o
+            // diagnóstico que viaja no envio ao cliente.
+            if (purpose is null && ReferenceEquals(_report, report)) _lastAiReport = text;
             // Guarda em HTML renderizado (entregável ao cliente) e abre no browser.
-            var dlg = new SaveFileDialog { Filter = L10n.T("dlg.ai.filter"), FileName = $"ai-report-{_report.CollectedAt:yyyyMMdd-HHmm}.html" };
+            var prefix = purpose == "maintenance" ? "ai-maint-report-" : "ai-report-";
+            var dlg = new SaveFileDialog { Filter = L10n.T("dlg.ai.filter"), FileName = $"{prefix}{report.CollectedAt:yyyyMMdd-HHmm}.html" };
             if (dlg.ShowDialog() == true)
             {
                 try
                 {
-                    File.WriteAllText(dlg.FileName, ReportBuilder.AiReportToHtml(_report, text, ThemeManager.Current));
+                    File.WriteAllText(dlg.FileName, ReportBuilder.AiReportToHtml(report, text, ThemeManager.Current));
                 }
                 catch (Exception ex) { Log(L10n.F("log.err", ex.Message)); return; }
                 Log(L10n.F("log.ai.saved", dlg.FileName));
                 OpenHtmlFile(dlg.FileName);
             }
         }
-        finally { AiButton.IsEnabled = true; }
+        finally
+        {
+            _aiBusy = false;
+            UpdateAiButtons();
+        }
     }
 
     private Cloud.CloudOutbox? _outbox;

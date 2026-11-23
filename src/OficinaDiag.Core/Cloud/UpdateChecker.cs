@@ -85,6 +85,12 @@ public sealed class UpdateChecker
     internal static Func<string, bool> ArrancarAtualizador = LancarAtualizador;
 
     /// <summary>
+    /// Costura do harness: o UiShots corre sem rede para as capturas não
+    /// dependerem do GitHub. Em produção fica sempre true.
+    /// </summary>
+    internal static bool VerificarAtualizacao = true;
+
+    /// <summary>
     /// True só para <c>https://github.com/braindeadpt/oficinaos-diag/releases/download/&lt;tag&gt;/&lt;ficheiro&gt;</c>
     /// (o <c>browser_download_url</c> normal do GitHub). O redirecionamento
     /// posterior para o CDN do GitHub é feito pelo próprio github.com.
@@ -134,6 +140,7 @@ public sealed class UpdateChecker
     {
         // MSIX/Store: não há atualização fora da Store — nem uma chamada de rede.
         if (IsPackagedApp()) return null;
+        if (!VerificarAtualizacao) return null;
         try
         {
             using var doc = JsonDocument.Parse(await Http.GetStringAsync(
