@@ -1,6 +1,9 @@
+using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Interop;
 using OficinaDiag.Devices;
+using OficinaDiag.Ui;
 
 namespace OficinaDiag;
 
@@ -26,18 +29,59 @@ public sealed partial class AppManagerDialog : Window
     private bool _running;
     private static readonly string[] FilterModes = ["all", "user", "system", "disabled", "uninstalled"];
 
+    private const uint MonitorDefaultToNearest = 2;
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct RectNativo { public int Left, Top, Right, Bottom; }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct MonitorInfo
+    {
+        public int cbSize;
+        public RectNativo rcMonitor;
+        public RectNativo rcWork;
+        public uint dwFlags;
+    }
+
+    [DllImport("user32.dll")]
+    private static extern IntPtr MonitorFromWindow(IntPtr hwnd, uint flags);
+
+    [DllImport("user32.dll")]
+    private static extern bool GetMonitorInfo(IntPtr monitor, ref MonitorInfo info);
+
+    private (double Width, double Height) WorkAreaDoMonitor()
+    {
+        var wa = SystemParameters.WorkArea;
+        try
+        {
+            var hwnd = new WindowInteropHelper(this).Handle;
+            if (hwnd == IntPtr.Zero) return (wa.Width, wa.Height);
+            var info = new MonitorInfo { cbSize = Marshal.SizeOf<MonitorInfo>() };
+            if (!GetMonitorInfo(MonitorFromWindow(hwnd, MonitorDefaultToNearest), ref info))
+                return (wa.Width, wa.Height);
+            var escala = PresentationSource.FromVisual(this)?.CompositionTarget?.TransformToDevice.M11 ?? 1.0;
+            if (!(escala > 0)) escala = 1.0;
+            var dpi = 96 * escala;
+            var r = info.rcWork;
+            return (WindowFit.ParaDip(r.Right - r.Left, dpi),
+                WindowFit.ParaDip(r.Bottom - r.Top, dpi));
+        }
+        catch { return (wa.Width, wa.Height); }
+    }
+
     public AppManagerDialog(AndroidAppManager manager, string serial, string deviceLabel)
     {
         InitializeComponent();
         _manager = manager;
         _serial = serial;
 
-        // Mesmo limite dos outros diálogos: a work area decide, não o Height fixo.
+        // O limite é o da work area do monitor onde o diálogo nasce — um
+        // secundário mais pequeno que o principal não pode ficar de fora.
         Loaded += (_, _) =>
         {
-            var wa = SystemParameters.WorkArea;
-            MaxWidth = Math.Min(MaxWidth, wa.Width);
-            MaxHeight = Math.Min(MaxHeight, wa.Height);
+            var (w, h) = WorkAreaDoMonitor();
+            MaxWidth = Math.Min(MaxWidth, w);
+            MaxHeight = Math.Min(MaxHeight, h);
             MinWidth = Math.Min(MinWidth, MaxWidth);
             MinHeight = Math.Min(MinHeight, MaxHeight);
         };

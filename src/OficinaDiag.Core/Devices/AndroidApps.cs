@@ -199,15 +199,23 @@ public sealed class AndroidAppManager
         _shell = shell;
     }
 
+    private static readonly string[] HomeCommands =
+    [
+        "cmd package resolve-activity --brief --user 0 -a android.intent.action.MAIN " +
+        "-c android.intent.category.HOME",
+        "pm resolve-activity --brief --user 0 -a android.intent.action.MAIN " +
+        "-c android.intent.category.HOME",
+        "pm resolve-activity --brief -a android.intent.action.MAIN " +
+        "-c android.intent.category.HOME",
+    ];
+
     public async Task<AndroidAppInventory> ListAsync(string serial, CancellationToken ct = default)
     {
         var user = await ShellAsync(serial, "pm list packages -3 -i -f --user 0", 20000, ct);
         var system = await ShellAsync(serial, "pm list packages -s -i -f --user 0", 20000, ct);
         var disabledOut = await ShellAsync(serial, "pm list packages -d -i -f --user 0", 20000, ct);
         var systemAllOut = await ShellAsync(serial, "pm list packages -s -u -i -f --user 0", 30000, ct);
-        var homeOut = await ShellAsync(serial,
-            "cmd package resolve-activity --brief --user 0 -a android.intent.action.MAIN " +
-            "-c android.intent.category.HOME", 10000, ct);
+        var homeOut = await ResolveHomeAsync(serial, ct);
         var sdkOut = await ShellAsync(serial, "getprop ro.build.version.sdk", 5000, ct);
         // Sem uma destas listas o inventário fica parcial: um `-s` em falta faria
         // todos os apps de sistema parecerem removidos, e sem launcher não há
@@ -293,7 +301,7 @@ public sealed class AndroidAppManager
         if (AndroidAppRules.Validate(action, homePackage) is { } invalid)
             return new AndroidAppActionResult(false, action, null, null, invalid);
 
-        var output = await ShellAsync(serial, action.Command, 20000, ct);
+        var output = await ShellAsync(serial, action.Command, 20000, ct, allowNonZero: true);
         if (output is null)
             return new AndroidAppActionResult(false, action, null, null, "adb");
 
@@ -311,13 +319,27 @@ public sealed class AndroidAppManager
             ok ? null : text.Length > 0 ? text : "sem resposta do adb");
     }
 
+    private async Task<string?> ResolveHomeAsync(string serial, CancellationToken ct)
+    {
+        string? last = null;
+        foreach (var command in HomeCommands)
+        {
+            var output = await ShellAsync(serial, command, 10000, ct);
+            if (AndroidAppParsing.ParseHomePackage(output) is not null) return output;
+            last ??= output;
+        }
+        return last;
+    }
+
     private Task<string?> ShellAsync(
-        string serial, string command, int timeoutMs, CancellationToken ct) =>
+        string serial, string command, int timeoutMs, CancellationToken ct,
+        bool allowNonZero = false) =>
         _shell?.Invoke(serial, command, timeoutMs, ct)
-        ?? AdbShellAsync(serial, command, timeoutMs, ct);
+        ?? AdbShellAsync(serial, command, timeoutMs, ct, allowNonZero);
 
     private async Task<string?> AdbShellAsync(
-        string serial, string command, int timeoutMs, CancellationToken ct)
+        string serial, string command, int timeoutMs, CancellationToken ct,
+        bool allowNonZero = false)
     {
         if (string.IsNullOrWhiteSpace(serial)
             || serial.Any(c => !char.IsLetterOrDigit(c) && c is not ('-' or '_' or '.' or ':')))
@@ -351,10 +373,14 @@ public sealed class AndroidAppManager
             var exitCode = p.ExitCode;
             var error = await drain;
             var output = await read;
-            if (exitCode != 0
-                || error.Contains("adb: error", StringComparison.OrdinalIgnoreCase)
+            if (error.Contains("adb: error", StringComparison.OrdinalIgnoreCase)
                 || error.Contains("error: device", StringComparison.OrdinalIgnoreCase))
                 return null;
+            if (exitCode != 0)
+            {
+                if (!allowNonZero) return null;
+                return string.IsNullOrWhiteSpace(output) ? error : output;
+            }
             return output;
         }
         catch { return null; }

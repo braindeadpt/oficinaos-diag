@@ -158,6 +158,22 @@ public sealed class AndroidAppsTests
     }
 
     [Fact]
+    public async Task Manager_LauncherSemCmd_UsaPm()
+    {
+        var manager = new AndroidAppManager("adb", (_, command, _, _) => Task.FromResult<string?>(
+            command.StartsWith("pm list", StringComparison.Ordinal) ? ""
+            : command == "getprop ro.build.version.sdk" ? "23\n"
+            : command == "pm resolve-activity --brief -a android.intent.action.MAIN -c android.intent.category.HOME"
+                ? "com.oem.launcher/.Home\n"
+            : null));
+
+        var inv = await manager.ListAsync("SERIAL1");
+
+        Assert.Null(inv.Error);
+        Assert.Equal("com.oem.launcher", inv.HomePackage);
+    }
+
+    [Fact]
     public async Task RunAsync_SucessoDevolveUndo()
     {
         var manager = new AndroidAppManager("adb", (_, command, _, _) =>
