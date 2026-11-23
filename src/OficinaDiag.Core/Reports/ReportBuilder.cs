@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.IO;
 using System.Text;
 using System.Text.Json;
@@ -6,6 +7,7 @@ using Markdig;
 using Markdig.Syntax;
 using Markdig.Syntax.Inlines;
 using OficinaDiag.Devices;
+using OficinaDiag.Maintenance;
 
 namespace OficinaDiag.Reports;
 
@@ -109,6 +111,9 @@ public static class ReportBuilder
             results = r.Results,
             logs = r.LogsText,
             notes = r.Notes,
+            // Limpeza/otimização medida — campo aditivo: o schema zod da cloud
+            // ignora chaves desconhecidas, por isso versões antigas não quebram.
+            maintenance = r.Maintenance,
         };
         return JsonSerializer.Serialize(payload, JsonOpts);
     }
@@ -185,6 +190,114 @@ public static class ReportBuilder
         """,
     };
 
+    /// <summary>
+    /// Secção de limpeza/otimização medida — ações executadas e o antes/depois
+    /// das métricas. Sem números inventados: o que o adb não leu fica "—".
+    /// </summary>
+    private static void AppendMaintenance(StringBuilder sb, DeviceReport r)
+    {
+        var m = r.Maintenance;
+        if (m is null) return;
+        sb.AppendLine("<h1 style=\"font-size:1em\">LIMPEZA E OTIMIZAÇÃO (medida)</h1>");
+
+        if (m.Actions.Count > 0)
+        {
+            sb.AppendLine("<table><tr><th>ação</th><th>estado</th><th>detalhe</th></tr>");
+            foreach (var a in m.Actions)
+            {
+                var (cls, txt) = a.Status switch
+                {
+                    "ok" => ("pass", "OK"),
+                    "partial" => ("warn", "PARCIAL"),
+                    "fail" => ("fail", "FALHA"),
+                    _ => ("skipped", "IGNORADO"),
+                };
+                sb.AppendLine($"<tr><td>{System.Net.WebUtility.HtmlEncode(a.LabelPt)}</td>" +
+                    $"<td class=\"{cls}\">{txt}</td>" +
+                    $"<td>{System.Net.WebUtility.HtmlEncode(a.Detail ?? "")}</td></tr>");
+            }
+            sb.AppendLine("</table>");
+        }
+
+        if (m.Deltas.Count > 0)
+        {
+            sb.AppendLine("<table><tr><th>métrica</th><th>antes</th><th>depois</th><th>variação</th></tr>");
+            foreach (var d in m.Deltas)
+            {
+                var (cls, arrow) = DeltaStyle(d);
+                sb.AppendLine($"<tr><td>{System.Net.WebUtility.HtmlEncode(d.LabelPt)}</td>" +
+                    $"<td>{System.Net.WebUtility.HtmlEncode(d.Before ?? "—")}</td>" +
+                    $"<td>{System.Net.WebUtility.HtmlEncode(d.After ?? "—")}</td>" +
+                    $"<td class=\"{cls}\">{arrow} {System.Net.WebUtility.HtmlEncode(d.Delta ?? "—")}</td></tr>");
+            }
+            sb.AppendLine("</table>");
+        }
+    }
+
+    /// <summary>
+    /// Cor + seta da variação: a cor diz se a mudança foi boa para o telemóvel
+    /// (Direction), a seta diz para que lado mexeu. Delta nulo ou neutro fica sem cor.
+    /// </summary>
+    private static (string Cls, string Arrow) DeltaStyle(MetricDelta d)
+    {
+        if (d.Delta is null || d.Direction == "neutral") return ("", "—");
+        var decreased = d.Delta.StartsWith('-');
+        // O Delta é formatado ("+512 MB", "-23", "+0.5") — o número termina no
+        // primeiro espaço (a unidade vem depois). Sem número legível não se
+        // inventa cor nem seta: a célula mostra a variação como está.
+        var num = d.Delta.TrimStart('+', '-');
+        var space = num.IndexOf(' ');
+        if (space >= 0) num = num[..space];
+        if (!double.TryParse(num, NumberStyles.Float, CultureInfo.InvariantCulture, out var v) || v == 0)
+            return ("", "");
+        var improved = d.Direction == "up-good" ? !decreased : decreased;
+        return (improved ? "pass" : "fail", decreased ? "▼" : "▲");
+    }
+
+    /// <summary>
+    /// A mesma limpeza na vista cliente — sem chaves técnicas, com estados
+    /// em linguagem simples. Só aparece quando houve manutenção neste relatório.
+    /// </summary>
+    private static void AppendClientMaintenance(StringBuilder sb, DeviceReport r)
+    {
+        var m = r.Maintenance;
+        if (m is null || (m.Actions.Count == 0 && m.Deltas.Count == 0)) return;
+        var e = (string? s) => System.Net.WebUtility.HtmlEncode(s ?? "");
+
+        sb.AppendLine("<h2>Manutenção realizada</h2>");
+        if (m.Actions.Count > 0)
+        {
+            sb.AppendLine("<table><tr><th>Ação</th><th>Estado</th></tr>");
+            foreach (var a in m.Actions)
+            {
+                var (cls, txt) = a.Status switch
+                {
+                    "ok" => ("ok", "Feito"),
+                    "partial" => ("attention", "Parcial"),
+                    "fail" => ("problem", "Não foi possível"),
+                    _ => ("unknown", "Não aplicado"),
+                };
+                var detail = string.IsNullOrWhiteSpace(a.Detail) ? "" : $" — {a.Detail}";
+                sb.AppendLine($"<tr><td>{e(a.LabelPt)}{e(detail)}</td>" +
+                    $"<td class=\"{cls}\">{txt}</td></tr>");
+            }
+            sb.AppendLine("</table>");
+        }
+        if (m.Deltas.Count > 0)
+        {
+            sb.AppendLine("<table><tr><th>Medição</th><th>Antes</th><th>Depois</th><th>Variação</th></tr>");
+            foreach (var d in m.Deltas)
+            {
+                var (cls, arrow) = DeltaStyle(d);
+                var clsClient = cls switch { "pass" => "ok", "fail" => "problem", _ => "" };
+                sb.AppendLine($"<tr><td>{e(d.LabelPt)}</td>" +
+                    $"<td>{e(d.Before ?? "—")}</td><td>{e(d.After ?? "—")}</td>" +
+                    $"<td class=\"{clsClient}\">{arrow} {e(d.Delta ?? "—")}</td></tr>");
+            }
+            sb.AppendLine("</table>");
+        }
+    }
+
     public static string ToHtml(DeviceReport r, string? theme = null)
     {
         var sb = new StringBuilder();
@@ -219,6 +332,7 @@ public static class ReportBuilder
                 $"<td>{System.Net.WebUtility.HtmlEncode(c.Detail ?? "")}</td></tr>");
         }
         sb.AppendLine("</table>");
+        AppendMaintenance(sb, r);
         if (!string.IsNullOrWhiteSpace(r.LogsText))
             sb.AppendLine($"<h1 style=\"font-size:1em\">LOGS DE CRASH/PANIC</h1>" +
                 $"<pre style=\"font-size:.75em;white-space:pre-wrap;max-height:300px;overflow:auto\">" +
@@ -478,6 +592,8 @@ public static class ReportBuilder
             }
             sb.AppendLine("</table>");
         }
+
+        AppendClientMaintenance(sb, r);
 
         if (!string.IsNullOrWhiteSpace(r.Notes))
             sb.AppendLine($"<h2>Notas do técnico</h2><p>{e(r.Notes)}</p>");
