@@ -61,6 +61,8 @@ internal static class AndroidSecurityAudit
         @"^REQUEST_INSTALL_PACKAGES \((\w+)\)", RegexOptions.Compiled);
     private static readonly Regex AppOpsOpMode = new(
         @"^REQUEST_INSTALL_PACKAGES: mode=(\w+)", RegexOptions.Compiled);
+    private static readonly Regex UserInfoLine = new(
+        @"UserInfo\{(\d+):", RegexOptions.Compiled);
 
     // ── Parsing (adb → dados) ────────────────────────────────────────────
 
@@ -204,6 +206,9 @@ internal static class AndroidSecurityAudit
     internal static HashSet<string>? ParseInstallPackagesAppOps(string? appopsOutput)
     {
         if (appopsOutput is null) return null;
+        // Sem o cabeçalho do serviço o output não é um dumpsys appops —
+        // melhor skipped do que um "0 apps" inventado.
+        if (!appopsOutput.Contains("AppOps Service state", StringComparison.Ordinal)) return null;
         var allowed = new HashSet<string>(StringComparer.Ordinal);
         string? current = null;
         foreach (var raw in appopsOutput.Split('\n'))
@@ -221,9 +226,71 @@ internal static class AndroidSecurityAudit
             var mode = parens.Success ? parens.Groups[1].Value
                 : AppOpsOpMode.Match(line) is { Success: true } m ? m.Groups[1].Value
                 : null;
-            if (mode == "allow") allowed.Add(current);
+            // "allow" no Android moderno; "0" = MODE_ALLOWED em dumpsys
+            // antigos (Android 8 imprime o modo numérico).
+            if (mode is "allow" or "0") allowed.Add(current);
         }
         return allowed;
+    }
+
+    /// <summary>
+    /// `dumpsys user` — a restrição <c>no_install_unknown_sources</c> nas
+    /// "Effective restrictions" do utilizador atual bloqueia instalações de
+    /// fontes desconhecidas a nível do UserManager, por cima dos AppOps:
+    /// autorizações guardadas ficam inertes enquanto a política durar.
+    /// null = não se conseguiu determinar (adb mudo ou utilizador atual
+    /// ilegível) — nunca se assume bloqueio nem a ausência dele.
+    /// </summary>
+    internal static bool? ParseUnknownSourcesBlocked(string? dumpsysUser)
+    {
+        if (dumpsysUser is null) return null;
+        string? currentUser = null;
+        foreach (var raw in dumpsysUser.Split('\n'))
+        {
+            var line = raw.Trim();
+            if (line.StartsWith("Current user:", StringComparison.Ordinal))
+            {
+                var id = line["Current user:".Length..].Trim();
+                if (int.TryParse(id, out _)) currentUser = id;
+                break;
+            }
+        }
+        if (currentUser is null) return null;
+
+        var inTarget = false;
+        var inEffective = false;
+        var found = false;
+        foreach (var raw in dumpsysUser.Split('\n'))
+        {
+            if (raw.Length > 0 && raw[0] is not (' ' or '\t'))
+            {
+                // Cabeçalhos de topo ("Users:", "Device properties:", …) fecham blocos.
+                inTarget = false;
+                inEffective = false;
+                continue;
+            }
+            var user = UserInfoLine.Match(raw);
+            if (user.Success)
+            {
+                inTarget = user.Groups[1].Value == currentUser;
+                inEffective = false;
+                continue;
+            }
+            if (!inTarget) continue;
+            var trimmed = raw.Trim();
+            if (trimmed == "Effective restrictions:")
+            {
+                inEffective = true;
+                found = true;
+                continue;
+            }
+            if (!inEffective) continue;
+            // Os valores são mais indentados que o cabeçalho; a próxima chave
+            // ("UserProperties:") está ao mesmo nível e fecha a lista.
+            if (raw.Length - raw.TrimStart().Length <= 4) { inEffective = false; continue; }
+            if (trimmed == "no_install_unknown_sources") return true;
+        }
+        return found ? false : null;
     }
 
     /// <summary>
@@ -354,9 +421,12 @@ internal static class AndroidSecurityAudit
     /// REQUEST_INSTALL_PACKAGES em <c>allow</c> — o "instalar apps
     /// desconhecidos" das Definições). É o vetor de sideloading e
     /// persistência; desinstalar ou repor a permissão é decisão do técnico.
+    /// <paramref name="unknownSourcesBlocked"/> = política do dispositivo
+    /// (no_install_unknown_sources) bloqueia a instalação apesar das
+    /// autorizações guardadas — nesse caso o risco é informativo.
     /// </summary>
     internal static AndroidDecisions.Reading InstallPackages(
-        IReadOnlyList<UserApp> apps, ISet<string> appOpsAllowed)
+        IReadOnlyList<UserApp> apps, ISet<string> appOpsAllowed, bool? unknownSourcesBlocked = null)
     {
         var holders = apps
             .Where(a => appOpsAllowed.Contains(a.Package))
@@ -367,6 +437,10 @@ internal static class AndroidSecurityAudit
             return new AndroidDecisions.Reading("pass", "0 apps autorizadas a instalar APKs", null);
 
         var detail = string.Join(", ", holders.Take(8)) + (holders.Count > 8 ? $" … (+{holders.Count - 8})" : "");
+        if (unknownSourcesBlocked == true)
+            return new AndroidDecisions.Reading("info", $"{holders.Count} app(s) com autorização guardada",
+                detail + " — mas a política do dispositivo bloqueia instalações de fontes desconhecidas; " +
+                "a autorização só volta a contar se a política for levantada");
         return new AndroidDecisions.Reading("warn", $"{holders.Count} app(s) autorizadas a instalar APKs",
             detail + " — 'instalar apps desconhecidos' ativo; rever e desativar o que o cliente não reconhece");
     }
@@ -394,34 +468,24 @@ internal static class AndroidSecurityAudit
     }
 
     /// <summary>
-    /// Verificação de pacotes / Play Protect. Android recente já não expõe
-    /// `package_verifier_enable`: nesse caso usa-se
-    /// `verifier_verify_adb_installs` — como a auditoria vive de ADB, é o
-    /// estado que interessa (info: não é decisão do utilizador). Com a
-    /// chave presente, desligada = warn; ambas ausentes = skipped.
+    /// Verificação de pacotes / Play Protect: `package_verifier_enable` e
+    /// `verifier_verify_adb_installs`. Em Android recente a chave legada
+    /// está ausente e as flags já não refletem o estado efetivo (o Play
+    /// Protect não expõe estado via adb e uma política pode forçar a
+    /// verificação) — nesse caso é skipped honesto, nunca inferido.
     /// </summary>
     internal static AndroidDecisions.Reading Verifier(bool? enabled, bool? verifyAdb)
     {
-        if (enabled == true)
-        {
-            var note = verifyAdb == false
-                ? "apps verificados antes de instalar; instalações via ADB não passam pelo verificador — conferir a origem dos APKs"
-                : "apps verificados antes de instalar (Play Protect)";
-            return new AndroidDecisions.Reading("pass", "verificação de pacotes ativa", note);
-        }
-        if (enabled == false)
+        if (enabled is null)
+            return new AndroidDecisions.Reading("skipped", "verifier não exposto",
+                "package_verifier_enable ausente neste Android e as flags legadas já não refletem o Play Protect — não verificável");
+        if (!enabled.Value)
             return new AndroidDecisions.Reading("warn", "verificação de pacotes desligada",
                 "Play Protect / verificação de apps desligada — apps novas não são verificadas antes de instalar");
-        return verifyAdb switch
-        {
-            true => new AndroidDecisions.Reading("pass", "verificação de pacotes ativa",
-                "package_verifier_enable ausente neste Android; instalações ADB passam pelo verificador"),
-            false => new AndroidDecisions.Reading("info", "verificação de pacotes (estado legado)",
-                "package_verifier_enable ausente neste Android e verifier_verify_adb_installs=0 — " +
-                "instalações ADB não passam pelo verificador; o Play Protect não expõe estado via adb"),
-            _ => new AndroidDecisions.Reading("skipped", "verifier não exposto",
-                "package_verifier_enable e verifier_verify_adb_installs ausentes — não verificável"),
-        };
+        var note = verifyAdb == false
+            ? "apps verificados antes de instalar; instalações via ADB não passam pelo verificador — conferir a origem dos APKs"
+            : "apps verificados antes de instalar (Play Protect)";
+        return new AndroidDecisions.Reading("pass", "verificação de pacotes ativa", note);
     }
 
     /// <summary>Apps desativadas mas ainda instaladas — inventário para a limpeza.</summary>

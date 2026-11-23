@@ -180,6 +180,62 @@ public class AndroidSecurityAuditTests
         Assert.DoesNotContain(grants!, g => g.Package == "com.example.ignored");
     }
 
+    // ── dumpsys user (no_install_unknown_sources) ──────────────────────
+
+    private const string UserDump = """
+        Current user: 0
+
+        Users:
+          UserInfo{0:null:4c13} serialNo=0 isPrimary=true
+            Type: android.os.usertype.full.SYSTEM
+            Restrictions:
+              none
+            Device policy restrictions:
+              null
+            Effective restrictions:
+              none
+            UserProperties:
+                mPropertiesPresent=0
+          UserInfo{10:null:5d14} serialNo=10 isPrimary=false
+            Type: android.os.usertype.profile.MANAGED
+            Restrictions:
+              no_install_unknown_sources
+            Device policy restrictions:
+              null
+            Effective restrictions:
+              no_install_unknown_sources
+            UserProperties:
+                mPropertiesPresent=0
+
+        Device properties:
+          Device policy global restrictions:
+            null
+          Guest restrictions:
+            no_install_unknown_sources
+        """;
+
+    [Fact]
+    public void UnknownSources_CurrentUserSemRestricaoEDesseBloqueio()
+    {
+        // O utilizador atual (0) não tem a restrição; o perfil gerido (10) tem.
+        // As "Guest restrictions" nomeiam-na sempre — não podem contar.
+        Assert.Equal(false, AndroidSecurityAudit.ParseUnknownSourcesBlocked(UserDump));
+    }
+
+    [Fact]
+    public void UnknownSources_CurrentUserComRestricaoBloqueia()
+    {
+        var dump = UserDump.Replace("Current user: 0", "Current user: 10");
+        Assert.Equal(true, AndroidSecurityAudit.ParseUnknownSourcesBlocked(dump));
+    }
+
+    [Fact]
+    public void UnknownSources_NuloOuSemUtilizadorAtualDevolveNulo()
+    {
+        Assert.Null(AndroidSecurityAudit.ParseUnknownSourcesBlocked(null));
+        Assert.Null(AndroidSecurityAudit.ParseUnknownSourcesBlocked("lixo sem current user"));
+    }
+
     // ── settings: acessibilidade ────────────────────────────────────────
 
     [Theory]
@@ -360,10 +416,39 @@ public class AndroidSecurityAuditTests
     }
 
     [Fact]
-    public void AppOps_NuloDevolveNuloEOutputSemAppsDaVazio()
+    public void AppOps_NuloDevolveNuloESemCabecalhoEDumpInvalido()
     {
         Assert.Null(AndroidSecurityAudit.ParseInstallPackagesAppOps(null));
-        Assert.Empty(AndroidSecurityAudit.ParseInstallPackagesAppOps("lixo sem packages")!);
+        // Output ilegível não é um inventário vazio: null = skipped no coletor.
+        Assert.Null(AndroidSecurityAudit.ParseInstallPackagesAppOps("lixo sem appops"));
+    }
+
+    [Fact]
+    public void AppOps_DumpValidoSemAutorizacoesDaListaVazia()
+    {
+        var allowed = AndroidSecurityAudit.ParseInstallPackagesAppOps("""
+            Current AppOps Service state:
+              Uid u0a100:
+                Package com.whatsapp:
+                  READ_CONTACTS: mode=ignore
+            """);
+        Assert.NotNull(allowed);
+        Assert.Empty(allowed!);
+    }
+
+    [Theory]
+    // Android 8 imprime o modo numérico: 0 = MODE_ALLOWED.
+    [InlineData("REQUEST_INSTALL_PACKAGES (0):", true)]
+    [InlineData("REQUEST_INSTALL_PACKAGES: mode=0", true)]
+    [InlineData("REQUEST_INSTALL_PACKAGES (1):", false)]
+    [InlineData("REQUEST_INSTALL_PACKAGES: mode=ignore", false)]
+    [InlineData("REQUEST_INSTALL_PACKAGES: mode=default", false)]
+    public void AppOps_ModoNumericoDoAndroid8(string opLine, bool expected)
+    {
+        var dump = "Current AppOps Service state:\n  Uid u0a100:\n    Package com.a:\n      " + opLine + "\n";
+        var allowed = AndroidSecurityAudit.ParseInstallPackagesAppOps(dump);
+        Assert.NotNull(allowed);
+        Assert.Equal(expected, allowed!.Contains("com.a"));
     }
 
     [Fact]
@@ -392,6 +477,24 @@ public class AndroidSecurityAuditTests
         var r = AndroidSecurityAudit.InstallPackages(AuditApps, new HashSet<string>());
         Assert.Equal("pass", r.Status);
         Assert.Equal("0 apps autorizadas a instalar APKs", r.Value);
+    }
+
+    [Fact]
+    public void InstallPackages_PoliticaBloqueiaDerrubaWarnParaInfo()
+    {
+        var r = AndroidSecurityAudit.InstallPackages(AuditApps,
+            new HashSet<string>(StringComparer.Ordinal) { "com.spy" }, unknownSourcesBlocked: true);
+        Assert.Equal("info", r.Status);
+        Assert.Contains("autorização guardada", r.Value);
+        Assert.Contains("política", r.Note);
+    }
+
+    [Fact]
+    public void InstallPackages_PoliticaDesconhecidaNaoInventaBloqueio()
+    {
+        var r = AndroidSecurityAudit.InstallPackages(AuditApps,
+            new HashSet<string>(StringComparer.Ordinal) { "com.spy" }, unknownSourcesBlocked: null);
+        Assert.Equal("warn", r.Status);
     }
 
     [Fact]
@@ -433,21 +536,14 @@ public class AndroidSecurityAuditTests
     [InlineData(false, null, "warn")]
     [InlineData(true, false, "pass")]
     [InlineData(true, true, "pass")]
-    // Android recente não expõe package_verifier_enable: cai no verify_adb.
-    [InlineData(null, false, "info")]
-    [InlineData(null, true, "pass")]
+    // Android recente não expõe package_verifier_enable e as flags legadas
+    // já não refletem o Play Protect: skipped honesto, nunca inferido.
+    [InlineData(null, false, "skipped")]
+    [InlineData(null, true, "skipped")]
     public void Verifier_Estados(bool? enabled, bool? verifyAdb, string status)
     {
         var r = AndroidSecurityAudit.Verifier(enabled, verifyAdb);
         Assert.Equal(status, r.Status);
-    }
-
-    [Fact]
-    public void Verifier_SemChaveLegadaMasComVerifyAdbExplicaNaNota()
-    {
-        var r = AndroidSecurityAudit.Verifier(null, false);
-        Assert.Contains("ADB", r.Note);
-        Assert.Contains("package_verifier_enable", r.Note);
     }
 
     [Fact]

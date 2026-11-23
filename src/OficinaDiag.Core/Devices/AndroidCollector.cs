@@ -505,7 +505,15 @@ public sealed class AndroidCollector
             }
             else
             {
-                var inst = AndroidSecurityAudit.InstallPackages(apps, appOps);
+                // Política do dispositivo (no_install_unknown_sources) pode
+                // bloquear as instalações apesar das autorizações guardadas.
+                // Só se consulta o dumpsys user quando há apps autorizadas —
+                // no caso comum (nenhuma) poupa-se um adb extra.
+                bool? blocked = appOps.Count > 0
+                    ? AndroidSecurityAudit.ParseUnknownSourcesBlocked(
+                        await AdbAsync(serial, "shell dumpsys user", 15000))
+                    : false;
+                var inst = AndroidSecurityAudit.InstallPackages(apps, appOps, blocked);
                 r.Set("security.audit.installpackages", inst.Status, inst.Value, inst.Note);
             }
 
