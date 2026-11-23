@@ -95,8 +95,11 @@ public static class ReportBuilder
     /// </summary>
     public static string ToCloudJson(DeviceReport r, string lang = "pt", string? purpose = null)
     {
-        var requested = purpose is "sale" or "repair" or "maintenance" ? purpose : r.Purpose;
-        var cloudPurpose = requested is "sale" or "repair" or "maintenance" ? requested : null;
+        // "maintenance" é modo do relatório IA, não propósito de intake: só sai
+        // quando o pedido o passa explicitamente, nunca a partir de r.Purpose.
+        var cloudPurpose = purpose is "sale" or "repair" or "maintenance"
+            ? purpose
+            : r.Purpose is "sale" or "repair" ? r.Purpose : null;
         var payload = new
         {
             lang,

@@ -139,7 +139,6 @@ public class ReportBuilderTests
     [Theory]
     [InlineData("sale", "sale")]
     [InlineData("repair", "repair")]
-    [InlineData("maintenance", "maintenance")]
     public void CloudJsonIncludesPurpose(string purpose, string expected)
     {
         var r = Sample();
@@ -151,6 +150,7 @@ public class ReportBuilderTests
     [Theory]
     [InlineData(null)]
     [InlineData("lixo")]
+    [InlineData("maintenance")]
     public void CloudJsonOmitsUnknownPurpose(string? purpose)
     {
         var r = Sample();
