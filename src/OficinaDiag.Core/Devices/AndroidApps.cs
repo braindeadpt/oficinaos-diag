@@ -121,7 +121,7 @@ internal static class AndroidAppRules
     }
 
     internal static IReadOnlyList<AndroidAppAction> ActionsFor(
-        AndroidAppEntry entry, string? homePackage)
+        AndroidAppEntry entry, string? homePackage, int? sdk)
     {
         if (ProtectionReason(entry.PackageName, homePackage) is not null) return [];
         var p = entry.PackageName;
@@ -143,7 +143,7 @@ internal static class AndroidAppRules
         {
             actions.Add(Action(AndroidAppActionKind.Enable, p, AndroidAppActionKind.Disable));
         }
-        else if (entry.Kind == AndroidAppKind.System)
+        else if (entry.Kind == AndroidAppKind.System && sdk is >= 26)
         {
             actions.Add(Action(AndroidAppActionKind.Restore, p, AndroidAppActionKind.Uninstall));
         }
@@ -165,7 +165,7 @@ internal static class AndroidAppRules
         AndroidAppActionKind.Disable => $"pm disable-user --user 0 {packageName}",
         AndroidAppActionKind.Enable => $"pm enable --user 0 {packageName}",
         AndroidAppActionKind.Restore => $"cmd package install-existing --user 0 {packageName}",
-        AndroidAppActionKind.ForceStop => $"am force-stop {packageName}",
+        AndroidAppActionKind.ForceStop => $"am force-stop --user 0 {packageName}",
         _ => throw new ArgumentOutOfRangeException(nameof(kind)),
     };
 
@@ -203,15 +203,22 @@ public sealed class AndroidAppManager
     {
         var user = await ShellAsync(serial, "pm list packages -3 -i -f --user 0", 20000, ct);
         var system = await ShellAsync(serial, "pm list packages -s -i -f --user 0", 20000, ct);
-        if (user is null && system is null)
-            return new AndroidAppInventory { Apps = [], Error = "adb" };
-
         var disabledOut = await ShellAsync(serial, "pm list packages -d -i -f --user 0", 20000, ct);
         var systemAllOut = await ShellAsync(serial, "pm list packages -s -u -i -f --user 0", 30000, ct);
         var homeOut = await ShellAsync(serial,
-            "cmd package resolve-activity --brief -a android.intent.action.MAIN " +
+            "cmd package resolve-activity --brief --user 0 -a android.intent.action.MAIN " +
             "-c android.intent.category.HOME", 10000, ct);
+        var sdkOut = await ShellAsync(serial, "getprop ro.build.version.sdk", 5000, ct);
+        // Sem uma destas listas o inventário fica parcial: um `-s` em falta faria
+        // todos os apps de sistema parecerem removidos, e sem launcher não há
+        // proteção para o pacote que não se pode tocar.
+        if (user is null || system is null || disabledOut is null
+            || systemAllOut is null || homeOut is null)
+            return new AndroidAppInventory { Apps = [], Error = "adb" };
         var home = AndroidAppParsing.ParseHomePackage(homeOut);
+        if (home is null)
+            return new AndroidAppInventory { Apps = [], Error = "adb" };
+        var sdk = int.TryParse(sdkOut?.Trim(), out var parsedSdk) ? parsedSdk : (int?)null;
 
         var disabled = new HashSet<string>(
             AndroidAppParsing.ParsePackageLines(disabledOut).Select(p => p.Package),
@@ -267,7 +274,11 @@ public sealed class AndroidAppManager
         }
 
         var apps = map.Values
-            .Select(e => e with { Actions = AndroidAppRules.ActionsFor(e, home) })
+            .Select(e => e with
+            {
+                ProtectionReason = AndroidAppRules.ProtectionReason(e.PackageName, home),
+                Actions = AndroidAppRules.ActionsFor(e, home, sdk),
+            })
             .OrderBy(e => e.Kind)
             .ThenBy(e => e.State)
             .ThenBy(e => e.PackageName, StringComparer.OrdinalIgnoreCase)
@@ -288,6 +299,8 @@ public sealed class AndroidAppManager
 
         var text = output.Trim();
         var failed = text.Contains("Failure", StringComparison.OrdinalIgnoreCase)
+            || text.Contains("Unknown command", StringComparison.OrdinalIgnoreCase)
+            || text.Contains("Error:", StringComparison.OrdinalIgnoreCase)
             || text.Contains("Unknown package", StringComparison.OrdinalIgnoreCase)
             || text.Contains("not installed", StringComparison.OrdinalIgnoreCase)
             || text.Contains("does not exist", StringComparison.OrdinalIgnoreCase)
@@ -335,8 +348,14 @@ public sealed class AndroidAppManager
                 return null;
             }
             if (ct.IsCancellationRequested) return null;
-            await drain;
-            return await read;
+            var exitCode = p.ExitCode;
+            var error = await drain;
+            var output = await read;
+            if (exitCode != 0
+                || error.Contains("adb: error", StringComparison.OrdinalIgnoreCase)
+                || error.Contains("error: device", StringComparison.OrdinalIgnoreCase))
+                return null;
+            return output;
         }
         catch { return null; }
     }

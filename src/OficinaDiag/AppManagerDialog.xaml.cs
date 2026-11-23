@@ -32,6 +32,16 @@ public sealed partial class AppManagerDialog : Window
         _manager = manager;
         _serial = serial;
 
+        // Mesmo limite dos outros diálogos: a work area decide, não o Height fixo.
+        Loaded += (_, _) =>
+        {
+            var wa = SystemParameters.WorkArea;
+            MaxWidth = Math.Min(MaxWidth, wa.Width);
+            MaxHeight = Math.Min(MaxHeight, wa.Height);
+            MinWidth = Math.Min(MinWidth, MaxWidth);
+            MinHeight = Math.Min(MinHeight, MaxHeight);
+        };
+
         Title = L10n.T("apps.title");
         HeaderText.Text = L10n.T("apps.header");
         DescText.Text = L10n.T("apps.desc");

@@ -44,10 +44,10 @@ public sealed class AndroidAppsTests
             State = AndroidAppState.Enabled,
         };
 
-        var kinds = AndroidAppRules.ActionsFor(e, null).Select(a => a.Kind).ToList();
+        var kinds = AndroidAppRules.ActionsFor(e, null, 28).Select(a => a.Kind).ToList();
 
         Assert.Equal([AndroidAppActionKind.Uninstall, AndroidAppActionKind.ForceStop], kinds);
-        Assert.Null(AndroidAppRules.ActionsFor(e, null)[0].Undo);
+        Assert.Null(AndroidAppRules.ActionsFor(e, null, 28)[0].Undo);
     }
 
     [Fact]
@@ -60,7 +60,7 @@ public sealed class AndroidAppsTests
             State = AndroidAppState.Enabled,
         };
 
-        var disable = Assert.Single(AndroidAppRules.ActionsFor(e, null),
+        var disable = Assert.Single(AndroidAppRules.ActionsFor(e, null, 28),
             a => a.Kind == AndroidAppActionKind.Disable);
 
         Assert.Equal("pm disable-user --user 0 com.oem.bloat", disable.Command);
@@ -78,9 +78,9 @@ public sealed class AndroidAppsTests
             State = AndroidAppState.Enabled,
         };
 
-        Assert.Empty(AndroidAppRules.ActionsFor(Entry("com.android.systemui"), null));
-        Assert.Empty(AndroidAppRules.ActionsFor(Entry("com.google.android.gms"), null));
-        Assert.Empty(AndroidAppRules.ActionsFor(Entry("com.launcher.atual"), "com.launcher.atual"));
+        Assert.Empty(AndroidAppRules.ActionsFor(Entry("com.android.systemui"), null, 28));
+        Assert.Empty(AndroidAppRules.ActionsFor(Entry("com.google.android.gms"), null, 28));
+        Assert.Empty(AndroidAppRules.ActionsFor(Entry("com.launcher.atual"), "com.launcher.atual", 28));
     }
 
     [Fact]
@@ -93,11 +93,24 @@ public sealed class AndroidAppsTests
             State = AndroidAppState.Uninstalled,
         };
 
-        var restore = Assert.Single(AndroidAppRules.ActionsFor(e, null));
+        var restore = Assert.Single(AndroidAppRules.ActionsFor(e, null, 28));
 
         Assert.Equal(AndroidAppActionKind.Restore, restore.Kind);
         Assert.Equal("cmd package install-existing --user 0 com.oem.removido", restore.Command);
         Assert.Equal(AndroidAppActionKind.Uninstall, restore.Undo!.Kind);
+    }
+
+    [Fact]
+    public void Actions_SystemUninstalled_Android7SemRestore()
+    {
+        var e = new AndroidAppEntry
+        {
+            PackageName = "com.oem.removido",
+            Kind = AndroidAppKind.System,
+            State = AndroidAppState.Uninstalled,
+        };
+
+        Assert.Empty(AndroidAppRules.ActionsFor(e, null, 25));
     }
 
     [Fact]
@@ -119,8 +132,9 @@ public sealed class AndroidAppsTests
                 "pm list packages -s -u -i -f --user 0" =>
                     "package:/system/app/z=com.oem.bloat\n" +
                     "package:com.oem.removido\n",
-                "cmd package resolve-activity --brief -a android.intent.action.MAIN -c android.intent.category.HOME" =>
+                "cmd package resolve-activity --brief --user 0 -a android.intent.action.MAIN -c android.intent.category.HOME" =>
                     "priority=0\ncom.oem.launcher/.Home\n",
+                "getprop ro.build.version.sdk" => "28\n",
                 _ => "",
             };
         });
@@ -139,7 +153,8 @@ public sealed class AndroidAppsTests
         Assert.Equal(AndroidAppState.Disabled, off.State);
         var removed = Assert.Single(inv.Apps, a => a.PackageName == "com.oem.removido");
         Assert.Equal(AndroidAppState.Uninstalled, removed.State);
-        Assert.Empty(Assert.Single(inv.Apps, a => a.PackageName == "com.android.systemui").Actions);
+        Assert.Equal("critical",
+            Assert.Single(inv.Apps, a => a.PackageName == "com.android.systemui").ProtectionReason);
     }
 
     [Fact]
