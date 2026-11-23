@@ -124,6 +124,8 @@
                             Click="Scan_Click"/>
                     <Button Style="{DynamicResource TermButton}" x:Name="BenchButton"
                             Click="Bench_Click" IsEnabled="False"/>
+                    <Button Style="{DynamicResource TermButton}" x:Name="PerfButton"
+                            Click="Perf_Click" IsEnabled="False"/>
                     <Button Style="{DynamicResource TermButton}" x:Name="TestButton"
                             Click="Test_Click" IsEnabled="False"/>
                     <Button Style="{DynamicResource TermButton}" x:Name="AppsButton"

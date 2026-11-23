@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
+<title>OficinaOS — perfil de desempenho</title>
+<style>
+  html,body{margin:0;height:100%;overflow:hidden;background:#000;font-family:monospace}
+  #wrap{position:fixed;inset:0;display:flex;flex-direction:column}
+  #stage{flex:1;position:relative;min-height:0}
+  canvas{position:absolute;inset:0;width:100%;height:100%;display:block}
+  #hud{position:absolute;top:0;left:0;right:0;padding:14px 16px;color:#0f0;
+       font-size:14px;text-align:center;text-shadow:0 0 6px #0f0;pointer-events:none}
+  #hud small{opacity:.75}
+  #stat{position:absolute;bottom:0;left:0;right:0;padding:10px 16px;color:#0f0;
+        font-size:13px;text-align:center;pointer-events:none}
+</style>
+</head>
+<body>
+<div id="wrap">
+  <div id="stage">
+    <canvas id="cv"></canvas>
+    <div id="hud">PERFIL DE DESEMPENHO<br><small>a carregar GPU/CPU — não uses o aparelho</small></div>
+    <div id="stat">a preparar…</div>
+  </div>
+</div>
+<script>
+/* perf-test.html — stress contínuo para o perfil de desempenho [PERFIL].
+ *
+ * Corre ?secs=N segundos (default 300, a janela PerfWindow impõe o mesmo
+ * valor ao host). Mede frames por janelas de 1 s (pior janela = fpsMin) e
+ * devolve o resultado ao TestServer em perf-result. O sinal perf-started
+ * alinha a amostragem do host com o início real do stress — essencial no
+ * iOS, onde o QR pode demorar a ser lido.
+ *
+ * Vanila, sem dependências: WebGL2 → WebGL → Canvas2D → 'none'. Um contexto
+ * que não se cria é limitação de plataforma (blocklist/poupança), nunca
+ * defeito — o analyzer decide o estatuto do check.
+ */
+(function () {
+  'use strict';
+
+  var q = new URLSearchParams(location.search);
+  var secs = parseInt(q.get('secs') || '300', 10);
+  if (!isFinite(secs)) secs = 300;
+  secs = Math.max(30, Math.min(900, secs)); // 30 s–15 min — fora disto é URL adulterada
+
+  var canvas = document.getElementById('cv');
+  var stat = document.getElementById('stat');
+
+  var engine = 'none';
+  var gl = null, gl2 = false, ctx2d = null;
+  var prog = null, uT = null, uR = null, buf = null, lost = false;
+
+  /* Shader de stress: malha de senos/cossenos por píxel — trabalho real de
+     ALU no GPU, não um clear. ~24 iterações por píxel a resolução do
+     ecrã é carga sustentada mas "leve" (não entra em throttle instantâneo). */
+  var VS = 'attribute vec2 p;void main(){gl_Position=vec4(p,0.,1.);}';
+  var FS = 'precision mediump float;uniform float t;uniform vec2 r;'
+    + 'void main(){vec2 uv=gl_FragCoord.xy/r;vec3 c=vec3(0.);'
+    + 'for(int i=0;i<24;i++){float fi=float(i);vec2 p=uv*2.-1.;'
+    + 'p+=0.35*vec2(sin(t+fi*1.7),cos(t*.63+fi*1.31));'
+    + 'float d=dot(p,p);'
+    + 'c+=0.045*vec3(sin(d*9.+t*.4+fi),cos(d*7.-t*.3),sin(d*11.+t*.2+fi*.7));}'
+    + 'gl_FragColor=vec4(c,1.);}';
+
+  function compile(g, type, src) {
+    var s = g.createShader(type);
+    g.shaderSource(s, src); g.compileShader(s);
+    return g.getShaderParameter(s, g.COMPILE_STATUS) ? s : null;
+  }
+
+  function setupGl() {
+    var w = Math.max(2, canvas.clientWidth || innerWidth);
+    var h = Math.max(2, canvas.clientHeight || innerHeight);
+    canvas.width = w; canvas.height = h;
+    var g = canvas.getContext('webgl2', { antialias: false, powerPreference: 'high-performance' })
+         || canvas.getContext('webgl', { antialias: false, powerPreference: 'high-performance' })
+         || canvas.getContext('experimental-webgl');
+    if (!g) return false;
+    gl = g;
+    // WebGL2RenderingContext pode nem existir num browser antigo — instanceof
+    // com RHS undefined lançava e matava o setup inteiro.
+    gl2 = typeof WebGL2RenderingContext !== 'undefined' && g instanceof WebGL2RenderingContext;
+    var v = compile(gl, gl.VERTEX_SHADER, VS), f = compile(gl, gl.FRAGMENT_SHADER, FS);
+    if (!v || !f) { gl = null; return false; }
+    prog = gl.createProgram();
+    gl.attachShader(prog, v); gl.attachShader(prog, f); gl.linkProgram(prog);
+    if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) { gl = null; return false; }
+    gl.useProgram(prog);
+    buf = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 3, -1, -1, 3]), gl.STATIC_DRAW);
+    var loc = gl.getAttribLocation(prog, 'p');
+    gl.enableVertexAttribArray(loc);
+    gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
+    uT = gl.getUniformLocation(prog, 't');
+    uR = gl.getUniformLocation(prog, 'r');
+    canvas.addEventListener('webglcontextlost', function (e) {
+      lost = true;
+      if (e.preventDefault) e.preventDefault();
+    });
+    return true;
+  }
+
+  /* Canvas2D: ~350 círculos por frame com posições senoidais — carga de CPU
+     + rasterização sustentada quando não há WebGL. */
+  function draw2d(now) {
+    var w = canvas.width, h = canvas.height, t = now / 1000;
+    ctx2d.fillStyle = '#000';
+    ctx2d.fillRect(0, 0, w, h);
+    for (var i = 0; i < 350; i++) {
+      var fi = i * 0.61803398875;
+      var x = (Math.sin(t * 0.7 + fi * 6.28) * 0.5 + 0.5) * w;
+      var y = (Math.cos(t * 0.9 + fi * 9.4) * 0.5 + 0.5) * h;
+      var r = 2 + (Math.sin(t * 1.3 + fi * 3.0) * 0.5 + 0.5) * 14;
+      ctx2d.fillStyle = 'hsl(' + ((fi * 137 + t * 40) % 360 | 0) + ',90%,55%)';
+      ctx2d.beginPath();
+      ctx2d.arc(x, y, r, 0, 6.2832);
+      ctx2d.fill();
+    }
+  }
+
+  /* ── medição ─────────────────────────────────────────────────────── */
+  var frames = 0, winFrames = 0, winStart = 0, t0 = 0;
+  var fpsMin = null;
+
+  function windowFps(now) {
+    var dt = (now - winStart) / 1000;
+    // Janelas <0.5 s (fim de stress a meio, stall do RAF) não entram no
+    // mínimo — uma leitura de 3 frames em 0.2 s não é um fps honesto.
+    if (dt < 0.5) { winFrames = 0; winStart = now; return; }
+    var f = winFrames / dt;
+    fpsMin = (fpsMin === null || f < fpsMin) ? f : fpsMin;
+    winFrames = 0; winStart = now;
+    // Feedback vivo para o técnico — 5–10 min de stress precisam de sinal.
+    var left = Math.max(0, Math.ceil(secs - (now - t0) / 1000));
+    stat.textContent = 'stress a correr — ' + Math.round(f) + ' fps · faltam ' + left + 's';
+  }
+
+  /* Entrega com retry — mesmo padrão do device-test: o PC pode estar a
+     fechar o servidor ou a Wi-Fi a oscilar; 8×1,5 s cobre o essencial. */
+  var DELIVERY = { maxTries: 8, delayMs: 1500 };
+  function post(body) {
+    var tries = 0;
+    var send = function () {
+      tries++;
+      stat.textContent = tries === 1 ? 'a enviar o resultado ao PC…'
+        : 'a enviar o resultado ao PC… (' + tries + ')';
+      fetch('perf-result', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: body })
+        .then(function (r) {
+          if (r.ok) {
+            stat.textContent = 'stress completo — resultado entregue, podes voltar ao PC';
+            return;
+          }
+          if (tries < DELIVERY.maxTries) setTimeout(send, DELIVERY.delayMs);
+          else stat.textContent = 'NÃO consegui entregar — volta a abrir a página no PC';
+        })
+        .catch(function () {
+          if (tries < DELIVERY.maxTries) setTimeout(send, DELIVERY.delayMs);
+          else stat.textContent = 'NÃO consegui entregar — volta a abrir a página no PC';
+        });
+    };
+    send();
+  }
+
+  function finish() {
+    if (finished) return;
+    finished = true;
+    var now = performance.now();
+    windowFps(now); // fecha a última janela parcial
+    var ran = (now - t0) / 1000;
+    var avg = ran > 0 ? frames / ran : 0;
+    var payload = JSON.stringify({
+      perfEngine: engine,
+      perfFrames: frames,
+      perfSecs: Math.round(ran * 10) / 10,
+      perfFpsAvg: Math.round(avg * 10) / 10,
+      perfFpsMin: fpsMin === null ? null : Math.round(fpsMin * 10) / 10,
+      perfContextLost: lost
+    });
+    stat.textContent = 'stress completo — a enviar…';
+    post(payload);
+  }
+
+  function frame(now) {
+    if (finished) return;
+    if (now - winStart >= 1000) windowFps(now);
+    if (gl) {
+      if (lost || gl.isContextLost()) { finish(); return; }
+      try {
+        gl.uniform1f(uT, (now - t0) / 1000);
+        gl.uniform2f(uR, canvas.width, canvas.height);
+        gl.drawArrays(gl.TRIANGLES, 0, 3);
+        gl.finish(); // força trabalho real — sem isto o driver pode adiar tudo
+      } catch (e) { /* contexto morreu a meio — finish() reporta o que mediu */ finish(); return; }
+    } else if (ctx2d) {
+      draw2d(now);
+    }
+    frames++; winFrames++;
+    if (now - t0 < secs * 1000) requestAnimationFrame(frame);
+    else finish();
+  }
+
+  /* ── arranque ────────────────────────────────────────────────────── */
+  function start() {
+    winStart = t0 = performance.now();
+    /* Ecrã acordado enquanto a página estiver visível — o host também faz
+       stayon via adb, mas o wakeLock cobre iOS/Wi-Fi. Best-effort: sem
+       secure context a API não existe e o stress corre na mesma. */
+    try {
+      if (navigator.wakeLock && navigator.wakeLock.request)
+        navigator.wakeLock.request('screen').catch(function () {});
+    } catch (e) { /* sem wakeLock — o host segura o ecrã no Android */ }
+    /* Sinal de alinhamento: o host começa a amostrar AGORA. Sem ele as
+       medições térmicas/corrente podiam ser de um telemóvel em idle. */
+    fetch('perf-started').catch(function () {});
+    stat.textContent = 'stress a correr — ' + secs + 's';
+    requestAnimationFrame(frame);
+    /* Failsafe: se o RAF for estrangulado (ecrã apagado, segundo plano) o
+       setTimeout ainda dispara — reporta o que correu de facto em vez de
+       a página ficar muda para sempre. */
+    setTimeout(function () { finish(); }, secs * 1000 + 20000);
+  }
+
+  /* Tenta WebGL2 → WebGL → Canvas2D. Nenhum motor = 'none': a página
+     reporta-o honestamente e o host mede um telemóvel em idle — o check
+     perf.workload sai warn, não se finge carga que não houve. */
+  if (setupGl()) engine = gl2 ? 'webgl2' : 'webgl';
+  else {
+    try {
+      canvas.width = Math.max(2, canvas.clientWidth || innerWidth);
+      canvas.height = Math.max(2, canvas.clientHeight || innerHeight);
+      ctx2d = canvas.getContext('2d');
+      if (ctx2d) engine = 'canvas2d';
+    } catch (e) { ctx2d = null; }
+  }
+
+  if (engine === 'none') {
+    /* Sem motor de stress não há carga para medir — sinaliza o arranque na
+       mesma (o host precisa de sair da espera) e devolve já o resultado
+       vazio; a janela PerfWindow fecha a fase de stress ao receber. */
+    fetch('perf-started').catch(function () {});
+    var ran0 = 0.1;
+    post(JSON.stringify({
+      perfEngine: 'none', perfFrames: 0, perfSecs: ran0,
+      perfFpsAvg: 0, perfFpsMin: null, perfContextLost: false
+    }));
+    stat.textContent = 'sem motor de stress — resultado enviado';
+    return;
+  }
+
+  start();
+})();
+</script>
+</body>
+</html>

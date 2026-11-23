@@ -594,6 +594,19 @@ public sealed class AndroidCollector
         return AdbParsing.ParseSocTemp(o);
     }
 
+    /// <summary>
+    /// Frequência média de CPU (MHz) — só a bancada de perfil a usa: um
+    /// `scaling_cur_freq` por núcleo online, uma shell call. Sem root nem
+    /// nó exposto → null (o check sai skipped, nunca zero).
+    /// </summary>
+    public async Task<double?> ProbeCpuFreqAsync(string serial)
+    {
+        var o = await AdbAsync(serial,
+            "shell for c in /sys/devices/system/cpu/cpu[0-9]*/cpufreq/scaling_cur_freq; " +
+            "do cat $c 2>/dev/null; done", 5000);
+        return AdbParsing.ParseCpuFreqMhz(o);
+    }
+
     private async Task CollectLogsAsync(DeviceReport r, string serial)
     {
         var crashBuf = await AdbAsync(serial, "logcat -d -b crash -t 80", 10000);

@@ -138,6 +138,20 @@ public static class Grader
             Cap(2, $"ligação USB instável ({Val("usb.stability")}) — porta com folga ou pinos gastos");
             parts.Add("porta de carga");
         }
+        // Perfil de desempenho (Fase C): as mesmas anomalias do SCAN+ mas
+        // medidas numa janela de minutos — evidência mais forte, mesmo teto.
+        // perf.workload/throttle/current/battery são medições de contexto,
+        // não veredictos de defeito — ficam fora do grade de propósito.
+        if (Stat("perf.thermal") is "warn")
+        {
+            Cap(2, "temperaturas extremas durante o perfil de stress — dissipação térmica a falhar");
+            parts.Add("dissipação térmica");
+        }
+        if (Stat("perf.usb") is "warn")
+        {
+            Cap(2, $"ligação USB instável no perfil ({Val("perf.usb")}) — porta com folga ou pinos gastos");
+            parts.Add("porta de carga");
+        }
 
         // ── ecrã / toque ─────────────────────────────────────────────────
         if (Stat("test.touch") is "fail")

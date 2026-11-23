@@ -378,4 +378,125 @@ public sealed class TestServerTests
         var data = await received.Task.WaitAsync(TimeSpan.FromSeconds(10));
         Assert.Equal(8, data["touchHit"].GetInt32());
     }
+
+    // ── PERFIL: sessão de desempenho (Fase C) ─────────────────────────
+
+    [Fact]
+    public async Task PerfServeAPaginaDeStressSemDecisoes()
+    {
+        using var server = new TestServer(TestSession.PerfProfile);
+        Assert.True(server.Start(), "perf-test.html não chegou ao output de testes");
+        var uri = new Uri(server.LanUrl);
+        var token = uri.AbsolutePath.Trim('/');
+        var root = $"{uri.Scheme}://{uri.Authority}";
+        using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(10) };
+
+        var res = await http.GetAsync($"{root}/{token}/?secs=300");
+        var html = await res.Content.ReadAsStringAsync();
+
+        Assert.Equal(HttpStatusCode.OK, res.StatusCode);
+        Assert.Contains("perf-result", html);   // a página aponta para a sua rota
+        Assert.Contains("perf-started", html);  // sinal de alinhamento do host
+        Assert.Contains("secs", html);
+        Assert.DoesNotContain("DeviceTestDecisions", html); // autocontida
+    }
+
+    [Fact]
+    public async Task PerfStartedDisparaEventoSemFecharOServidor()
+    {
+        using var server = new TestServer(TestSession.PerfProfile);
+        Assert.True(server.Start());
+        var uri = new Uri(server.LanUrl);
+        var token = uri.AbsolutePath.Trim('/');
+        using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(10) };
+
+        var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        server.PerfStarted += () => started.TrySetResult();
+
+        var res = await http.GetAsync($"http://127.0.0.1:{uri.Port}/{token}/perf-started");
+        Assert.Equal(HttpStatusCode.OK, res.StatusCode);
+        await started.Task.WaitAsync(TimeSpan.FromSeconds(5));
+
+        // O servidor continua vivo — o resultado ainda tem de chegar.
+        var page = await http.GetAsync($"http://127.0.0.1:{uri.Port}/{token}/");
+        Assert.Equal(HttpStatusCode.OK, page.StatusCode);
+    }
+
+    [Fact]
+    public async Task PerfResultEntregaStatsEFechaOServidor()
+    {
+        using var server = new TestServer(TestSession.PerfProfile);
+        Assert.True(server.Start());
+        var uri = new Uri(server.LanUrl);
+        var token = uri.AbsolutePath.Trim('/');
+        var root = $"{uri.Scheme}://{uri.Authority}";
+
+        var received = new TaskCompletionSource<Dictionary<string, JsonElement>>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        server.ResultReceived += d => received.TrySetResult(d);
+
+        const string json =
+            "{\"perfEngine\":\"webgl2\",\"perfFrames\":9000,\"perfSecs\":298.5,"
+            + "\"perfFpsAvg\":30.1,\"perfFpsMin\":22.4,\"perfContextLost\":false}";
+        var res = await httpPost(root, token, "perf-result", json);
+        Assert.Equal(HttpStatusCode.OK, res.StatusCode);
+
+        var data = await received.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.Equal("webgl2", data["perfEngine"].GetString());
+        Assert.Equal(9000, data["perfFrames"].GetInt32());
+
+        // One-shot: a sessão morre com o resultado — como no teste de ecrã.
+        using var http2 = new HttpClient { Timeout = TimeSpan.FromSeconds(10) };
+        await Assert.ThrowsAnyAsync<Exception>(() => http2.GetAsync($"{root}/{token}/"));
+    }
+
+    [Fact]
+    public async Task PerfResultComShapeErrado_Da400SemMatarSessao()
+    {
+        // Um JSON qualquer da LAN não pode fechar a sessão de perfil antes
+        // de o telemóvel entregar — o shape mínimo é perfFrames+perfSecs.
+        using var server = new TestServer(TestSession.PerfProfile);
+        Assert.True(server.Start());
+        var uri = new Uri(server.LanUrl);
+        var token = uri.AbsolutePath.Trim('/');
+        var root = $"{uri.Scheme}://{uri.Authority}";
+
+        var mau = await httpPost(root, token, "perf-result",
+            "{\"touchHit\":54,\"touchTotal\":60,\"colorsViewed\":13}");
+        Assert.Equal(HttpStatusCode.BadRequest, mau.StatusCode);
+
+        // A sessão continua viva: um payload certo ainda é aceite.
+        var received = new TaskCompletionSource<Dictionary<string, JsonElement>>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        server.ResultReceived += d => received.TrySetResult(d);
+        var bom = await httpPost(root, token, "perf-result",
+            "{\"perfFrames\":100,\"perfSecs\":60}");
+        Assert.Equal(HttpStatusCode.OK, bom.StatusCode);
+        var data = await received.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.Equal(100, data["perfFrames"].GetInt32());
+    }
+
+    [Fact]
+    public async Task PerfResultNaRotaErrada_Da404()
+    {
+        // No modo perf a rota /result (do teste de ecrã) não existe — cada
+        // sessão só aceita o seu próprio contrato.
+        using var server = new TestServer(TestSession.PerfProfile);
+        Assert.True(server.Start());
+        var uri = new Uri(server.LanUrl);
+        var token = uri.AbsolutePath.Trim('/');
+        var root = $"{uri.Scheme}://{uri.Authority}";
+
+        var res = await httpPost(root, token, "result",
+            "{\"perfFrames\":100,\"perfSecs\":60}");
+        Assert.Equal(HttpStatusCode.NotFound, res.StatusCode);
+    }
+
+    private static async Task<HttpResponseMessage> httpPost(
+        string root, string token, string route, string json)
+    {
+        using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(10) };
+        return await http.PostAsync($"{root}/{token}/{route}",
+            new StringContent(json, Encoding.UTF8, "application/json"));
+    }
 }

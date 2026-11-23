@@ -133,6 +133,7 @@ public partial class MainWindow : Window
             _telemetryCts?.Cancel();
             TestButton.IsEnabled = false;
             BenchButton.IsEnabled = false;
+            PerfButton.IsEnabled = false;
             AppsButton.IsEnabled = false;
             AppsButton.Visibility = Visibility.Collapsed;
             MaintenanceButton.IsEnabled = false;
@@ -147,6 +148,9 @@ public partial class MainWindow : Window
         ScanButton.IsEnabled = ready;
         TestButton.IsEnabled = ready;
         BenchButton.IsEnabled = ready;
+        // O perfil de desempenho serve Android e iOS — métricas que a
+        // plataforma não expõe saem skipped, nunca falha inventada.
+        PerfButton.IsEnabled = ready;
         var appsAndroid = ready && d.Kind == DeviceKind.Android;
         AppsButton.IsEnabled = appsAndroid;
         AppsButton.Visibility = appsAndroid ? Visibility.Visible : Visibility.Collapsed;

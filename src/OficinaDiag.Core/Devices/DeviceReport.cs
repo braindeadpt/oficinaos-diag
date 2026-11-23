@@ -13,7 +13,9 @@ public sealed class CheckResult
 
 /// <summary>Ambient battery readout for the header ticker — polled while a device is connected.</summary>
 public sealed record LiveTelemetry(int? Milliamps, double? Volts, double? TempC, int? Percent,
-    bool? Charging, double? NegotiatedWatts = null, double? SocTempC = null);
+    bool? Charging, double? NegotiatedWatts = null, double? SocTempC = null,
+    /// <summary>Frequência média de CPU em MHz — só a bancada de perfil a recolhe (iOS nunca expõe).</summary>
+    double? CpuFreqMhz = null);
 
 /// <summary>Device identity block — mirrors the cloud /reports/diagnostic contract.</summary>
 public sealed class DeviceIdentity
@@ -116,10 +118,10 @@ public sealed class DeviceReport
     }
 
     // Namespaces que um re-scan NÃO volta a produzir — checklist manual,
-    // teste no ecrã e bancada de potência. Tudo o resto (battery.*,
-    // security.*, device.*, derivados como battery.swap) é refeito na
-    // recolha e não pode ser arrastado de um scan anterior.
-    private static readonly string[] ManualPrefixes = ["checklist.", "test.", "sensor.", "power."];
+    // teste no ecrã, bancada de potência e perfil de desempenho. Tudo o
+    // resto (battery.*, security.*, device.*, derivados como battery.swap)
+    // é refeito na recolha e não pode ser arrastado de um scan anterior.
+    private static readonly string[] ManualPrefixes = ["checklist.", "test.", "sensor.", "power.", "perf."];
 
     /// <summary>
     /// Copia para ESTE relatório os resultados manuais de

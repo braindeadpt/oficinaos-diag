@@ -21,4 +21,7 @@ internal static class PackagePaths
     /// <summary>Página servida ao telemóvel pelo <c>TestServer</c>.</summary>
     internal const string DeviceTestPageRelativePath = "Tests/wwwroot/device-test.html";
     internal const string DeviceTestDecisionsRelativePath = "Tests/wwwroot/device-test-decisions.js";
+
+    /// <summary>Página de stress do perfil de desempenho — mesmo TestServer, modo PerfProfile.</summary>
+    internal const string PerfPageRelativePath = "Tests/wwwroot/perf-test.html";
 }

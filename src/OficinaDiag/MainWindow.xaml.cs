@@ -199,6 +199,7 @@ public partial class MainWindow : Window
         ResultsHeader.Text = L10n.Section("results.header");
         ScanButton.Content = L10n.Btn("btn.scan");
         BenchButton.Content = L10n.Btn("btn.bench");
+        PerfButton.Content = L10n.Btn("btn.perf");
         TestButton.Content = L10n.Btn("btn.test");
         AppsButton.Content = L10n.Btn("btn.apps");
         ChecklistButton.Content = L10n.Btn("btn.checklist");
