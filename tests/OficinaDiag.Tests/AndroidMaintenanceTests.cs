@@ -170,6 +170,73 @@ public class AndroidMaintenanceTests
     }
 
     [Fact]
+    public async Task RunCleanupAsync_ClearCacheSemConfirmacaoContaComoFalha()
+    {
+        // stdout vazio: a falha ficou só no stderr, que o adb deita fora —
+        // o genérico IsSuccess contaria "" como sucesso.
+        var fake = new FakeShell(cmd => cmd.StartsWith("pm clear", StringComparison.Ordinal)
+            ? ""
+            : SnapshotResponder(cmd));
+        var maint = new AndroidMaintenance(fake.Run);
+        var report = await maint.RunCleanupAsync(new MaintenancePlan
+        {
+            TrimCaches = false,
+            ClearCachePackages = ["com.a"],
+        });
+        var clear = report.Actions.Single(a => a.Key == "clear-cache");
+        Assert.Equal("fail", clear.Status);
+    }
+
+    [Fact]
+    public async Task RunCleanupAsync_SegundaLimpezaMantemAsOrigensMaisAntigas()
+    {
+        var settings = "1.0\n0.5\nnull\n1";
+        var fake = new FakeShell(cmd => cmd.Contains("settings get global")
+            ? settings
+            : SnapshotResponder(cmd));
+        var maint = new AndroidMaintenance(fake.Run);
+        var first = await maint.RunCleanupAsync(new MaintenancePlan { ZeroAnimations = true });
+        Assert.Equal(1.0, first.AnimationsBefore!.Window);
+
+        // O "antes" da 2.ª já lê os zeros que a 1.ª deixou — não pode virar a origem.
+        settings = "0\n0\n0\n1";
+        var second = await maint.RunCleanupAsync(
+            new MaintenancePlan { ZeroAnimations = true }, first);
+        Assert.Equal(1.0, second.AnimationsBefore!.Window);
+        Assert.Equal(0.5, second.AnimationsBefore.Transition);
+    }
+
+    [Fact]
+    public async Task RunCleanupAsync_SemAnimacoesPreservaAsOrigensGuardadas()
+    {
+        var settings = "1.0\n0.5\nnull\n1";
+        var fake = new FakeShell(cmd => cmd.Contains("settings get global")
+            ? settings
+            : SnapshotResponder(cmd));
+        var maint = new AndroidMaintenance(fake.Run);
+        var first = await maint.RunCleanupAsync(new MaintenancePlan { ZeroAnimations = true });
+
+        // Uma limpeza de cache não toca nas animações: as origens sobrevivem,
+        // senão o "repor" ficava sem caminho depois de qualquer outra limpeza.
+        settings = "0\n0\n0\n1";
+        var second = await maint.RunCleanupAsync(
+            new MaintenancePlan { TrimCaches = true }, first);
+        Assert.Equal(1.0, second.AnimationsBefore!.Window);
+    }
+
+    [Fact]
+    public async Task SnapshotAsync_SemLeituraDasSettings_DevolveAnimacoesDesconhecidas()
+    {
+        var fake = new FakeShell(cmd => cmd.Contains("settings get global")
+            ? null
+            : SnapshotResponder(cmd));
+        var maint = new AndroidMaintenance(fake.Run);
+        var s = await maint.SnapshotAsync();
+        Assert.Null(s.Animations);
+        Assert.Null(s.LowPowerMode);
+    }
+
+    [Fact]
     public void MaintenancePlan_HasAnyAction_ReflecteAsEscolhas()
     {
         Assert.False(new MaintenancePlan { TrimCaches = false }.HasAnyAction);

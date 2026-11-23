@@ -115,7 +115,8 @@ public sealed class AndroidMaintenance
     /// Corre o plano inteiro: antes → ações → depois → relatório com deltas.
     /// Uma ação que falha fica registada como fail e as restantes correm na mesma.
     /// </summary>
-    public async Task<MaintenanceReport> RunCleanupAsync(MaintenancePlan plan)
+    public async Task<MaintenanceReport> RunCleanupAsync(
+        MaintenancePlan plan, MaintenanceReport? previous = null)
     {
         var before = await SnapshotAsync();
         var actions = new List<MaintenanceActionResult>();
@@ -146,8 +147,21 @@ public sealed class AndroidMaintenance
 
         var after = await SnapshotAsync();
         var report = MaintenanceReport.Build(before, after, actions);
-        if (plan.ZeroAnimations && before?.Animations is { } previous)
-            report.AnimationsBefore = previous;
+
+        // Os valores originais das animações são os MAIS ANTIGOS conhecidos:
+        // uma segunda limpeza não pode substituí-los pelos zeros que a
+        // primeira deixou (o "antes" já lê o estado alterado). Escalas reais
+        // e não-zero no "antes" são configuração actual do cliente — essa sim
+        // é a nova origem. Uma limpeza sem animações preserva as origens.
+        if (plan.ZeroAnimations && before?.Animations is { } current)
+        {
+            var stillZero = (current.Window ?? 0) == 0 && (current.Transition ?? 0) == 0
+                && (current.Animator ?? 0) == 0;
+            report.AnimationsBefore = stillZero && previous?.AnimationsBefore is { } kept
+                ? kept : current;
+        }
+        else if (previous?.AnimationsBefore is { } keptOriginals)
+            report.AnimationsBefore = keptOriginals;
         return report;
     }
 
@@ -178,8 +192,12 @@ public sealed class AndroidMaintenance
         var failures = new List<string>();
         foreach (var pkg in valid)
         {
+            // `pm clear` imprime "Success" no stdout no êxito; uma falha só em
+            // stderr (descartado pelo adb) chegaria como string vazia — que o
+            // IsSuccess genérico contaria como boa. Aqui exige-se a confirmação.
             var output = await _shell($"pm clear --cache-only {pkg}");
-            if (IsSuccess(output)) ok++;
+            if (IsSuccess(output)
+                && output!.Contains("Success", StringComparison.OrdinalIgnoreCase)) ok++;
             else failures.Add($"{pkg} ({FailureText(output)})");
         }
 

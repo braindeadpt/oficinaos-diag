@@ -86,9 +86,10 @@ public sealed class DeviceReport
     /// <summary>
     /// Limpeza/otimização medida (antes/ações/depois). Fica FORA de Results
     /// porque não é um check de diagnóstico: inflaria a cobertura do
-    /// Grader e apareceria nas vistas cliente/seguro. Serializado só no
-    /// JSON da cloud (campo aditivo — o schema zod do lado dela ignora
-    /// chaves desconhecidas).
+    /// Grader e apareceria nas vistas cliente/seguro. Serializa no JSON da
+    /// cloud (campo aditivo — o schema zod do lado dela ignora chaves
+    /// desconhecidas) e também no histórico local, como qualquer relatório
+    /// guardado.
     /// </summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public Maintenance.MaintenanceReport? Maintenance { get; set; }
