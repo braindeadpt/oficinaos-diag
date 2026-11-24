@@ -247,12 +247,17 @@ public sealed class IosAppManager
     {
         try
         {
-            var list = Task.Run(() => List(udid, ct));
-            var winner = await Task.WhenAny(list, Task.Delay(budgetMs));
+            var list = Task.Run(() => List(udid, ct), ct);
+            var winner = await Task.WhenAny(list, Task.Delay(budgetMs, ct));
+            ct.ThrowIfCancellationRequested();
             // IsCompleted cobre a corrida em que os dois terminam juntos.
             return winner == list || list.IsCompleted
                 ? await list
                 : new IosAppInventory { Apps = [], Error = "tool" };
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
         }
         catch
         {

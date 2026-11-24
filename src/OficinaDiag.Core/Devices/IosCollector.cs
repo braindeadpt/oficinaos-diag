@@ -107,8 +107,7 @@ public sealed class IosCollector
         var r = new DeviceReport { Platform = "ios" };
         r.Device.Serial = udid;
 
-        var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
-        var cts = CancellationTokenSource.CreateLinkedTokenSource(ct, timeout.Token);
+        var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
         var collect = Task.Run(() =>
         {
             if (_idevice.idevice_new(out var device, udid) != iDeviceError.Success)
@@ -246,9 +245,16 @@ public sealed class IosCollector
 
         // O handshake lockdownd pode bloquear para sempre quando outra app do
         // Windows (Fotos/AutoPlay) tem o iPhone ocupado — timeout defensivo.
-        if (await Task.WhenAny(collect, Task.Delay(Timeout.Infinite, cts.Token)) != collect)
+        // O token ligado ao cancelamento do utilizador acorda o WhenAny antes.
+        var finished = await Task.WhenAny(collect, Task.Delay(TimeSpan.FromSeconds(30), cts.Token));
+        if (finished != collect && ct.IsCancellationRequested)
         {
-            if (ct.IsCancellationRequested) throw new OperationCanceledException(ct);
+            // A task órfã pode continuar viva: o CTS só é libertado quando ela terminar.
+            _ = collect.ContinueWith(_ => cts.Dispose(), TaskScheduler.Default);
+            throw new OperationCanceledException(ct);
+        }
+        if (finished != collect)
+        {
             cts.Cancel(); // a task não morre na hora, mas salta as secções restantes
 
             // A task órfã pode estar a meio de CollectBatteryHealth/Gestalt e
@@ -275,11 +281,15 @@ public sealed class IosCollector
             detached.Set("scan", "fail", null,
                 "Timeout — fecha a janela de importação de fotos do Windows e tenta de novo");
             r = detached;
+            _ = collect.ContinueWith(_ => cts.Dispose(), TaskScheduler.Default);
         }
-
-        // A task órfã pode continuar viva (o Kill só mata os filhos que o
-        // token apanhou): o CTS só pode ser libertado quando ela terminar.
-        _ = collect.ContinueWith(_ => { cts.Dispose(); timeout.Dispose(); }, TaskScheduler.Default);
+        else
+        {
+            // Recolha concluída: o delay ainda estava armado — cancela-o e
+            // liberta já, não há task órfã a usar o token.
+            cts.Cancel();
+            cts.Dispose();
+        }
 
         // Inventário de apps via installation_proxy — "o que ocupa espaço"
         // no iPhone sem jailbreak (Fase D do Diag Pro). Corre DEPOIS do
@@ -287,7 +297,8 @@ public sealed class IosCollector
         // serviço que não responde marca só ios.apps.* como skipped —
         // nunca scan=fail (o timeout global já não o pode alcançar).
         var apps = await new IosAppManager()
-            .ListBoundedAsync(udid, IosAppManager.ScanBudgetMs);
+            .ListBoundedAsync(udid, IosAppManager.ScanBudgetMs, ct);
+        ct.ThrowIfCancellationRequested();
         foreach (var (key, reading) in IosAppDecisions.Checks(apps))
             r.Set(key, reading.Status, reading.Value, reading.Note);
 
