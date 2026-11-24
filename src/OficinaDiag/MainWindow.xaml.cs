@@ -19,7 +19,10 @@ public sealed class ResultRow
 {
     public required string Key { get; init; }
     public required string Status { get; init; }
+    public required string StatusLabel { get; init; }
     public required string Display { get; init; }
+    public required string CategoryTitle { get; init; }
+    public required int CategoryRank { get; init; }
 }
 
 public sealed class StatusTagConverter : IValueConverter
@@ -233,6 +236,78 @@ public partial class MainWindow : Window
             UpdateButton.Content = ThemeManager.IsTerminal
                 ? $"[ {L10n.F("btn.update", _update.Tag)} ]"
                 : L10n.F("btn.update", _update.Tag);
+    }
+
+    private static string ResultStatusLabel(string status) => status switch
+    {
+        "pass" => L10n.T("status.pass"),
+        "warn" => L10n.T("status.warn"),
+        "fail" => L10n.T("status.fail"),
+        "info" => L10n.T("status.info"),
+        "skipped" => L10n.T("status.skipped"),
+        _ => status,
+    };
+
+    private static (string Title, int Rank) ResultCategory(string key)
+    {
+        var dot = key.IndexOf('.');
+        var prefix = dot >= 0 ? key[..dot] : key;
+        var rank = prefix switch
+        {
+            "identity" => 0,
+            "device" => 1,
+            "os" => 2,
+            "security" => 3,
+            "storage" => 4,
+            "memory" => 5,
+            "display" => 6,
+            "sensor" or "sensors" => 7,
+            "battery" => 8,
+            "ios" or "apps" => 9,
+            "usb" => 10,
+            "power" => 11,
+            "screen" => 12,
+            "test" => 13,
+            "tpl" or "service" => 14,
+            "checklist" => 15,
+            "maint" or "maintenance" or "bench" => 16,
+            "perf" => 17,
+            "grade" => 18,
+            "health" => 19,
+            "suggest" => 20,
+            "logs" => 21,
+            "scan" => 22,
+            _ => 99,
+        };
+        var titleKey = $"cat.{prefix}";
+        var title = L10n.T(titleKey);
+        return (title == titleKey ? prefix.ToUpperInvariant() : title, rank);
+    }
+
+    private static List<ResultRow> BuildResultRows(DeviceReport report) =>
+        report.Results
+            .Select(kv =>
+            {
+                var (category, rank) = ResultCategory(kv.Key);
+                return new ResultRow
+                {
+                    Key = kv.Key,
+                    Status = kv.Value.Status,
+                    StatusLabel = ResultStatusLabel(kv.Value.Status),
+                    Display = $"{kv.Value.Value ?? ""} {kv.Value.Detail ?? ""}".Trim(),
+                    CategoryTitle = category,
+                    CategoryRank = rank,
+                };
+            })
+            .OrderBy(r => r.CategoryRank)
+            .ThenBy(r => r.Key)
+            .ToList();
+
+    private static ICollectionView ResultRowsView(DeviceReport report)
+    {
+        var view = new ListCollectionView(BuildResultRows(report));
+        view.GroupDescriptions.Add(new PropertyGroupDescription(nameof(ResultRow.CategoryTitle)));
+        return view;
     }
 
     private void SyncReportButtons()

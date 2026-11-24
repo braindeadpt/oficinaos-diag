@@ -146,6 +146,7 @@ public sealed partial class ServiceDialog : Window
             MaintHint.Visibility = Visibility.Visible;
         }
         else MaintHint.Visibility = Visibility.Collapsed;
+        RefreshProgress();
     }
 
     /// <summary>Linha das medições que este serviço precisa — com o valor atual ou a ação que o produz.</summary>
@@ -251,6 +252,7 @@ public sealed partial class ServiceDialog : Window
         // checklist físico; o indexer direto rebentava no primeiro toque).
         ChecklistMarks.Toggle(_state, checkKey, s);
         Paint(checkKey);
+        RefreshProgress();
     }
 
     private void Paint(string checkKey)
@@ -264,11 +266,18 @@ public sealed partial class ServiceDialog : Window
         ok.Foreground = s == 1 ? pass : fg;
         fail.Foreground = s == 2 ? warn : fg;
         na.Foreground = s == 3 ? dim : fg;
+        ok.BorderBrush = s == 1 ? pass : dim;
+        fail.BorderBrush = s == 2 ? warn : dim;
+        na.BorderBrush = s == 3 ? fg : dim;
         ok.FontWeight = fail.FontWeight = na.FontWeight = FontWeights.Normal;
         if (s == 1) ok.FontWeight = FontWeights.Bold;
         if (s == 2) fail.FontWeight = FontWeights.Bold;
         if (s == 3) na.FontWeight = FontWeights.Bold;
     }
+
+    private void RefreshProgress() =>
+        ProgressText.Text = L10n.F("progress.marked",
+            _row.Keys.Count(k => _state.GetValueOrDefault(k) != 0), _row.Count);
 
     private void Apply_Click(object sender, RoutedEventArgs e)
     {

@@ -77,15 +77,7 @@ public partial class MainWindow : Window
                 _report.Set("battery.swap", "info", swapped,
                     "série da célula diferente do scan anterior deste aparelho");
 
-            ResultsList.ItemsSource = _report.Results
-                .Select(kv => new ResultRow
-                {
-                    Key = kv.Key,
-                    Status = kv.Value.Status,
-                    Display = $"{kv.Value.Value ?? ""} {kv.Value.Detail ?? ""}".Trim(),
-                })
-                .OrderBy(r => r.Key)
-                .ToList();
+            ResultsList.ItemsSource = ResultRowsView(_report);
 
             ApplyGrade();
             // histórico guarda o scan já com grau — o antes/depois mostra-o na lista
@@ -174,14 +166,7 @@ public partial class MainWindow : Window
     {
         EmptyState.Visibility = _report is null ? Visibility.Visible : Visibility.Collapsed;
         if (_report is null) return;
-        ResultsList.ItemsSource = _report.Results
-            .Select(kv => new ResultRow
-            {
-                Key = kv.Key,
-                Status = kv.Value.Status,
-                Display = $"{kv.Value.Value ?? ""} {kv.Value.Detail ?? ""}".Trim(),
-            })
-            .OrderBy(r => r.Key).ToList();
+        ResultsList.ItemsSource = ResultRowsView(_report);
         ShowHealth();
         SyncReportButtons();
     }

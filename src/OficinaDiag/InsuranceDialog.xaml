@@ -23,10 +23,13 @@
          janela limita-se à work area no code-behind, e assim um ecrã baixo
          faz rolar os campos — nunca meio botão. -->
     <DockPanel>
-        <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal"
-                    HorizontalAlignment="Right" Margin="20,10,20,16">
-            <Button x:Name="GenerateBtn" IsDefault="True" Click="Generate_Click"/>
-            <Button x:Name="CancelBtn" IsCancel="True" Margin="10,0,0,0"/>
+        <StackPanel DockPanel.Dock="Bottom" Margin="20,10,20,16">
+            <TextBlock x:Name="ErrorText" Foreground="{DynamicResource WarnBrush}"
+                       TextWrapping="Wrap" Visibility="Collapsed" Margin="0,0,0,8"/>
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                <Button x:Name="GenerateBtn" IsDefault="True" Click="Generate_Click"/>
+                <Button x:Name="CancelBtn" IsCancel="True" Margin="10,0,0,0"/>
+            </StackPanel>
         </StackPanel>
 
         <ScrollViewer VerticalScrollBarVisibility="Auto">
