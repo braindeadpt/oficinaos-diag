@@ -332,6 +332,25 @@ public sealed class IosAppsTests
             $"demorou {sw.ElapsedMilliseconds} ms — o orçamento não segurou");
     }
 
+    [Fact]
+    public async Task ListBounded_Cancelamento_InterrompeEspera()
+    {
+        var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var manager = new IosAppManager((_, _, _, ct) =>
+        {
+            started.TrySetResult();
+            ct.WaitHandle.WaitOne(TimeSpan.FromSeconds(10));
+            return Plist;
+        });
+        using var cts = new CancellationTokenSource();
+
+        var task = manager.ListBoundedAsync("00008101-0002390A3600801E", 5_000, cts.Token);
+        await started.Task;
+        cts.Cancel();
+
+        await Assert.ThrowsAsync<OperationCanceledException>(() => task);
+    }
+
     private const string PlistSemExemplo = """
         <?xml version="1.0" encoding="UTF-8"?>
         <plist version="1.0">
