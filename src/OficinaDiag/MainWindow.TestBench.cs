@@ -15,7 +15,7 @@ public partial class MainWindow : Window
             // Se o aberto pertence a outro cliente, bloquear antes de ligar
             // a sessão — o telemóvel não pode completar o teste, entregar ao
             // vazio e sair a achar que foi aceite.
-            if (_report is not null && _reportDeviceId != _current?.Id)
+            if (_report is not null && !DeviceIds.Same(_reportDeviceId, _current?.Id))
             {
                 Log(L10n.T("log.test.mismatch"));
                 return;
@@ -54,7 +54,7 @@ public partial class MainWindow : Window
             // nada era gravado. Por identidade (não instância): um rescan do
             // mesmo aparelho durante a sessão não condena o retry a 409.
             server.AcceptResult = _ =>
-                _report is not null && _reportDeviceId == testedId;
+                _report is not null && DeviceIds.Same(_reportDeviceId, testedId);
             server.ResultReceived += data => Dispatcher.InvokeAsync(async () =>
             {
                 try
@@ -62,7 +62,7 @@ public partial class MainWindow : Window
                     // O resultado pertence ao aparelho em teste — se o relatório
                     // aberto descreve outro dispositivo, recusar em vez de
                     // contaminar o diagnóstico do cliente seguinte.
-                    if (_report is null || _reportDeviceId != testedId)
+                    if (_report is null || !DeviceIds.Same(_reportDeviceId, testedId))
                     {
                         Log(L10n.T("log.test.wrongdev"));
                         return;
@@ -141,7 +141,7 @@ public partial class MainWindow : Window
         // A sessão recolhe medições para o relatório aberto. Se ele descreve
         // outro aparelho, parar ANTES da bancada — não deixar o técnico
         // percorrer as três fases para o resultado ser descartado ao gravar.
-        if (_report is not null && _reportDeviceId != d.Id)
+        if (_report is not null && !DeviceIds.Same(_reportDeviceId, d.Id))
         {
             Log(L10n.T("log.test.mismatch"));
             return;
@@ -196,7 +196,7 @@ public partial class MainWindow : Window
         finally { _busy = false; _detector!.Detached -= OnDrop; }
 
         if (!saved || res is null) return;
-        if (_report is not null && _reportDeviceId != d.Id)
+        if (_report is not null && !DeviceIds.Same(_reportDeviceId, d.Id))
         {
             // O bench correu no aparelho d mas o relatório aberto descreve
             // outro — gravar aqui contaminava o diagnóstico desse cliente.

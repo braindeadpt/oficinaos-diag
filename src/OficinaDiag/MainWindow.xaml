@@ -132,6 +132,8 @@
                             Click="Apps_Click" IsEnabled="False" Visibility="Collapsed"/>
                     <Button Style="{DynamicResource TermButton}" x:Name="ChecklistButton"
                             Click="Checklist_Click"/>
+                    <Button Style="{DynamicResource TermButton}" x:Name="ServiceButton"
+                            Click="Service_Click"/>
                     <Button Style="{DynamicResource TermButton}" x:Name="MaintenanceButton"
                             Click="Maintenance_Click" IsEnabled="False"/>
                     <Button Style="{DynamicResource TermButton}" x:Name="MirrorButton"
