@@ -126,24 +126,31 @@ const mutantes = [
     filtro: "FailureGuardTests",
     prova: "FailureGuardTests",
   },
-  // Não há mutante para o rollback: com um ficheiro em uso o Copy-Item falha
-  // antes de escrever nada, e desligar as duas vias de reposição deixa o
-  // harness verde (runs 43921766213, 43922457138 e 43923007685). O rollback
-  // fica como defesa para a cópia que já escreveu — caso que o runner não
-  // consegue reproduzir.
+  // O rollback passou a ser exercitado a sério no #62: o robocopy copia o
+  // que pode (exe/DLL passam a v9) e só falha no ficheiro trancado — a
+  // tranca da prova é FileShare.Read, que deixa o backup ler mas nega a
+  // escrita. Sem o /MIR de reposição o harness fica com exe-v9 e falha.
   {
     nome: "o backup do staging não copia a árvore",
     ficheiro: "src/OficinaDiag.Core/Cloud/UpdateChecker.cs",
-    de: `            "  Copy-Item $appDir $bak -Recurse -Force -ErrorAction Stop",`,
+    de: String.raw`            "  & \"$env:SystemRoot\\System32\\robocopy.exe\" $appDir $bak /E /XD '*.bak-*' /XJ /R:0 /W:0 /NFL /NDL /NJH /NJS | Out-File $log -Append",`,
     para: `            "  New-Item -ItemType Directory -Force $bak | Out-Null",`,
+    guarda: "uishots",
+    prova: "staging: falha a meio deixa o build anterior",
+  },
+  {
+    nome: "o rollback do staging não repõe o backup",
+    ficheiro: "src/OficinaDiag.Core/Cloud/UpdateChecker.cs",
+    de: String.raw`            "    & \"$env:SystemRoot\\System32\\robocopy.exe\" $bak $appDir /MIR /XD '*.bak-*' /XJ /R:0 /W:0 /NFL /NDL /NJH /NJS | Out-Null",`,
+    para: `            "    # mutante: rollback desligado",`,
     guarda: "uishots",
     prova: "staging: falha a meio deixa o build anterior",
   },
   {
     nome: "a falha do staging fica sem aviso",
     ficheiro: "src/OficinaDiag.Core/Cloud/UpdateChecker.cs",
-    de: `            "    Avisar-Falha 'a cópia do staging falhou a meio'",`,
-    para: `            "    # sem aviso para o técnico",`,
+    de: `            "      Avisar-Falha 'a aplicação do staging falhou a meio'",`,
+    para: `            "      # mutante: sem aviso para o técnico",`,
     guarda: "uishots",
     prova: "staging: a falha fica no marcador que o arranque mostra",
   },
