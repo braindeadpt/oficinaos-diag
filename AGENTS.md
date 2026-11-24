@@ -18,15 +18,22 @@ certo com o runner `windows-2022` do CI:
    `pull_request`, por isso um push para uma branch sem PR não gera
    capturas nenhumas.
 2. Quando o job Windows terminar (pass ou fail — o artifact
-   `ui-shots` é publicado com `if: always()`), descarrega-o. Se os
-   baselines falharam, o run está vermelho; se passarem mas queres
-   confirmar, o artifact existe na mesma:
+   `ui-shots` é publicado com `if: always()`), descarrega-o. O run ID
+   está no link do check `build (windows-2022)` em `gh pr checks <PR>`
+   — **não filtres só por branch**: o workflow também corre em
+   `schedule` e `workflow_dispatch`, e um run manual na mesma branch
+   não é o da PR.
 
    ```powershell
-   gh run list -R braindeadpt/oficinaos-diag --branch <branch> --limit 1
    gh run download <run-id> -R braindeadpt/oficinaos-diag -n ui-shots -D out\uishots-ci
    ```
 
+   **Atenção**: nem todo o run vermelho tem capturas. O passo `Test`
+   (`dotnet test`) corre **antes** do UiShots — se ele falhar, o
+   harness nunca gera PNGs e o artifact sai vazio ou nem existe.
+   Só há capturas para copiar quando a falha é na **comparação de
+   baselines** (o harness chegou a correr). Se o artifact estiver
+   vazio, corrige primeiro a falha de testes.
 3. Substitui `tools/UiShots/baselines/*.png` pelas capturas do artifact
    (ignora `diff-*`). O conjunto de nomes tem de bater com o que o
    harness produz — **não assumas um número fixo**: se adicionaste ou
@@ -44,9 +51,24 @@ Notas:
   baselines**: corre o harness local (que produz renders diferentes do
   CI em Win11) e, se correr sem falhas, **apaga os baselines
   versionados e substitui-os pelos renders locais** — exatamente o que
-  não queremos commitar. Serve só para iterar no harness; se o
-  executaste, faz `git checkout -- tools/UiShots/baselines/` antes de
-  commitar seja o que for.
+  não queremos commitar.
+- Para **iterar** no harness sem tocar nos baselines, corre-o
+  diretamente para uma pasta de saída separada (o `--baselines`
+  compara mas não escreve nada lá):
+
+  ```powershell
+  dotnet run --project tools/UiShots/UiShots.csproj -c Release -- out\ui-shots-local --baselines tools/UiShots/baselines
+  ```
+
+- Se já executaste o script por engano, `git checkout --` **não chega**:
+  ele restaura os PNGs rastreados mas não apaga os PNGs novos que o
+  script copiou (untracked) nem desfaz o que já foi `git add`. O
+  restauro completo é:
+
+  ```powershell
+  git restore --staged --worktree tools/UiShots/baselines/
+  git clean -fd tools/UiShots/baselines/
+  ```
 
 ### Flakiness conhecida do harness
 
