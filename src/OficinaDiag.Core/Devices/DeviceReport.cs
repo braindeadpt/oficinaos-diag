@@ -118,10 +118,29 @@ public sealed class DeviceReport
     }
 
     // Namespaces que um re-scan NÃO volta a produzir — checklist manual,
-    // teste no ecrã, bancada de potência e perfil de desempenho. Tudo o
-    // resto (battery.*, security.*, device.*, derivados como battery.swap)
+    // teste no ecrã, bancada de potência, perfil de desempenho e o
+    // checklist de serviço (tpl.*/service.template). Tudo o resto
+    // (battery.*, security.*, device.*, derivados como battery.swap)
     // é refeito na recolha e não pode ser arrastado de um scan anterior.
-    private static readonly string[] ManualPrefixes = ["checklist.", "test.", "sensor.", "power.", "perf."];
+    private static readonly string[] ManualPrefixes = ["checklist.", "test.", "sensor.", "power.", "perf.", "tpl.", "service."];
+
+    /// <summary>
+    /// Chave de resultado escrita à mão (checklist, teste no ecrã, bancada,
+    /// perfil, checklist de serviço) — o que um scan novo não reproduz.
+    /// </summary>
+    public static bool IsManualKey(string key) =>
+        ManualPrefixes.Any(key.StartsWith) || key == "usb.stability";
+
+    /// <summary>
+    /// O relatório tem trabalho manual — base do aviso que o scan mostra
+    /// antes de substituir um relatório SEM aparelho associado: sem
+    /// identificador não há como provar que os dados são do telemóvel que
+    /// acabou de ligar, por isso a cópia fica a cargo do técnico.
+    /// </summary>
+    public bool HasManualData() =>
+        Notes is not null || PhotoPaths.Count > 0 || Maintenance is not null
+        || Purpose is not null || LogsText is not null
+        || Results.Keys.Any(IsManualKey);
 
     /// <summary>
     /// Copia para ESTE relatório os resultados manuais de
@@ -134,8 +153,7 @@ public sealed class DeviceReport
     public void PreserveManualFrom(DeviceReport previous)
     {
         foreach (var kv in previous.Results)
-            if (!Results.ContainsKey(kv.Key)
-                && (ManualPrefixes.Any(kv.Key.StartsWith) || kv.Key == "usb.stability"))
+            if (!Results.ContainsKey(kv.Key) && IsManualKey(kv.Key))
                 Results[kv.Key] = kv.Value;
         Notes ??= previous.Notes;
         Purpose ??= previous.Purpose;

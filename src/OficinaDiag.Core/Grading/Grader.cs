@@ -242,11 +242,16 @@ public static class Grader
         // não tem base para grau e cai em "—" como um relatório vazio.
         // "perf.*" são medições de bancada de contexto (perfil de stress) —
         // sem um scan não há base para grau: um perfil sozinho não pode dar A.
+        // "tpl.*"/"service.*" são o registo do atendimento (checklist do
+        // serviço): verificam o TRABALHO feito, não a condição do aparelho —
+        // o grau continua a sair do scan + checklist físico.
         var coverage = r.Results.Count(kv =>
             !kv.Key.StartsWith("grade.", StringComparison.Ordinal)
             && !kv.Key.StartsWith("suggest.", StringComparison.Ordinal)
             && !kv.Key.StartsWith("health.", StringComparison.Ordinal)
             && !kv.Key.StartsWith("perf.", StringComparison.Ordinal)
+            && !kv.Key.StartsWith("tpl.", StringComparison.Ordinal)
+            && !kv.Key.StartsWith("service.", StringComparison.Ordinal)
             && kv.Key != "scan"
             && kv.Value.Status != "skipped");
         if (coverage == 0)

@@ -1,0 +1,54 @@
+<Window x:Class="OficinaDiag.ServiceDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Serviço" Width="640" Height="660"
+        MinWidth="520" MinHeight="480"
+        WindowStartupLocation="CenterOwner"
+        Background="{DynamicResource BgBrush}" Foreground="{DynamicResource FgBrush}"
+        FontFamily="{DynamicResource UiFont}">
+    <!-- Mesma estrutura do ChecklistDialog: DockPanel com ações ancoradas em
+         baixo — os itens nunca pintam por cima dos botões. -->
+    <Window.Resources>
+        <Style TargetType="TextBlock">
+            <Setter Property="Foreground" Value="{DynamicResource DimBrush}"/>
+            <Setter Property="Margin" Value="0,6,0,3"/>
+        </Style>
+        <Style TargetType="TextBox">
+            <Setter Property="Background" Value="{DynamicResource PanelBrush}"/>
+            <Setter Property="Foreground" Value="{DynamicResource FgBrush}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource LineBrush}"/>
+            <Setter Property="Padding" Value="6,4"/>
+            <Setter Property="CaretBrush" Value="{DynamicResource FgBrush}"/>
+        </Style>
+        <Style TargetType="Button" BasedOn="{StaticResource TermButton}"/>
+    </Window.Resources>
+
+    <DockPanel Margin="20">
+        <StackPanel DockPanel.Dock="Top">
+            <TextBlock x:Name="HeaderText" FontSize="14" Foreground="{DynamicResource FgBrush}"
+                       Margin="0,0,0,4"/>
+            <TextBlock x:Name="DescText" TextWrapping="Wrap" Margin="0,0,0,4"/>
+            <TextBlock x:Name="PickLabel"/>
+        </StackPanel>
+
+        <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" HorizontalAlignment="Right"
+                    Margin="0,14,0,0">
+            <Button x:Name="ApplyBtn" IsDefault="True" Click="Apply_Click"/>
+            <Button x:Name="CancelBtn" IsCancel="True" Margin="10,0,0,0"/>
+        </StackPanel>
+
+        <StackPanel DockPanel.Dock="Bottom" Margin="0,10,0,0">
+            <TextBlock x:Name="RequiredLabel" Visibility="Collapsed"/>
+            <TextBlock x:Name="RequiredText" TextWrapping="Wrap" Visibility="Collapsed"/>
+            <TextBlock x:Name="MaintHint" TextWrapping="Wrap" Visibility="Collapsed"/>
+        </StackPanel>
+
+        <ScrollViewer VerticalScrollBarVisibility="Auto" ClipToBounds="True">
+            <StackPanel>
+                <!-- radios dos templates + linhas de itens, gerados no code-behind -->
+                <StackPanel x:Name="TemplatePanel"/>
+                <StackPanel x:Name="ItemsPanel"/>
+            </StackPanel>
+        </ScrollViewer>
+    </DockPanel>
+</Window>
