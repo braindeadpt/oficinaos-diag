@@ -332,6 +332,37 @@ public sealed class IosAppsTests
             $"demorou {sw.ElapsedMilliseconds} ms — o orçamento não segurou");
     }
 
+    [Fact]
+    public async Task ListBounded_Cancelamento_InterrompeEspera()
+    {
+        var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var manager = new IosAppManager((_, _, _, ct) =>
+        {
+            started.TrySetResult();
+            // O comando ignora o token de propósito: só assim se vê se a
+            // espera cancelável é o Task.Delay do orçamento, não o fim da listagem.
+            release.Task.Wait(TimeSpan.FromSeconds(10));
+            return Plist;
+        });
+        using var cts = new CancellationTokenSource();
+
+        var task = manager.ListBoundedAsync("00008101-0002390A3600801E", int.MaxValue, cts.Token);
+        try
+        {
+            await started.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            cts.Cancel();
+            // Orçamento infinito: só o cancelamento pode terminar a espera.
+            // O WaitAsync é o prazo da asserção, não do orçamento.
+            await Assert.ThrowsAsync<OperationCanceledException>(
+                () => task.WaitAsync(TimeSpan.FromSeconds(5)));
+        }
+        finally
+        {
+            release.TrySetResult();
+        }
+    }
+
     private const string PlistSemExemplo = """
         <?xml version="1.0" encoding="UTF-8"?>
         <plist version="1.0">

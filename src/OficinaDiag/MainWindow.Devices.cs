@@ -108,6 +108,7 @@ public partial class MainWindow : Window
 
     private void DeviceSelector_Changed(object sender, SelectionChangedEventArgs e)
     {
+        if (BusyBar.Visibility == Visibility.Visible) return;
         if (DeviceSelector.SelectedItem is not Devices.DetectedDevice d) return;
         if (_current?.Id == d.Id) return;
         SelectDevice(d, announce: true);
@@ -125,6 +126,7 @@ public partial class MainWindow : Window
     private void SelectDevice(Devices.DetectedDevice? d, bool announce)
     {
         _current = d;
+        var busy = BusyBar.Visibility == Visibility.Visible;
         // O espelho é Android-only e precisa de OS completo — a regra vive
         // no partial Mirror para o estado «a correr» também a respeitar.
         SyncMirrorButton();
@@ -140,7 +142,7 @@ public partial class MainWindow : Window
             AppsButton.IsEnabled = false;
             AppsButton.Visibility = Visibility.Collapsed;
             MaintenanceButton.IsEnabled = false;
-            ScanButton.IsEnabled = true; // permite tentar mesmo sem evento
+            ScanButton.IsEnabled = !busy; // permite tentar mesmo sem evento
             return;
         }
 
@@ -148,20 +150,20 @@ public partial class MainWindow : Window
         // Sem OS completo (recovery/sideload/bootloader/sem autorização) não há
         // scan, teste no ecrã nem bancada de potência — o resto continua vivo.
         var ready = d.State == "ready";
-        ScanButton.IsEnabled = ready;
-        TestButton.IsEnabled = ready;
-        BenchButton.IsEnabled = ready;
+        ScanButton.IsEnabled = ready && !busy;
+        TestButton.IsEnabled = ready && !busy;
+        BenchButton.IsEnabled = ready && !busy;
         // O perfil de desempenho serve Android e iOS — métricas que a
         // plataforma não expõe saem skipped, nunca falha inventada.
-        PerfButton.IsEnabled = ready;
+        PerfButton.IsEnabled = ready && !busy;
         // Gestor de apps: Android via adb, iOS via ideviceinstaller —
         // os dois precisam do sistema completo, não de recovery/sideload.
         var appsCapable = ready && d.Kind is DeviceKind.Android or DeviceKind.Ios;
-        AppsButton.IsEnabled = appsCapable;
+        AppsButton.IsEnabled = appsCapable && !busy;
         AppsButton.Visibility = appsCapable ? Visibility.Visible : Visibility.Collapsed;
         // Limpeza/otimização é Android-only (comandos pm/am/settings) e precisa
         // do sistema completo — recovery/sideload não a têm.
-        MaintenanceButton.IsEnabled = ready && d.Kind == DeviceKind.Android;
+        MaintenanceButton.IsEnabled = ready && !busy && d.Kind == DeviceKind.Android;
         if (ready) StartTelemetry(d);
         else { _telemetryCts?.Cancel(); TelemetryText.Text = ""; }
     }

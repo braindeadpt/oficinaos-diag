@@ -216,6 +216,16 @@ public partial class MainWindow : Window
         InsuranceButton.Content = L10n.Btn("btn.insurance");
         LogButton.Content = L10n.Btn("btn.log");
         ConfigButton.Content = L10n.Btn("btn.settings");
+        GroupDeviceText.Text = L10n.T("group.device");
+        GroupRecordsText.Text = L10n.T("group.records");
+        GroupDeliverText.Text = L10n.T("group.deliver");
+        GroupSystemText.Text = L10n.T("group.system");
+        EmptyTitle.Text = L10n.T("empty.title");
+        EmptyDesc.Text = L10n.T("empty.desc");
+        EmptyStep1.Text = L10n.T("empty.step1");
+        EmptyStep2.Text = L10n.T("empty.step2");
+        EmptyStep3.Text = L10n.T("empty.step3");
+        BusyCancelButton.Content = L10n.Btn("busy.cancel");
         // Tema novo = brushes novas: as linhas da lista foram pintadas com as
         // antigas (verde néon sobre fundo branco no tema Fluent).
         RefreshResults();
@@ -223,6 +233,24 @@ public partial class MainWindow : Window
             UpdateButton.Content = ThemeManager.IsTerminal
                 ? $"[ {L10n.F("btn.update", _update.Tag)} ]"
                 : L10n.F("btn.update", _update.Tag);
+    }
+
+    private void SyncReportButtons()
+    {
+        // Durante scan/teste o BeginBusy já bloqueou tudo — re-sync (tema/idioma)
+        // não pode reativar botões a meio da operação.
+        if (BusyBar.Visibility == Visibility.Visible) return;
+        // Um relatório criado só para receber o teste no ecrã ainda não tem
+        // medições — não pode acordar exportação/envio antes do telemóvel responder.
+        var hasReport = _report is not null
+            && (_report.Results.Count > 0 || _report.HasManualData());
+        ExportButton.IsEnabled = hasReport;
+        SendButton.IsEnabled = hasReport && !_sendBusy;
+        InsuranceButton.IsEnabled = hasReport;
+        CompareButton.IsEnabled = hasReport;
+        LabelButton.IsEnabled = hasReport;
+        ClientButton.IsEnabled = hasReport;
+        UpdateAiButtons();
     }
 
     private void Log(string line)

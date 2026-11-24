@@ -10,16 +10,16 @@ public partial class MainWindow : Window
 {
     private async void Scan_Click(object sender, RoutedEventArgs e)
     {
-        ScanButton.IsEnabled = false;
-        _busy = true;
+        if (BusyBar.Visibility == Visibility.Visible) return;
+        if (_current is null)
+        {
+            Log(L10n.T("log.nodev"));
+            return;
+        }
+        BeginBusy(L10n.T("busy.scan"), cancellable: true);
         Log(L10n.T("log.scan.run"));
         try
         {
-            if (_current is null)
-            {
-                Log(L10n.T("log.nodev"));
-                return;
-            }
             // Os WaitForExit dentro dos coletores são síncronos — sem o
             // Task.Run cada chamada adb bloqueava a UI thread e a janela
             // congelava durante o scan inteiro.
@@ -27,9 +27,10 @@ public partial class MainWindow : Window
             // Auditoria de segurança das apps é Pro (decisão do dono): sem
             // token Pro na máquina o scan gratuito não a corre.
             var securityAudit = _config.GetShopToken() is not null;
+            var ct = _opCts?.Token ?? CancellationToken.None;
             var fresh = _current.Kind == DeviceKind.Android
-                ? await Task.Run(() => new AndroidCollector(_adbPath, securityAudit).CollectAsync(scannedId.TrimEnd('!')))
-                : await Task.Run(() => new IosCollector().CollectAsync(scannedId));
+                ? await Task.Run(() => new AndroidCollector(_adbPath, securityAudit).CollectAsync(scannedId.TrimEnd('!'), ct))
+                : await Task.Run(() => new IosCollector().CollectAsync(scannedId, ct));
             // O scan substitui o relatório mas há resultados que ele não
             // volta a produzir — checklist manual, teste no ecrã e bancada.
             // PreserveManualFrom copia só esses: arrastar chaves USB/
@@ -90,13 +91,10 @@ public partial class MainWindow : Window
             // histórico guarda o scan já com grau — o antes/depois mostra-o na lista
             _history.Add(_report);
             Log(L10n.F("log.scan.done", _report.Results.Count));
-            ExportButton.IsEnabled = TestButton.IsEnabled = SendButton.IsEnabled =
-                InsuranceButton.IsEnabled = CompareButton.IsEnabled = LabelButton.IsEnabled =
-                ClientButton.IsEnabled = true;
-            UpdateAiButtons();
         }
+        catch (OperationCanceledException) { Log(L10n.T("busy.cancelled")); }
         catch (Exception ex) { Log(L10n.F("log.err", ex.Message)); }
-        finally { ScanButton.IsEnabled = true; _busy = false; }
+        finally { EndBusy(); }
     }
 
     /// <summary>
@@ -146,9 +144,7 @@ public partial class MainWindow : Window
         var dlg = new ChecklistDialog(_report) { Owner = this };
         if (dlg.ShowDialog() != true) return;
         ApplyGrade();
-        ExportButton.IsEnabled = SendButton.IsEnabled = InsuranceButton.IsEnabled =
-            CompareButton.IsEnabled = LabelButton.IsEnabled = ClientButton.IsEnabled = true;
-        UpdateAiButtons();
+        SyncReportButtons();
         Log(L10n.T("log.checklist.saved"));
     }
 
@@ -176,6 +172,7 @@ public partial class MainWindow : Window
 
     private void RefreshResults()
     {
+        EmptyState.Visibility = _report is null ? Visibility.Visible : Visibility.Collapsed;
         if (_report is null) return;
         ResultsList.ItemsSource = _report.Results
             .Select(kv => new ResultRow
@@ -186,6 +183,7 @@ public partial class MainWindow : Window
             })
             .OrderBy(r => r.Key).ToList();
         ShowHealth();
+        SyncReportButtons();
     }
 
     /// <summary>

@@ -12,6 +12,7 @@ public sealed class AndroidCollector
 {
     private readonly string _adbPath;
     private readonly bool _securityAudit;
+    private CancellationToken _ct;
 
     /// <param name="securityAudit">
     /// Falso no scan gratuito: a auditoria de segurança das apps é Pro
@@ -57,13 +58,18 @@ public sealed class AndroidCollector
             if (p is null) return null;
             var read = p.StandardOutput.ReadToEndAsync();
             var drain = p.StandardError.ReadToEndAsync(); // stderr cheio bloqueava o adb
-            if (!p.WaitForExit(timeoutMs))
+            using var timeout = new CancellationTokenSource(timeoutMs);
+            using var linked = CancellationTokenSource.CreateLinkedTokenSource(_ct, timeout.Token);
+            try { await p.WaitForExitAsync(linked.Token); }
+            catch (OperationCanceledException)
             {
                 try { p.Kill(entireProcessTree: true); } catch { }
+                if (_ct.IsCancellationRequested) throw;
                 return null;
             }
             return await read;
         }
+        catch (OperationCanceledException) { throw; }
         catch { return null; }
     }
 
@@ -109,7 +115,21 @@ public sealed class AndroidCollector
         return digits.Length is >= 14 and <= 17 ? digits[..15] : null;
     }
 
-    public async Task<DeviceReport> CollectAsync(string serial)
+    public async Task<DeviceReport> CollectAsync(string serial, CancellationToken ct = default)
+    {
+        _ct = ct;
+        ct.ThrowIfCancellationRequested();
+        try
+        {
+            return await CollectCoreAsync(serial);
+        }
+        finally
+        {
+            _ct = CancellationToken.None;
+        }
+    }
+
+    private async Task<DeviceReport> CollectCoreAsync(string serial)
     {
         var r = new DeviceReport { Platform = "android" };
         r.Device.Serial = serial;

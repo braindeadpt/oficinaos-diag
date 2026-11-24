@@ -63,9 +63,7 @@ public partial class MainWindow : Window
             return;
         }
         ApplyGrade();
-        ExportButton.IsEnabled = SendButton.IsEnabled = InsuranceButton.IsEnabled =
-            CompareButton.IsEnabled = LabelButton.IsEnabled = ClientButton.IsEnabled = true;
-        UpdateAiButtons();
+        SyncReportButtons();
         Log(L10n.T("log.svc.saved"));
     }
 }

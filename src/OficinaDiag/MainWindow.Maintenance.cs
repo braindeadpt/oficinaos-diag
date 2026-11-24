@@ -56,13 +56,10 @@ public partial class MainWindow : Window
             Log(L10n.T("maint.saved"));
             // A limpeza não mexe em Results nem no grau — mas o relatório ficou
             // mais completo, por isso os botões de exportação acordam como no scan.
-            // UpdateAiButtons (e não AiButton.IsEnabled direto) acende também a
-            // IA MANUT. — sem isto a entrada via SERVIÇO→Otimização só tinha a
+            // SyncReportButtons chama UpdateAiButtons: acende também a IA
+            // MANUT. — sem isto a entrada via SERVIÇO→Otimização só tinha a
             // IA genérica e perdia o relatório de manutenção dedicado.
-            ExportButton.IsEnabled = SendButton.IsEnabled =
-                InsuranceButton.IsEnabled = CompareButton.IsEnabled =
-                LabelButton.IsEnabled = ClientButton.IsEnabled = true;
-            UpdateAiButtons();
+            SyncReportButtons();
             return true;
         }
         finally { _busy = false; }

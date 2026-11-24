@@ -8,12 +8,15 @@ namespace OficinaDiag;
 
 public partial class MainWindow : Window
 {
+    private bool _sendBusy;
+
     private async void Send_Click(object sender, RoutedEventArgs e)
     {
-        if (_report is null) return;
+        if (_report is null || _sendBusy) return;
         var dlg = new SendDialog(_report.Purpose) { Owner = this };
         if (dlg.ShowDialog() != true) return;
         Log(L10n.F("log.send.start", dlg.ShopCode));
+        _sendBusy = true;
         SendButton.IsEnabled = false; // double-submit criava pedidos duplicados na loja
         // Sincroniza nos dois sentidos: um envio explícito como "reparação"
         // limpa o "sale" que o checklist possa ter deixado.
@@ -30,7 +33,7 @@ public partial class MainWindow : Window
                 : L10n.F("log.send.fail", msg));
             if (!ok) _ = DrenarFilaAsync();
         }
-        finally { SendButton.IsEnabled = true; }
+        finally { _sendBusy = false; SyncReportButtons(); }
     }
 
     private async void LogSend_Click(object sender, RoutedEventArgs e)
