@@ -3,6 +3,7 @@ using System.Globalization;
 using System.IO;
 using System.Collections.ObjectModel;
 using System.Windows;
+using System.Windows.Automation;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Data;
@@ -229,6 +230,15 @@ public partial class MainWindow : Window
         EmptyStep2.Text = L10n.T("empty.step2");
         EmptyStep3.Text = L10n.T("empty.step3");
         BusyCancelButton.Content = L10n.Btn("busy.cancel");
+        foreach (var botao in new Button[]
+        {
+            ScanButton, BenchButton, PerfButton, TestButton, AppsButton, ChecklistButton,
+            ServiceButton, MaintenanceButton, MirrorButton, CompareButton, LabelButton,
+            ClientButton, ExportButton, SendButton, AiButton, MaintenanceAiButton,
+            InsuranceButton, LogButton, ConfigButton, BusyCancelButton,
+        })
+            AutomationProperties.SetName(botao, botao.Content?.ToString() ?? "");
+        AutomationProperties.SetName(ResultsList, ResultsHeader.Text);
         // Tema novo = brushes novas: as linhas da lista foram pintadas com as
         // antigas (verde néon sobre fundo branco no tema Fluent).
         RefreshResults();
