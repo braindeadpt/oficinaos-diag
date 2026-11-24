@@ -1,4 +1,5 @@
 using OficinaDiag.Devices;
+using OficinaDiag.Log;
 using Xunit;
 
 namespace OficinaDiag.Tests;
@@ -153,6 +154,64 @@ public sealed class DeviceDetectorTests
         det.Poll();
 
         Assert.Equal(1, det.SeenCount);
+    }
+
+    [Fact]
+    public void FonteDeServicoQueRebenta_NaoPerdeOsAparelhosDaMesmaRonda()
+    {
+        // Regressão da validação em hardware (issue #63): ServiceModeUsb.List
+        // lançava FileNotFoundException (System.Management) em cada ronda e,
+        // sem guarda, a exceção saía de Current() — o Samsung que o adb já
+        // tinha encontrado nunca era anunciado. Com a fonte de serviço a
+        // falhar, os aparelhos das outras fontes têm de sair na mesma ronda.
+        var samsung = new DetectedDevice(DeviceKind.Android, "R58MA4TCE5M", "SM-A105FN");
+        using var det = new DeviceDetector(
+            adbSource: () => new[] { samsung },
+            iosSource: () => Array.Empty<string>(),
+            serviceModesSource: () => throw new FileNotFoundException("System.Management"));
+
+        var anexados = new List<DetectedDevice>();
+        det.Attached += anexados.Add;
+        det.Poll();
+
+        var unico = Assert.Single(anexados);
+        Assert.Equal("R58MA4TCE5M", unico.Id);
+        Assert.Equal(1, det.SeenCount);
+    }
+
+    [Fact]
+    public void FalhaDeServico_RegistaUmaVezPorSerie()
+    {
+        // O poll corre a cada 2 s: registar a exceção em cada ronda enchia o
+        // log com a mesma linha (foi assim que o bug do System.Management se
+        // diagnosticou). Uma entrada por série de falhas chega — e recuperada
+        // a fonte, a falha seguinte volta a aparecer.
+        var file = Path.Combine(Path.GetTempPath(), $"diag-det-{Guid.NewGuid():N}.log");
+        var anterior = AppLog.RedirectTo(file);
+        try
+        {
+            var falhar = true;
+            using var det = new DeviceDetector(
+                adbSource: () => Array.Empty<DetectedDevice>(),
+                iosSource: () => Array.Empty<string>(),
+                serviceModesSource: () => falhar
+                    ? throw new InvalidOperationException("WMI em baixo")
+                    : Array.Empty<DetectedDevice>());
+
+            det.Poll();
+            det.Poll();
+            falhar = false;
+            det.Poll();          // recupera: repõe o estado "sem falha"
+            falhar = true;
+            det.Poll();          // nova série: tem de registar outra vez
+        }
+        finally
+        {
+            AppLog.RedirectTo(anterior);
+        }
+
+        var texto = File.ReadAllText(file);
+        Assert.Equal(2, texto.Split("DeviceDetector.ServiceModes").Length - 1);
     }
 
     [Fact]
