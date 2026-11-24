@@ -16,7 +16,7 @@
 // Saída: 0 = todos mortos · 1 = algum sobreviveu ou não aplicou ·
 //        2 = não consegui repor um ficheiro (para tudo e grita).
 
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { join } from "node:path";
 
@@ -404,6 +404,14 @@ function correrGuarda(m) {
   if (build.codigo !== 0) return { vermelho: false, motivo: "o harness não compila" };
   const exe = join(raiz, "tools", "UiShots", "bin", "Release", "net10.0-windows", "UiShots.exe");
   const destino = join(raiz, "out-store", "mutation-ui-shots");
+  // Todos os mutantes partilham o destino: se este executável sair antes
+  // de o Main reescrever o relatório, o provas.txt do mutante anterior
+  // ficava — e dois mutantes do staging procuram a MESMA verificação, por
+  // isso a falha herdada declarava o segundo morto sem ele ter corrido.
+  // Apagar antes de cada corrida garante que o veredito só lê o relatório
+  // desta execução (ou nenhum, se o harness nem chegou ao Main).
+  const provasFile = join(destino, "provas.txt");
+  rmSync(provasFile, { force: true });
   const r = mundo(exe, [destino]);
   if (r.erro) return { vermelho: false, motivo: `não arrancou: ${r.erro.message}` };
   // O veredito lê-se do provas.txt, não do stdout: o Console do Windows
@@ -411,7 +419,6 @@ function correrGuarda(m) {
   // prova com acentos («portátil», «relançar») nunca batia certa na saída
   // e um mutante morto saía «sobreviveu». O provas.txt é UTF-8 por
   // construção e o harness reescreve-o a cada corrida.
-  const provasFile = join(destino, "provas.txt");
   const provas = existsSync(provasFile) ? readFileSync(provasFile, "utf8") : "";
   const falha = provas.includes(`[FALHA] ${m.prova}`);
   return {

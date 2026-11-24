@@ -1576,7 +1576,11 @@ internal static class Program
                 sinal = Path.Combine(dir, "processo-pode-sair.txt");
                 relancamento = Path.Combine(dir, "relancamento.txt");
                 var sleeperPs1 = Path.Combine(dir, "sleeper.ps1");
-                File.WriteAllText(sleeperPs1,
+                // WriteUpdateScript e não WriteAllText: o PS 5.1 lê um .ps1
+                // sem BOM como ANSI e um caminho com acentos (João) ficava
+                // truncado — o sleeper nunca via o sinal e a prova reprovava
+                // uma espera correta.
+                UpdateChecker.WriteUpdateScript(sleeperPs1,
                     "$porta = '" + UpdateChecker.PsLiteral(sinal) + "'" + Environment.NewLine
                     + "for ($i = 0; $i -lt 480; $i++) {" + Environment.NewLine
                     + "  if (Test-Path $porta) { break }" + Environment.NewLine
