@@ -1546,7 +1546,7 @@ internal static class Program
             w.Write(texto);
         }
 
-        (int Codigo, string Registo) Correr(string app, byte[] zip, string tag)
+        (int Codigo, string Registo, string? Espera) Correr(string app, byte[] zip, string tag, bool processoVivo = false)
         {
             var dir = Path.Combine(Path.GetDirectoryName(app)!, "execucao-" + tag);
             Directory.CreateDirectory(dir);
@@ -1554,6 +1554,32 @@ internal static class Program
             File.WriteAllBytes(caminhoZip, zip);
             var log = Path.Combine(dir, "update.log");
             var ps1 = Path.Combine(dir, "update.ps1");
+
+            // PID morto por omissão: o Get-Process do script não encontra
+            // nada e a espera salta-se — o atalho do processo real já morto.
+            var pidDoProcesso = pid;
+            string? relancamento = null;
+            System.Diagnostics.Process? appViva = null;
+            var relancarProva = "Write-Output 'relancar desligado na prova'";
+            if (processoVivo)
+            {
+                // O script só espera por um processo com o nome do exe da
+                // app — um powershell renomeado faz de conta. Dorme 4 s e
+                // só então escreve o marcador e morre: se o updater não
+                // esperasse pelo handle, o relançamento corria antes e o
+                // Test-Path lia «nao-esperou». A ordem é provada por
+                // conteúdo, não por relógio.
+                var sleeperExe = Path.Combine(dir, PackagePaths.AppExeName);
+                File.Copy(Path.Combine(Environment.SystemDirectory, "WindowsPowerShell", "v1.0", "powershell.exe"), sleeperExe);
+                var feito = Path.Combine(dir, "processo-fechou.txt");
+                relancamento = Path.Combine(dir, "relancamento.txt");
+                appViva = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(sleeperExe,
+                    $"-NoProfile -Command \"Start-Sleep -Seconds 4; Set-Content -LiteralPath '{feito}' -Value 'fim' -NoNewline\"")
+                { CreateNoWindow = true, UseShellExecute = false })!;
+                pidDoProcesso = appViva.Id;
+                relancarProva = $"if (Test-Path '{feito}') {{ 'esperou' | Out-File '{relancamento}' -Encoding ascii }} else {{ 'nao-esperou' | Out-File '{relancamento}' -Encoding ascii }}";
+            }
+
             // Só o relançar fica desligado: um Start-Process sobre um ficheiro
             // de texto chamado .exe não é a app, e a prova não quer processos.
             // O appDir vai COM o separador final — é o que o
@@ -1561,10 +1587,10 @@ internal static class Program
             // faz o `$bak` do script nascer dentro da instalação (o layout
             // real do #62). Sem ele a prova corria com o backup fora e o
             // /XD '*.bak-*' nunca era exercitado a sério.
-            UpdateChecker.WriteUpdateScript(ps1, UpdateChecker.BuildUpdateScript(tag, app + Path.DirectorySeparatorChar, caminhoZip, log, pid)
-                // Instrução, não comentário: um `#` comia a chave de fecho do
-                // `if (Test-Path $exe) { ... }` e o script não fazia parse.
-                .Replace("Start-Process $exe", "Write-Output 'relancar desligado na prova'"));
+            // Instrução, não comentário: um `#` comia a chave de fecho do
+            // `if (Test-Path $exe) { ... }` e o script não fazia parse.
+            UpdateChecker.WriteUpdateScript(ps1, UpdateChecker.BuildUpdateScript(tag, app + Path.DirectorySeparatorChar, caminhoZip, log, pidDoProcesso)
+                .Replace("Start-Process $exe", relancarProva));
             using var p = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("powershell.exe",
                 $"-NoProfile -ExecutionPolicy Bypass -File \"{ps1}\"")
             {
@@ -1575,8 +1601,16 @@ internal static class Program
             });
             var saida = p!.StandardOutput.ReadToEnd() + p.StandardError.ReadToEnd();
             p.WaitForExit();
+            // O sleeper morre sozinho ao fim do Start-Sleep — se o script
+            // esperou, já saiu; se não esperou, este WaitForExit apanha-o
+            // na mesma e o «nao-esperou» fica escrito na same.
+            appViva?.WaitForExit();
+            appViva?.Dispose();
             var registo = File.Exists(log) ? File.ReadAllText(log) : "";
-            return (p.ExitCode, saida + registo);
+            var espera = relancamento is not null && File.Exists(relancamento)
+                ? File.ReadAllText(relancamento).Trim()
+                : null;
+            return (p.ExitCode, saida + registo, espera);
         }
 
         var appOk = Montar("sucesso");
@@ -1631,7 +1665,7 @@ internal static class Program
         // aplicação, e o rollback nunca era exercitado. Com Read a escrita
         // é que é recusada: backup passa, apply falha, rollback repõe.
         using (new FileStream(Path.Combine(appFalha, "zzz.dat"), FileMode.Open, FileAccess.Read, FileShare.Read))
-            (codigoFalha, registoFalha) = Correr(appFalha, zipFalha, "v9.9.9");
+            (codigoFalha, registoFalha, _) = Correr(appFalha, zipFalha, "v9.9.9");
 
         var marcador = Path.Combine(appFalha, UpdateChecker.UpdateFailureMarkerName);
         Console.WriteLine($"  staging falha: exit={codigoFalha} exe='{LerTexto(Path.Combine(appFalha, PackagePaths.AppExeName))}' "
@@ -1666,6 +1700,26 @@ internal static class Program
             && aviso.Contains("v9.9.9")
             && aviso.Contains("falhou")
             && !File.Exists(marcador));
+
+        // A espera a sério (revisão #62): as corridas acima passam um PID já
+        // morto — o Get-Process salta a espera e o WaitForExit nunca era
+        // exercitado. Aqui o PID é de um processo VIVO com o nome do exe da
+        // app (um powershell renomeado a dormir 4 s): o updater só pode
+        // relançar depois de ele morrer, e o marcador «relancamento.txt» diz
+        // se o «processo-fechou.txt» já existia quando a linha corria.
+        var appVivo = Montar("vivo");
+        var vivo = Correr(appVivo, Zip(a =>
+        {
+            Escrever(a, PackagePaths.AppExeName, "exe-v4");
+            Escrever(a, "OficinaDiag.Core.dll", "core-v4");
+            Escrever(a, "sub/novo.dll", "novo-v4");
+        }), "v9.9.7", processoVivo: true);
+        Console.WriteLine($"  staging vivo: exit={vivo.Codigo} exe='{LerTexto(Path.Combine(appVivo, PackagePaths.AppExeName))}' "
+            + $"espera='{vivo.Espera}' log='{vivo.Registo.Replace(Environment.NewLine, " | ").Trim()}'");
+        Verificar("staging: a atualização espera pelo processo vivo antes de relançar",
+            vivo.Codigo == 0
+            && vivo.Espera == "esperou"
+            && File.ReadAllText(Path.Combine(appVivo, PackagePaths.AppExeName)) == "exe-v4");
 
     }
 

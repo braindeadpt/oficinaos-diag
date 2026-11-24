@@ -174,6 +174,19 @@ const mutantes = [
     guarda: "uishots",
     prova: "staging: a falha fica no marcador que o arranque mostra",
   },
+  // A espera pelo handle é o que impede o relançamento com a app viva:
+  // WaitForExit(0) devolve já e o script avança para a cópia — a prova do
+  // processo vivo apanha-o pelo «nao-esperou» no marcador de relançamento.
+  {
+    nome: "o updater não espera pelo processo vivo",
+    ficheiro: "src/OficinaDiag.Core/Cloud/UpdateChecker.cs",
+    de: "$alvo.WaitForExit()",
+    // Sem comentário no `para`: `//` ou `#` dentro da linha gerada comia a
+    // chave de fecho do `if` e o script deixava de fazer parse.
+    para: "$alvo.WaitForExit(0)",
+    guarda: "uishots",
+    prova: "staging: a atualização espera pelo processo vivo antes de relançar",
+  },
   {
     nome: "Paint do checklist com indexer",
     ficheiro: "src/OficinaDiag/ChecklistDialog.xaml.cs",
