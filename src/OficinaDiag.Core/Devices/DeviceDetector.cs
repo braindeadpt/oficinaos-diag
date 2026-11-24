@@ -24,7 +24,7 @@ public sealed class DeviceDetector : IDisposable
     private readonly Func<IReadOnlyList<DetectedDevice>> _adbSource;
     private readonly Func<IReadOnlyList<string>> _iosSource;
     private readonly Func<IReadOnlyList<DetectedDevice>> _serviceModesSource;
-    private bool _serviceModesFailed;
+    private DateTime _serviceModesFailedAt = DateTime.MinValue;
     private int _polling;
 
     public event Action<DetectedDevice>? Attached;
@@ -98,20 +98,25 @@ public sealed class DeviceDetector : IDisposable
             // Sem try/catch uma falha aqui (ex.: System.Management não resolve
             // no contexto da app — issue #63) propagava-se para Poll e
             // deitava fora a ronda inteira: o Samsung que o adb já tinha
-            // encontrado nunca chegava ao _seen. Regista-se só a PRIMEIRA
-            // falha de cada série — o poll corre a cada 2 s e o log
-            // enchia-se da mesma exceção; recuperada a fonte, a falha
-            // seguinte volta a aparecer.
+            // encontrado nunca chegava ao _seen. Regista-se uma vez por
+            // série de falhas + lembrete a cada 5 min — o poll corre a cada
+            // 2 s (o log enchia-se da mesma exceção) e o upload de suporte
+            // envia só a cauda do ficheiro, por isso a entrada única podia
+            // ficar de fora dum incidente prolongado.
             IReadOnlyList<DetectedDevice> modes;
             try
             {
                 modes = _serviceModesSource();
-                _serviceModesFailed = false;
+                _serviceModesFailedAt = DateTime.MinValue;
             }
             catch (Exception ex)
             {
-                if (!_serviceModesFailed) AppLog.Exception("DeviceDetector.ServiceModes", ex);
-                _serviceModesFailed = true;
+                var agora = DateTime.UtcNow;
+                if (agora - _serviceModesFailedAt >= TimeSpan.FromMinutes(5))
+                {
+                    AppLog.Exception("DeviceDetector.ServiceModes", ex);
+                    _serviceModesFailedAt = agora;
+                }
                 modes = Array.Empty<DetectedDevice>();
             }
             if (needAndroid) found.AddRange(modes.Where(d => d.Kind == DeviceKind.Android));

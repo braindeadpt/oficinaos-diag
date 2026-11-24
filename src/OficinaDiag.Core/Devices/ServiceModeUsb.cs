@@ -104,11 +104,11 @@ internal static class ServiceModeUsb
     }
 
     /// <summary>
-    /// Falha da WMI deduplicada: o detector só vê a lista devolvida, não a
-    /// exceção interna — sem isto um WMI em baixo registava a mesma exceção
-    /// em cada poll (~2 s) e o diag.log enchia-se dela.
+    /// Última vez que a falha da WMI foi registada: uma entrada por série +
+    /// lembrete a cada 5 min enquanto persistir — o envio do log de suporte
+    /// leva só a cauda do ficheiro e a entrada única podia ficar de fora.
     /// </summary>
-    private static bool _falhaRegistada;
+    private static DateTime _queryFailedAt = DateTime.MinValue;
 
     /// <summary>WMI real — isolado para o matcher puro ficar testável sem Windows.</summary>
     [SupportedOSPlatform("windows")]
@@ -128,14 +128,18 @@ internal static class ServiceModeUsb
                 if (m is not null)
                     found.Add(new DetectedDevice(m.Kind, deviceId, m.Label, m.State));
             }
-            _falhaRegistada = false;
+            _queryFailedAt = DateTime.MinValue;
         }
         catch (Exception ex)
         {
             // WMI indisponível/falhou — ronda vazia, nunca deitar a app.
-            // Uma entrada por série de falhas (ver _falhaRegistada).
-            if (!_falhaRegistada) AppLog.Exception("ServiceModeUsb.Query", ex);
-            _falhaRegistada = true;
+            // Uma entrada por série + lembrete periódico (ver _queryFailedAt).
+            var agora = DateTime.UtcNow;
+            if (agora - _queryFailedAt >= TimeSpan.FromMinutes(5))
+            {
+                AppLog.Exception("ServiceModeUsb.Query", ex);
+                _queryFailedAt = agora;
+            }
         }
         return found;
     }
