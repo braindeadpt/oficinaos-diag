@@ -119,6 +119,18 @@ public sealed class AndroidCollector
     {
         _ct = ct;
         ct.ThrowIfCancellationRequested();
+        try
+        {
+            return await CollectCoreAsync(serial);
+        }
+        finally
+        {
+            _ct = CancellationToken.None;
+        }
+    }
+
+    private async Task<DeviceReport> CollectCoreAsync(string serial)
+    {
         var r = new DeviceReport { Platform = "android" };
         r.Device.Serial = serial;
         var props = await PropsAsync(serial);
