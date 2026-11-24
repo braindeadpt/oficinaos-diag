@@ -2304,17 +2304,17 @@ internal static class Program
             ThemeManager.Apply(ThemeManager.Terminal);
         }
 
-        // 3–5. Os três que validam campos: o botão abre um aviso (MessageBox
-        // nativo) e o diálogo fica aberto. O aviso prova que o handler correu
-        // até ao fim sem exceção; o `Clicar` é que garante que a exceção, se
-        // houver, aparece como «! UI:».
-        var validacoes = new (string Nome, Func<Window> Criar, string Botao, string Chave)[]
+        // 3–5. Os três que validam campos: seguro/envio mostram o erro na
+        // própria janela (ErrorText) e o diálogo fica aberto; o token ainda
+        // abre um aviso nativo (MessageBox). O clique tem de correr o handler
+        // até ao fim sem exceção; o erro prova que a validação disparou.
+        var validacoes = new (string Nome, Func<Window> Criar, string Botao, string Chave, bool Inline)[]
         {
-            ("seguro", () => new InsuranceDialog(DiagConfig.Load()), "GenerateBtn", "ins.err.insured"),
-            ("envio", () => new SendDialog(), "SendBtn", "send.err.code"),
-            ("token", () => new TokenDialog(), "OkBtn", "dlg.ai.token.empty"),
+            ("seguro", () => new InsuranceDialog(DiagConfig.Load()), "GenerateBtn", "ins.err.insured", true),
+            ("envio", () => new SendDialog(), "SendBtn", "send.err.code", true),
+            ("token", () => new TokenDialog(), "OkBtn", "dlg.ai.token.empty", false),
         };
-        foreach (var (nome, criar, botao, chave) in validacoes)
+        foreach (var (nome, criar, botao, chave, inline) in validacoes)
         {
             Marcar($"clique: {nome} (abrir)");
             var dialogo = criar();
@@ -2327,16 +2327,28 @@ internal static class Program
                     continue;
                 }
 
+                Marcar($"clique: {nome} ({botao})");
+                if (inline)
+                {
+                    var clicou = Clicar(alvo);
+                    var erro = dialogo.FindName("ErrorText") as TextBlock;
+
+                    Verificar($"clique: {nome} correu o handler sem exceção", clicou);
+                    Verificar($"clique: {nome} mostrou «{chave}» no erro inline",
+                        erro is { Visibility: Visibility.Visible } && erro.Text == L10n.T(chave));
+                    Verificar($"clique: {nome} continua aberto depois do erro", dialogo.IsLoaded);
+                    continue;
+                }
+
                 using var vigia = new CancellationTokenSource();
                 var rede = VigiaDoMessageBox(vigia.Token);
                 var resposta = ResponderMessageBoxDetalhado("ok");
-                Marcar($"clique: {nome} ({botao})");
-                var clicou = Clicar(alvo); // fica dentro do MessageBox até alguém responder
+                var clicouMsg = Clicar(alvo); // fica dentro do MessageBox até alguém responder
                 var (corpo, porque) = resposta.GetAwaiter().GetResult();
                 vigia.Cancel();
                 rede.Wait(500);
 
-                Verificar($"clique: {nome} correu o handler sem exceção", clicou);
+                Verificar($"clique: {nome} correu o handler sem exceção", clicouMsg);
                 Verificar($"clique: {nome} avisou «{chave}» em vez de seguir ({porque})",
                     TextoDoAviso(corpo, chave));
                 Verificar($"clique: {nome} continua aberto depois do aviso", dialogo.IsLoaded);
