@@ -347,12 +347,15 @@ public sealed class IosAppsTests
         });
         using var cts = new CancellationTokenSource();
 
-        var task = manager.ListBoundedAsync("00008101-0002390A3600801E", 200, cts.Token);
+        var task = manager.ListBoundedAsync("00008101-0002390A3600801E", int.MaxValue, cts.Token);
         try
         {
             await started.Task.WaitAsync(TimeSpan.FromSeconds(5));
             cts.Cancel();
-            await Assert.ThrowsAsync<OperationCanceledException>(() => task);
+            // Orçamento infinito: só o cancelamento pode terminar a espera.
+            // O WaitAsync é o prazo da asserção, não do orçamento.
+            await Assert.ThrowsAsync<OperationCanceledException>(
+                () => task.WaitAsync(TimeSpan.FromSeconds(5)));
         }
         finally
         {
