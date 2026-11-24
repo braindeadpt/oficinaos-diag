@@ -136,6 +136,8 @@
                             Click="Service_Click"/>
                     <Button Style="{DynamicResource TermButton}" x:Name="MaintenanceButton"
                             Click="Maintenance_Click" IsEnabled="False"/>
+                    <Button Style="{DynamicResource TermButton}" x:Name="MirrorButton"
+                            Click="Mirror_Click" IsEnabled="False"/>
                     <Button Style="{DynamicResource TermButton}" x:Name="CompareButton"
                             Click="Compare_Click" IsEnabled="False"/>
                     <Button Style="{DynamicResource TermButton}" x:Name="LabelButton"

@@ -6,6 +6,23 @@
 # O exe sai do publish (PublishSingleFile), não de um Content.
 OficinaDiag.exe
 tools/platform-tools/adb.exe
+# scrcpy — espelho de ecrã: tudo o que o runtime precisa do zip oficial
+# (scrcpy.exe + DLLs linkadas + scrcpy-server + adb toolchain + licença).
+# Os png/bat/vbs do zip são cosméticos e não entram na verificação; uma
+# release nova com DLLs renomeadas falha aqui até a lista ser atualizada.
+tools/scrcpy/scrcpy.exe
+tools/scrcpy/SDL3.dll
+tools/scrcpy/avcodec-63.dll
+tools/scrcpy/avformat-63.dll
+tools/scrcpy/avutil-61.dll
+tools/scrcpy/swresample-7.dll
+tools/scrcpy/scrcpy-server
+tools/scrcpy/adb.exe
+tools/scrcpy/AdbWinApi.dll
+tools/scrcpy/AdbWinUsbApi.dll
+tools/scrcpy/libusb-1.0.dll
+tools/scrcpy/LICENSE.txt
+tools/scrcpy/VERSION
 Data/models.json
 Tests/wwwroot/device-test.html
 Tests/wwwroot/device-test-decisions.js

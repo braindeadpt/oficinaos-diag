@@ -82,6 +82,7 @@ public static class L10n
             ["btn.label"] = "ETIQUETA",
             ["btn.client"] = "CLIENTE",
             ["btn.maint"] = "LIMPEZA",
+            ["btn.mirror"] = "ESPELHO",
 
             // log consola
             ["log.screen"] = "> ecrã útil {0}×{1} · janela {2}×{3} @{4},{5}",
@@ -144,6 +145,13 @@ public static class L10n
             ["log.label.printed"] = "> etiqueta enviada para a impressora",
             ["log.label.cancel"] = "> impressão da etiqueta cancelada",
             ["log.client.saved"] = "> relatório de cliente guardado: {0}",
+
+            // espelho de ecrã Android (scrcpy)
+            ["log.mirror.open"] = "> a abrir espelho de ecrã no {0} — fecha a janela do scrcpy para terminar",
+            ["log.mirror.missing"] = "! scrcpy não encontrado em tools\\scrcpy — corre tools\\fetch-tools.ps1",
+            ["log.mirror.fail"] = "! não consegui abrir o espelho: {0}",
+            ["log.mirror.closed"] = "> espelho de ecrã fechado",
+            ["log.mirror.exiterr"] = "! espelho terminou com erro (código {0}){1}",
 
             // health score 0–100 — índice de vitrine, não substitui o grau
             ["health.summary"] = "SAÚDE {0}/100 — {1}",
@@ -530,6 +538,7 @@ public static class L10n
             ["btn.label"] = "LABEL",
             ["btn.client"] = "CUSTOMER",
             ["btn.maint"] = "CLEANUP",
+            ["btn.mirror"] = "MIRROR",
 
             ["log.screen"] = "> work area {0}×{1} · window {2}×{3} @{4},{5}",
             ["log.boot"] = "> boot sequence…",
@@ -591,6 +600,13 @@ public static class L10n
             ["log.label.printed"] = "> label sent to the printer",
             ["log.label.cancel"] = "> label print cancelled",
             ["log.client.saved"] = "> customer report saved: {0}",
+
+            // Android screen mirroring (scrcpy)
+            ["log.mirror.open"] = "> opening screen mirror on {0} — close the scrcpy window to stop",
+            ["log.mirror.missing"] = "! scrcpy not found in tools\\scrcpy — run tools\\fetch-tools.ps1",
+            ["log.mirror.fail"] = "! could not open the mirror: {0}",
+            ["log.mirror.closed"] = "> screen mirror closed",
+            ["log.mirror.exiterr"] = "! screen mirror exited with an error (code {0}){1}",
 
             // health score 0–100 — showcase index, does not replace the grade
             ["health.summary"] = "HEALTH {0}/100 — {1}",

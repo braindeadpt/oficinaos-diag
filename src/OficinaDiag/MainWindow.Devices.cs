@@ -125,6 +125,9 @@ public partial class MainWindow : Window
     private void SelectDevice(Devices.DetectedDevice? d, bool announce)
     {
         _current = d;
+        // O espelho é Android-only e precisa de OS completo — a regra vive
+        // no partial Mirror para o estado «a correr» também a respeitar.
+        SyncMirrorButton();
         if (announce && d is not null) Log(L10n.F("log.devswitch", d.Label));
         if (d is null)
         {

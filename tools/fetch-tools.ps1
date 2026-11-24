@@ -143,3 +143,71 @@ if ($badIm.Count -gt 0) {
     throw "imobiledevice-net $imVersion falhou a verificação SHA-256:`n  $($badIm -join "`n  ")`n— refusing to build with unverified iPhone tools"
 }
 Write-Output "OK: imobiledevice-net $imVersion — todos os binários batem no pin SHA-256"
+
+# ── scrcpy (espelho de ecrã Android): zip oficial pinado por SHA-256 ─────
+# O upstream publica SHA256SUMS.txt por release; o pin abaixo é o valor
+# oficial de scrcpy-win64-v5.0.1.zip na tag v5.0.1. Uma release nova pede
+# versão + hash novos — sem pin o script falha, como no iMobileDevice-net.
+# O zip já traz LICENSE.txt (Apache-2.0), que viaja no pacote — a licença
+# cobre o bundling, nada mais é exigido (sem NOTICE upstream).
+#
+# A versão pinada grava-se em tools/scrcpy/VERSION: um bump do pin
+# re-descarrega mesmo com a pasta já presente. Sem o marker bastava um
+# scrcpy.exe antigo para saltar o download para sempre — a máquina ficava
+# com a versão velha sem ninguém dar por isso.
+$sc = Join-Path $tools "scrcpy"
+$scVer = "5.0.1"
+$scAsset = "scrcpy-win64-v$scVer.zip"
+$scSha = "b12a2c4ee8be317422451fc7dcf8ee20a71b5ea7ef9ad73ddd825a25316227a5"
+$scMarker = Join-Path $sc "VERSION"
+# O skip exige o runtime INTEIRO presente — exe+marker bastavam para uma
+# pasta com DLLs apagadas parecer completa (o review apanhou isto). A
+# lista espelha tools/package-files.txt: se o zip mudar de conteúdo,
+# atualiza aqui e lá.
+$scRuntime = @(
+    "scrcpy.exe", "SDL3.dll", "avcodec-63.dll", "avformat-63.dll",
+    "avutil-61.dll", "swresample-7.dll", "scrcpy-server", "adb.exe",
+    "AdbWinApi.dll", "AdbWinUsbApi.dll", "libusb-1.0.dll", "LICENSE.txt"
+)
+$scPresente = (Test-Path $scMarker) -and
+    ([string](Get-Content $scMarker -Raw)).Trim() -eq $scVer -and
+    -not ($scRuntime | Where-Object { -not (Test-Path (Join-Path $sc $_)) })
+if ($scPresente) {
+    Write-Output "scrcpy v$scVer already present - skipping download"
+} else {
+    Write-Output "Downloading scrcpy v$scVer (win64)..."
+    $scZip = Join-Path $env:TEMP $scAsset
+    $scHash = ""
+    # O CDN do GitHub já serviu bytes diferentes para o MESMO asset (hash
+    # mismatch transitório apanhado na primeira corrida disto) — uma
+    # tentativa extra resolve sem abrir mão do pin.
+    for ($tentativa = 1; $tentativa -le 2; $tentativa++) {
+        Invoke-WebRequest "https://github.com/Genymobile/scrcpy/releases/download/v$scVer/$scAsset" -OutFile $scZip
+        $scHash = (Get-FileHash $scZip -Algorithm SHA256).Hash.ToLowerInvariant()
+        if ($scHash -eq $scSha) { break }
+        Write-Output "  SHA-256 não bate na tentativa $tentativa — a repetir"
+    }
+    if ($scHash -ne $scSha) {
+        Remove-Item $scZip -Force
+        throw "scrcpy $scAsset SHA-256 $scHash != pin $scSha (SHA256SUMS oficial da release) — refusing to bundle unverified binaries"
+    }
+    # O zip traz a pasta scrcpy-win64-vX/ na raiz — extrai para TEMP e sobe
+    # o conteúdo para tools/scrcpy, o layout que o csproj publica.
+    $scTmp = Join-Path $env:TEMP "scrcpy-fetch-$scVer"
+    if (Test-Path $scTmp) { Remove-Item $scTmp -Recurse -Force }
+    Expand-Archive $scZip -DestinationPath $scTmp -Force
+    Remove-Item $scZip -Force
+    if (Test-Path $sc) { Remove-Item $sc -Recurse -Force }
+    Move-Item (Join-Path $scTmp "scrcpy-win64-v$scVer") $sc
+    Remove-Item $scTmp -Recurse -Force
+    # Um zip vazio ou com layout diferente passava no Move-Item sem que
+    # nada verificável ficasse — defesa em profundidade como no platform-tools.
+    if (-not (Test-Path "$sc\scrcpy.exe") -or -not (Test-Path "$sc\LICENSE.txt")) {
+        Remove-Item $sc -Recurse -Force -ErrorAction SilentlyContinue
+        throw "scrcpy extraído sem scrcpy.exe/LICENSE.txt — zip com layout inesperado"
+    }
+    # Só depois de verificado: o marker é o que autoriza o skip na próxima
+    # corrida — gravá-lo antes deixava uma pasta truncada parecer completa.
+    Set-Content -Path $scMarker -Value $scVer -Encoding ascii -NoNewline
+    Write-Output "OK: scrcpy v$scVer — zip win64 verificado por SHA-256 (SHA256SUMS oficial)"
+}

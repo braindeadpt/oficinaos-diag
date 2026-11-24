@@ -205,6 +205,7 @@ public partial class MainWindow : Window
         ChecklistButton.Content = L10n.Btn("btn.checklist");
         ServiceButton.Content = L10n.Btn("btn.service");
         MaintenanceButton.Content = L10n.Btn("btn.maint");
+        MirrorButton.Content = L10n.Btn("btn.mirror");
         CompareButton.Content = L10n.Btn("btn.compare");
         LabelButton.Content = L10n.Btn("btn.label");
         ClientButton.Content = L10n.Btn("btn.client");
