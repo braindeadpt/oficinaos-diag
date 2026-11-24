@@ -314,6 +314,13 @@ public sealed class ServiceTemplatesTests
         Assert.Contains("SERVIÇO — ", html);
         Assert.Contains("limpeza e otimização medidas", html);
         Assert.Contains("LIMPEZA E OTIMIZAÇÃO", html);
+
+        // A nota sozinha não chega — uma tabela vazia podia aparecer na
+        // mesma secção. Entre os dois títulos não pode haver <table>.
+        var ini = html.IndexOf("SERVIÇO — ", StringComparison.Ordinal);
+        var fim = html.IndexOf("LIMPEZA E OTIMIZAÇÃO", StringComparison.Ordinal);
+        Assert.True(ini >= 0 && fim > ini);
+        Assert.DoesNotContain("<table", html[ini..fim], StringComparison.Ordinal);
     }
 
     [Fact]
