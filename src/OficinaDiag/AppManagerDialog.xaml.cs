@@ -1,5 +1,6 @@
 using System.Runtime.InteropServices;
 using System.Windows;
+using System.Windows.Automation;
 using System.Windows.Controls;
 using System.Windows.Interop;
 using OficinaDiag.Devices;
@@ -28,6 +29,7 @@ public sealed partial class AppManagerDialog : Window
     private AndroidAppAction? _lastUndo;
     private bool _running;
     private static readonly string[] FilterModes = ["all", "user", "system", "disabled", "uninstalled"];
+    private static readonly string[] SortModes = ["package", "kind", "state", "installer", "protection"];
 
     private const uint MonitorDefaultToNearest = 2;
 
@@ -107,6 +109,19 @@ public sealed partial class AppManagerDialog : Window
         };
         FilterBox.ItemsSource = labels;
         FilterBox.SelectedIndex = 0;
+        ColPackage.Text = L10n.T("apps.col.package");
+        ColKind.Text = L10n.T("apps.col.kind");
+        ColState.Text = L10n.T("apps.col.state");
+        ColInstaller.Text = L10n.T("apps.col.installer");
+        ColProtection.Text = L10n.T("apps.col.protection");
+        SortBox.ItemsSource = new[]
+        {
+            L10n.T("apps.sort.package"), L10n.T("apps.sort.kind"), L10n.T("apps.sort.state"),
+            L10n.T("apps.sort.installer"), L10n.T("apps.sort.protection"),
+        };
+        SortBox.SelectedIndex = 0;
+        AutomationProperties.SetName(SearchBox, L10n.T("apps.search"));
+        AutomationProperties.SetName(AppsList, L10n.T("apps.title"));
         AddLog(L10n.T("apps.log.loading"));
         _ = RefreshAsync();
     }
@@ -190,8 +205,21 @@ public sealed partial class AppManagerDialog : Window
         if (search.Length > 0)
             rows = rows.Where(r => r.Package.Contains(search, StringComparison.OrdinalIgnoreCase)
                 || (r.Entry.InstallerPackageName?.Contains(search, StringComparison.OrdinalIgnoreCase) ?? false));
-        AppsList.ItemsSource = rows.ToList();
+        AppsList.ItemsSource = SortRows(rows);
         if (AppsList.Items.Count == 0) DetailsText.Text = L10n.T("apps.empty");
+    }
+
+    private List<AppRow> SortRows(IEnumerable<AppRow> rows)
+    {
+        var mode = SortModes[Math.Clamp(SortBox.SelectedIndex, 0, SortModes.Length - 1)];
+        return mode switch
+        {
+            "kind" => rows.OrderBy(r => r.Kind, StringComparer.OrdinalIgnoreCase).ThenBy(r => r.Package, StringComparer.OrdinalIgnoreCase).ToList(),
+            "state" => rows.OrderBy(r => r.State, StringComparer.OrdinalIgnoreCase).ThenBy(r => r.Package, StringComparer.OrdinalIgnoreCase).ToList(),
+            "installer" => rows.OrderBy(r => r.Installer, StringComparer.OrdinalIgnoreCase).ThenBy(r => r.Package, StringComparer.OrdinalIgnoreCase).ToList(),
+            "protection" => rows.OrderBy(r => r.Protection, StringComparer.OrdinalIgnoreCase).ThenBy(r => r.Package, StringComparer.OrdinalIgnoreCase).ToList(),
+            _ => rows.OrderBy(r => r.Package, StringComparer.OrdinalIgnoreCase).ToList(),
+        };
     }
 
     private void AppsList_Changed(object sender, SelectionChangedEventArgs e)
@@ -223,6 +251,7 @@ public sealed partial class AppManagerDialog : Window
 
     private async void Refresh_Click(object sender, RoutedEventArgs e) => await RefreshAsync();
     private void Filter_Changed(object sender, SelectionChangedEventArgs e) => ApplyFilter();
+    private void Sort_Changed(object sender, SelectionChangedEventArgs e) => ApplyFilter();
     private void Search_Changed(object sender, TextChangedEventArgs e) => ApplyFilter();
     private void Close_Click(object sender, RoutedEventArgs e) => Close();
 
@@ -254,6 +283,8 @@ public sealed partial class AppManagerDialog : Window
             if (r.Ok)
             {
                 _lastUndo = r.Undo;
+                if (_lastUndo is not null)
+                    UndoBtn.Content = L10n.F("apps.btn.undo.pkg", _lastUndo.PackageName);
                 AddLog(L10n.F("apps.log.action.ok", ActionName(kind), row.Package,
                     string.IsNullOrWhiteSpace(r.Output) ? "ok" : r.Output.Trim()));
             }
@@ -289,6 +320,7 @@ public sealed partial class AppManagerDialog : Window
             if (r.Ok)
             {
                 _lastUndo = null;
+                UndoBtn.Content = L10n.Btn("apps.btn.undo");
                 AddLog(L10n.F("apps.log.undo.ok", ActionName(undo.Kind), undo.PackageName));
             }
             else

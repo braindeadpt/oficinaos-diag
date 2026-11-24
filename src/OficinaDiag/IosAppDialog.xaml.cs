@@ -1,5 +1,6 @@
 using System.Runtime.InteropServices;
 using System.Windows;
+using System.Windows.Automation;
 using System.Windows.Controls;
 using System.Windows.Interop;
 using OficinaDiag.Devices;
@@ -31,6 +32,7 @@ public sealed partial class IosAppDialog : Window
     private AppRow? _selected;
     private bool _running;
     private static readonly string[] FilterModes = ["all", "user", "system"];
+    private static readonly string[] SortModes = ["bundle", "kind", "version", "size", "note"];
 
     private const uint MonitorDefaultToNearest = 2;
 
@@ -104,6 +106,19 @@ public sealed partial class IosAppDialog : Window
         };
         FilterBox.ItemsSource = labels;
         FilterBox.SelectedIndex = 0;
+        ColBundle.Text = L10n.T("apps.col.bundle");
+        ColKind.Text = L10n.T("apps.col.kind");
+        ColVersion.Text = L10n.T("apps.col.version");
+        ColSize.Text = L10n.T("apps.col.size");
+        ColNote.Text = L10n.T("apps.col.note");
+        SortBox.ItemsSource = new[]
+        {
+            L10n.T("apps.sort.bundle"), L10n.T("apps.sort.kind"), L10n.T("apps.sort.version"),
+            L10n.T("apps.sort.size"), L10n.T("apps.sort.note"),
+        };
+        SortBox.SelectedIndex = 0;
+        AutomationProperties.SetName(SearchBox, L10n.T("iosapps.search"));
+        AutomationProperties.SetName(AppsList, L10n.T("iosapps.title"));
         AddLog(L10n.T("iosapps.log.loading"));
         _ = RefreshAsync();
     }
@@ -191,8 +206,21 @@ public sealed partial class IosAppDialog : Window
         if (search.Length > 0)
             rows = rows.Where(r => r.BundleId.Contains(search, StringComparison.OrdinalIgnoreCase)
                 || r.Entry.DisplayName.Contains(search, StringComparison.OrdinalIgnoreCase));
-        AppsList.ItemsSource = rows.ToList();
+        AppsList.ItemsSource = SortRows(rows);
         if (AppsList.Items.Count == 0) DetailsText.Text = L10n.T("apps.empty");
+    }
+
+    private List<AppRow> SortRows(IEnumerable<AppRow> rows)
+    {
+        var mode = SortModes[Math.Clamp(SortBox.SelectedIndex, 0, SortModes.Length - 1)];
+        return mode switch
+        {
+            "kind" => rows.OrderBy(r => r.Kind, StringComparer.OrdinalIgnoreCase).ThenBy(r => r.BundleId, StringComparer.OrdinalIgnoreCase).ToList(),
+            "version" => rows.OrderBy(r => r.Version, StringComparer.OrdinalIgnoreCase).ThenBy(r => r.BundleId, StringComparer.OrdinalIgnoreCase).ToList(),
+            "size" => rows.OrderBy(r => r.Size, StringComparer.OrdinalIgnoreCase).ThenBy(r => r.BundleId, StringComparer.OrdinalIgnoreCase).ToList(),
+            "note" => rows.OrderBy(r => r.Note, StringComparer.OrdinalIgnoreCase).ThenBy(r => r.BundleId, StringComparer.OrdinalIgnoreCase).ToList(),
+            _ => rows.OrderBy(r => r.BundleId, StringComparer.OrdinalIgnoreCase).ToList(),
+        };
     }
 
     private void AppsList_Changed(object sender, SelectionChangedEventArgs e)
@@ -218,6 +246,7 @@ public sealed partial class IosAppDialog : Window
 
     private async void Refresh_Click(object sender, RoutedEventArgs e) => await RefreshAsync();
     private void Filter_Changed(object sender, SelectionChangedEventArgs e) => ApplyFilter();
+    private void Sort_Changed(object sender, SelectionChangedEventArgs e) => ApplyFilter();
     private void Search_Changed(object sender, TextChangedEventArgs e) => ApplyFilter();
     private void Close_Click(object sender, RoutedEventArgs e) => Close();
 
