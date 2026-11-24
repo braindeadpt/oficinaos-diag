@@ -133,6 +133,9 @@ public static class ReportBuilder
             {
                 brand = r.Device.Brand,
                 model = r.Device.Model,
+                // Nome comercial ("iPhone 14 Pro") — a Cloud aceita-o desde
+                // oficinaos-cloud#61 e a app usa-o para o pré-orçamento.
+                marketingName = r.Device.MarketingName,
                 os = r.Device.Os,
                 osVersion = r.Device.OsVersion,
                 serial = r.Device.Serial,
