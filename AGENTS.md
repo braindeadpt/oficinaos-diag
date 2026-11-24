@@ -14,17 +14,25 @@ certo com o runner `windows-2022` do CI:
 
 ### Fluxo correto quando a UI muda intencionalmente
 
-1. Faz push do código com a mudança de UI — o job Windows do CI falha
-   nos baselines mas **publica o artifact `ui-shots`** com as capturas
-   renderizadas no próprio runner (a referência correta).
-2. Descarrega o artifact do run falhado:
+1. Abre a PR **antes** de esperar pelo CI — o workflow só corre em
+   `pull_request`, por isso um push para uma branch sem PR não gera
+   capturas nenhumas.
+2. Quando o job Windows terminar (pass ou fail — o artifact
+   `ui-shots` é publicado com `if: always()`), descarrega-o. Se os
+   baselines falharam, o run está vermelho; se passarem mas queres
+   confirmar, o artifact existe na mesma:
 
    ```powershell
+   gh run list -R braindeadpt/oficinaos-diag --branch <branch> --limit 1
    gh run download <run-id> -R braindeadpt/oficinaos-diag -n ui-shots -D out\uishots-ci
    ```
 
 3. Substitui `tools/UiShots/baselines/*.png` pelas capturas do artifact
-   (ignora `diff-*`). Confirma que são 60 PNGs.
+   (ignora `diff-*`). O conjunto de nomes tem de bater com o que o
+   harness produz — **não assumas um número fixo**: se adicionaste ou
+   removeste capturas no código, há baselines a mais ou a menos de
+   propósito; apaga os órfãos e garante que cada captura nova tem o
+   seu baseline.
 4. Commit + push — o CI volta a passar porque baseline e render são o
    mesmo ambiente.
 
@@ -32,11 +40,13 @@ Notas:
 
 - Se o CI passa, os baselines já batem certo — não precisas de fazer
   nada (o artifact existe na mesma, mas não há o que atualizar).
-- **`tools/atualizar-baselines-ui.ps1` é armadilhoso**: corre o harness
-  local (que produz renders diferentes do CI em Win11) e, se correr sem
-  falhas, **apaga os baselines e substitui-os pelos renders locais** —
-  exatamente o que não queremos commitar. Só o uses para iterar no
-  harness; nunca deixes os seus PNGs irem para um commit.
+- **`tools/atualizar-baselines-ui.ps1` NUNCA é o caminho para atualizar
+  baselines**: corre o harness local (que produz renders diferentes do
+  CI em Win11) e, se correr sem falhas, **apaga os baselines
+  versionados e substitui-os pelos renders locais** — exatamente o que
+  não queremos commitar. Serve só para iterar no harness; se o
+  executaste, faz `git checkout -- tools/UiShots/baselines/` antes de
+  commitar seja o que for.
 
 ### Flakiness conhecida do harness
 
