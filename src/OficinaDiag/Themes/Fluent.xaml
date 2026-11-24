@@ -50,7 +50,8 @@
                             <Setter TargetName="bd" Property="BorderBrush" Value="{DynamicResource AccentBrush}"/>
                         </Trigger>
                         <Trigger Property="IsPressed" Value="True">
-                            <Setter TargetName="bd" Property="Background" Value="#D9EAE8"/>
+                            <Setter TargetName="bd" Property="Background" Value="#DCE7F7"/>
+                            <Setter TargetName="bd" Property="BorderBrush" Value="{DynamicResource AccentBrush}"/>
                         </Trigger>
                         <!-- só a cor: subir a espessura empurrava o conteúdo 1px
                              a cada tabulação. -->

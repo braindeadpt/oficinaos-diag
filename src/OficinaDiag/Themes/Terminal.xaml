@@ -10,7 +10,7 @@
     <SolidColorBrush x:Key="FaintBrush" Color="#4a9a4a"/>
     <SolidColorBrush x:Key="LineBrush" Color="#1d4a1d"/>
     <SolidColorBrush x:Key="HoverBrush" Color="#123312"/>
-    <SolidColorBrush x:Key="DisabledBrush" Color="#2a5a2a"/>
+    <SolidColorBrush x:Key="DisabledBrush" Color="#3f7f3f"/>
     <SolidColorBrush x:Key="AccentBrush" Color="#33ff33"/>
     <SolidColorBrush x:Key="WarnBrush" Color="#ffd23f"/>
     <SolidColorBrush x:Key="FailBrush" Color="#ff5555"/>
@@ -20,7 +20,7 @@
     <SolidColorBrush x:Key="HeaderDimBrush" Color="#7fd77f"/>
     <FontFamily x:Key="UiFont">Consolas</FontFamily>
     <FontFamily x:Key="MonoFont">Consolas</FontFamily>
-    <sys:Double x:Key="ScanlineOpacity">0.07</sys:Double>
+    <sys:Double x:Key="ScanlineOpacity">0.05</sys:Double>
 
     <Style x:Key="TermButton" TargetType="Button">
         <Setter Property="Background" Value="Transparent"/>
