@@ -94,7 +94,13 @@ public sealed class DeviceDetector : IDisposable
         var needIos = !found.Any(d => d.Kind == DeviceKind.Ios && d.State == "ready");
         if (needAndroid || needIos)
         {
-            var modes = ServiceModeUsb.List();
+            // Sem try/catch uma falha aqui (ex.: System.Management não resolve
+            // no contexto da app) propagava-se para Poll e deitava fora a
+            // ronda inteira — o Samsung que o adb já tinha encontrado nunca
+            // chegava ao _seen. Tal como adb e iOS, esta fonte é best-effort.
+            IReadOnlyList<DetectedDevice> modes;
+            try { modes = ServiceModeUsb.List(); }
+            catch { modes = Array.Empty<DetectedDevice>(); }
             if (needAndroid) found.AddRange(modes.Where(d => d.Kind == DeviceKind.Android));
             if (needIos) found.AddRange(modes.Where(d => d.Kind == DeviceKind.Ios));
         }
