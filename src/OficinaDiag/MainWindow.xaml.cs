@@ -216,6 +216,16 @@ public partial class MainWindow : Window
         InsuranceButton.Content = L10n.Btn("btn.insurance");
         LogButton.Content = L10n.Btn("btn.log");
         ConfigButton.Content = L10n.Btn("btn.settings");
+        GroupDeviceText.Text = L10n.T("group.device");
+        GroupRecordsText.Text = L10n.T("group.records");
+        GroupDeliverText.Text = L10n.T("group.deliver");
+        GroupSystemText.Text = L10n.T("group.system");
+        EmptyTitle.Text = L10n.T("empty.title");
+        EmptyDesc.Text = L10n.T("empty.desc");
+        EmptyStep1.Text = L10n.T("empty.step1");
+        EmptyStep2.Text = L10n.T("empty.step2");
+        EmptyStep3.Text = L10n.T("empty.step3");
+        BusyCancelButton.Content = L10n.Btn("busy.cancel");
         // Tema novo = brushes novas: as linhas da lista foram pintadas com as
         // antigas (verde néon sobre fundo branco no tema Fluent).
         RefreshResults();
@@ -223,6 +233,18 @@ public partial class MainWindow : Window
             UpdateButton.Content = ThemeManager.IsTerminal
                 ? $"[ {L10n.F("btn.update", _update.Tag)} ]"
                 : L10n.F("btn.update", _update.Tag);
+    }
+
+    private void SyncReportButtons()
+    {
+        var hasReport = _report is not null;
+        ExportButton.IsEnabled = hasReport;
+        SendButton.IsEnabled = hasReport;
+        InsuranceButton.IsEnabled = hasReport;
+        CompareButton.IsEnabled = hasReport;
+        LabelButton.IsEnabled = hasReport;
+        ClientButton.IsEnabled = hasReport;
+        UpdateAiButtons();
     }
 
     private void Log(string line)

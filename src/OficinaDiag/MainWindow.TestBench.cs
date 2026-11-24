@@ -39,6 +39,7 @@ public partial class MainWindow : Window
             await _tunnel.ClearAsync(); // túnel da sessão anterior não fica pendurado
             _testServer?.Dispose(); // sessão anterior abandonada — liberta a porta
             var server = _testServer = new TestServer();
+            BeginBusy(L10n.T("busy.test"), cancellable: false);
             if (!server.Start())
             {
                 _testServer = null;
@@ -127,6 +128,7 @@ public partial class MainWindow : Window
             }
         }
         catch (Exception ex) { Log(L10n.F("log.test.fail", ex.Message)); }
+        finally { EndBusy(); }
     }
 
     /// <summary>SCAN+ — sessão guiada de potência na janela bancada.</summary>

@@ -86,10 +86,11 @@ public sealed class IosCollector
     private static SemaphoreSlim LockFor(string udid) =>
         DeviceLocks.GetOrAdd(udid, _ => new SemaphoreSlim(1, 1));
 
-    public async Task<DeviceReport> CollectAsync(string udid)
+    public async Task<DeviceReport> CollectAsync(string udid, CancellationToken ct = default)
     {
+        ct.ThrowIfCancellationRequested();
         var gate = LockFor(udid);
-        if (!await gate.WaitAsync(TimeSpan.FromSeconds(5)))
+        if (!await gate.WaitAsync(TimeSpan.FromSeconds(5), ct))
         {
             var busy = new DeviceReport { Platform = "ios" };
             busy.Device.Serial = udid;
@@ -97,16 +98,17 @@ public sealed class IosCollector
                 "USB ocupado — outro scan deste iPhone está a correr; tenta de novo em instantes");
             return busy;
         }
-        try { return await CollectLockedAsync(udid); }
+        try { return await CollectLockedAsync(udid, ct); }
         finally { gate.Release(); }
     }
 
-    private async Task<DeviceReport> CollectLockedAsync(string udid)
+    private async Task<DeviceReport> CollectLockedAsync(string udid, CancellationToken ct)
     {
         var r = new DeviceReport { Platform = "ios" };
         r.Device.Serial = udid;
 
-        var cts = new CancellationTokenSource();
+        var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+        var cts = CancellationTokenSource.CreateLinkedTokenSource(ct, timeout.Token);
         var collect = Task.Run(() =>
         {
             if (_idevice.idevice_new(out var device, udid) != iDeviceError.Success)
@@ -244,8 +246,9 @@ public sealed class IosCollector
 
         // O handshake lockdownd pode bloquear para sempre quando outra app do
         // Windows (Fotos/AutoPlay) tem o iPhone ocupado — timeout defensivo.
-        if (await Task.WhenAny(collect, Task.Delay(TimeSpan.FromSeconds(30))) != collect)
+        if (await Task.WhenAny(collect, Task.Delay(Timeout.Infinite, cts.Token)) != collect)
         {
+            if (ct.IsCancellationRequested) throw new OperationCanceledException(ct);
             cts.Cancel(); // a task não morre na hora, mas salta as secções restantes
 
             // A task órfã pode estar a meio de CollectBatteryHealth/Gestalt e
@@ -276,7 +279,7 @@ public sealed class IosCollector
 
         // A task órfã pode continuar viva (o Kill só mata os filhos que o
         // token apanhou): o CTS só pode ser libertado quando ela terminar.
-        _ = collect.ContinueWith(_ => cts.Dispose(), TaskScheduler.Default);
+        _ = collect.ContinueWith(_ => { cts.Dispose(); timeout.Dispose(); }, TaskScheduler.Default);
 
         // Inventário de apps via installation_proxy — "o que ocupa espaço"
         // no iPhone sem jailbreak (Fase D do Diag Pro). Corre DEPOIS do
