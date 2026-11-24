@@ -65,19 +65,21 @@ Notas:
 
 - Se já executaste o script por engano, `git checkout --` **não chega**:
   ele restaura os PNGs rastreados mas não apaga os PNGs novos que o
-  script copiou (untracked) nem desfaz o que já foi `git add`. O
-  restauro completo é:
+  script copiou (untracked) nem desfaz o que já foi `git add`. Como o
+  script **só toca em `*.png`**, o restauro seguro também é — repor a
+  pasta inteira apagaria trabalho local que o script não alterou
+  (README, PNGs novos por commitar):
 
   ```powershell
-  git status tools/UiShots/baselines/   # vê o que está modificado/não rastreado
-  git restore --source=HEAD --staged --worktree tools/UiShots/baselines/
-  git clean -fd tools/UiShots/baselines/
+  git status -- tools/UiShots/baselines/   # inspeção primeiro
+  # repõe SÓ os PNGs rastreados (README e outros ficheiros ficam intactos)
+  git restore --source=HEAD --staged --worktree -- ":(glob)tools/UiShots/baselines/*.png"
+  # remove SÓ os PNGs não rastreados que o script copiou
+  git clean -f -- ":(glob)tools/UiShots/baselines/*.png"
   ```
 
-  **⚠️ O `git clean -fd` apaga TODOS os ficheiros untracked da pasta** —
-  incluindo PNGs novos que queiras manter (p.ex. um baseline novo que
-  ainda não commitaste). Se houver algo a salvar, move-o ou commita-o
-  antes de limpar.
+  Na dúvida, o caminho mais seguro é clonar o repo de novo — é só uma
+  pasta de baselines.
 
 ### Flakiness conhecida do harness
 
