@@ -7,8 +7,27 @@ namespace OficinaDiag;
 /// </summary>
 public partial class App : Application
 {
+    /// <summary>
+    /// Mantém o mutex de instância única vivo enquanto a app corre — se o
+    /// GC o recolhesse, o handle fechava e uma segunda instância entrava.
+    /// </summary>
+    private Mutex? _singleInstance;
+
     protected override void OnStartup(StartupEventArgs e)
     {
+        // Instância única (#62): durante o relançamento tardio do updater
+        // correram duas cópias em simultâneo, a disputar o adb e os
+        // dispositivos. O namespace Local é por sessão — outro utilizador
+        // no mesmo PC não é bloqueado. A segunda instância sai em silêncio:
+        // a janela da primeira já está aberta e é essa que interessa.
+        _singleInstance = new Mutex(true, @"Local\OficinaDiag.SingleInstance", out var primeira);
+        if (!primeira)
+        {
+            _singleInstance.Dispose();
+            Shutdown();
+            return;
+        }
+
         // tema + idioma antes de qualquer janela — DynamicResource resolve no load
         var cfg = Cloud.DiagConfig.Load();
         ThemeManager.Apply(cfg.Theme ?? ThemeManager.Fluent);

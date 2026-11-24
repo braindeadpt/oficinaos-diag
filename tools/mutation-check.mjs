@@ -16,7 +16,7 @@
 // Saída: 0 = todos mortos · 1 = algum sobreviveu ou não aplicou ·
 //        2 = não consegui repor um ficheiro (para tudo e grita).
 
-import { readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { join } from "node:path";
 
@@ -126,26 +126,67 @@ const mutantes = [
     filtro: "FailureGuardTests",
     prova: "FailureGuardTests",
   },
-  // Não há mutante para o rollback: com um ficheiro em uso o Copy-Item falha
-  // antes de escrever nada, e desligar as duas vias de reposição deixa o
-  // harness verde (runs 43921766213, 43922457138 e 43923007685). O rollback
-  // fica como defesa para a cópia que já escreveu — caso que o runner não
-  // consegue reproduzir.
+  // O rollback passou a ser exercitado a sério no #62: o robocopy copia o
+  // que pode (exe/DLL passam a v9) e só falha no ficheiro trancado — a
+  // tranca da prova é FileShare.Read, que deixa o backup ler mas nega a
+  // escrita. Sem o /MIR de reposição o harness fica com exe-v9 e falha.
   {
     nome: "o backup do staging não copia a árvore",
     ficheiro: "src/OficinaDiag.Core/Cloud/UpdateChecker.cs",
-    de: `            "  Copy-Item $appDir $bak -Recurse -Force -ErrorAction Stop",`,
+    de: String.raw`            "  & \"$env:SystemRoot\\System32\\robocopy.exe\" $appDir $bak /E /XD '*.bak-*' /XF 'oficinaos-diag.config.json' /XJ /R:0 /W:0 /NFL /NDL /NJH /NJS | Out-File $log -Append",`,
     para: `            "  New-Item -ItemType Directory -Force $bak | Out-Null",`,
     guarda: "uishots",
     prova: "staging: falha a meio deixa o build anterior",
   },
   {
+    nome: "o rollback do staging não repõe o backup",
+    ficheiro: "src/OficinaDiag.Core/Cloud/UpdateChecker.cs",
+    de: String.raw`            "    & \"$env:SystemRoot\\System32\\robocopy.exe\" $bak $appDir /MIR /XD '*.bak-*' /XF 'oficinaos-diag.config.json' /XJ /R:0 /W:0 /NFL /NDL /NJH /NJS | Out-Null",`,
+    para: `            "    # mutante: rollback desligado",`,
+    guarda: "uishots",
+    prova: "staging: falha a meio deixa o build anterior",
+  },
+  // O /XF 'oficinaos-diag.config.json' é o que tira o config portátil do
+  // /MIR: sem ele na aplicação o config é purgado logo no sucesso; sem ele
+  // no rollback é purgado outra vez na reposição (é "extra" face ao
+  // backup). Cada mutante morre na sua prova de preservação.
+  {
+    nome: "o update espelha por cima do config portátil",
+    ficheiro: "src/OficinaDiag.Core/Cloud/UpdateChecker.cs",
+    de: String.raw`            "  & \"$env:SystemRoot\\System32\\robocopy.exe\" $stage $appDir /MIR /XD '*.bak-*' /XF 'oficinaos-diag.config.json' /XJ /R:0 /W:0 /NFL /NDL /NJH /NJS | Out-File $log -Append",`,
+    para: String.raw`            "  & \"$env:SystemRoot\\System32\\robocopy.exe\" $stage $appDir /MIR /XD '*.bak-*' /XJ /R:0 /W:0 /NFL /NDL /NJH /NJS | Out-File $log -Append",`,
+    guarda: "uishots",
+    prova: "staging: o config portátil sobrevive ao espelho",
+  },
+  {
+    nome: "o rollback do staging apaga o config portátil",
+    ficheiro: "src/OficinaDiag.Core/Cloud/UpdateChecker.cs",
+    de: String.raw`            "    & \"$env:SystemRoot\\System32\\robocopy.exe\" $bak $appDir /MIR /XD '*.bak-*' /XF 'oficinaos-diag.config.json' /XJ /R:0 /W:0 /NFL /NDL /NJH /NJS | Out-Null",`,
+    para: String.raw`            "    & \"$env:SystemRoot\\System32\\robocopy.exe\" $bak $appDir /MIR /XD '*.bak-*' /XJ /R:0 /W:0 /NFL /NDL /NJH /NJS | Out-Null",`,
+    guarda: "uishots",
+    prova: "staging: a falha preserva o config portátil",
+  },
+  {
     nome: "a falha do staging fica sem aviso",
     ficheiro: "src/OficinaDiag.Core/Cloud/UpdateChecker.cs",
-    de: `            "    Avisar-Falha 'a cópia do staging falhou a meio'",`,
-    para: `            "    # sem aviso para o técnico",`,
+    de: `            "      Avisar-Falha 'a aplicação do staging falhou a meio'",`,
+    para: `            "      # mutante: sem aviso para o técnico",`,
     guarda: "uishots",
     prova: "staging: a falha fica no marcador que o arranque mostra",
+  },
+  // A espera pelo handle é o que impede o relançamento com a app viva:
+  // WaitForExit(0) devolve já e o script avança para a cópia — a prova do
+  // processo vivo apanha-o na janela negativa: o relançamento não pode
+  // existir enquanto o sleeper vive, e com o mutante existe.
+  {
+    nome: "o updater não espera pelo processo vivo",
+    ficheiro: "src/OficinaDiag.Core/Cloud/UpdateChecker.cs",
+    de: "$alvo.WaitForExit()",
+    // Sem comentário no `para`: `//` ou `#` dentro da linha gerada comia a
+    // chave de fecho do `if` e o script deixava de fazer parse.
+    para: "$alvo.WaitForExit(0)",
+    guarda: "uishots",
+    prova: "staging: a atualização espera pelo processo vivo antes de relançar",
   },
   {
     nome: "Paint do checklist com indexer",
@@ -363,15 +404,29 @@ function correrGuarda(m) {
   if (build.codigo !== 0) return { vermelho: false, motivo: "o harness não compila" };
   const exe = join(raiz, "tools", "UiShots", "bin", "Release", "net10.0-windows", "UiShots.exe");
   const destino = join(raiz, "out-store", "mutation-ui-shots");
+  // Todos os mutantes partilham o destino: se este executável sair antes
+  // de o Main reescrever o relatório, o provas.txt do mutante anterior
+  // ficava — e dois mutantes do staging procuram a MESMA verificação, por
+  // isso a falha herdada declarava o segundo morto sem ele ter corrido.
+  // Apagar antes de cada corrida garante que o veredito só lê o relatório
+  // desta execução (ou nenhum, se o harness nem chegou ao Main).
+  const provasFile = join(destino, "provas.txt");
+  rmSync(provasFile, { force: true });
   const r = mundo(exe, [destino]);
   if (r.erro) return { vermelho: false, motivo: `não arrancou: ${r.erro.message}` };
-  const falha = r.saida.includes("[FALHA]") && r.saida.includes(m.prova);
+  // O veredito lê-se do provas.txt, não do stdout: o Console do Windows
+  // escreve na codepage OEM e o spawnSync descodifica como UTF-8 — uma
+  // prova com acentos («portátil», «relançar») nunca batia certa na saída
+  // e um mutante morto saía «sobreviveu». O provas.txt é UTF-8 por
+  // construção e o harness reescreve-o a cada corrida.
+  const provas = existsSync(provasFile) ? readFileSync(provasFile, "utf8") : "";
+  const falha = provas.includes(`[FALHA] ${m.prova}`);
   return {
     vermelho: r.codigo !== 0 && falha,
     motivo: r.codigo === 0
       ? "harness continuou verde"
       : falha ? `[FALHA] ${m.prova}` : "harness vermelho, mas sem a verificação esperada",
-    falhas: r.saida.split("\n").filter((l) => l.includes("[FALHA]")),
+    falhas: provas.split("\n").filter((l) => l.includes("[FALHA]")),
     cauda: r.saida.split("\n").filter((l) => l.trim().length > 0),
   };
 }

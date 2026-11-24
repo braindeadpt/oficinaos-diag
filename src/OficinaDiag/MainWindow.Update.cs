@@ -39,6 +39,12 @@ public partial class MainWindow : Window
 
     private async Task CheckForUpdateAsync()
     {
+        // A versão comparada é a do assembly — nos builds dev é o <Version>
+        // do csproj, que tem de ser >= o último tag (tools/version-check.mjs
+        // falha o CI se ficar para trás). Não se podia usar o sufixo +sha do
+        // InformationalVersion para detetar dev builds: as releases também
+        // o trazem (v0.4.0 sai como "0.4.0+bbd9b6f…"), por isso essa via
+        // congelava as actualizações de todas as instalações (#62).
         var current = System.Reflection.Assembly.GetExecutingAssembly().GetName().Version
             ?? new Version(0, 0, 0);
         var info = await Cloud.UpdateChecker.CheckAsync(current);

@@ -23,6 +23,13 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
+      # O push do tag não dispara o ci.yml — a guarda do <Version> vs último
+      # release tem de correr aqui também, ou uma release saía com os csproj
+      # atrás do tag anterior e os checks verdes em main não a invalidavam
+      # (incidente #62). Tal como no ci.yml corre antes de qualquer build.
+      - name: Versão dos csproj vs último release
+        run: node tools/version-check.mjs
+
       - uses: actions/setup-dotnet@v6
         with:
           dotnet-version: "10.0.x"

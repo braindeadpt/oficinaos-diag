@@ -44,6 +44,13 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
+      # O <Version> dos csproj é o que os builds dev reportam ao updater —
+      # atrás do último tag, o updater oferecia "actualizações" que eram
+      # reposições de features (incidente #62). Tal como o plan-check, corre
+      # nos dois sistemas: a regra é sobre ficheiros e tags, não plataforma.
+      - name: Versão dos csproj vs último release
+        run: node tools/version-check.mjs
+
       - uses: actions/setup-dotnet@v6
         with:
           dotnet-version: "10.0.x"

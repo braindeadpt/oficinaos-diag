@@ -1497,7 +1497,8 @@ internal static class Program
         var raiz = Path.Combine(Path.GetFullPath(destino), "staging");
         if (Directory.Exists(raiz)) Directory.Delete(raiz, true);
 
-        // O PID já saiu: o Wait-Process do script volta logo.
+        // O PID já saiu: o Get-Process do script não encontra nada e a espera
+        // salta-se — o mesmo atalho que o processo real já morto tomaria.
         using var saiu = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("cmd.exe", "/c exit")
             { CreateNoWindow = true, UseShellExecute = false });
         saiu!.WaitForExit();
@@ -1507,14 +1508,28 @@ internal static class Program
         // chamado `zzz`. O zip traz uma pasta `zzz`, e é aí que a cópia
         // rebenta — depois de já ter escrito o exe e a DLL, ou seja, mesmo a
         // meio.
+        //
+        // O appDir passado ao script vai COM o separador final, como o
+        // AppContext.BaseDirectory de produção: é ele que faz o backup
+        // `.bak-<guid>` nascer DENTRO da instalação — o layout que envenenou
+        // o #62 e que o /XD '*.bak-*' tem de proteger durante a aplicação e
+        // o rollback. O config portátil viaja junto: é o único dado do
+        // utilizador em appDir (DiagConfig.cs) e o /XF do script é o que o
+        // tira do espelho — a prova tem de o ver sobreviver, não só os
+        // binários. O `.bak-velho` é o resto de um updater antigo: o script
+        // tem de o limpar antes de copiar.
+        const string configJson = "{\"Language\":\"pt\",\"ShopName\":\"Loja da Prova\"}";
         string Montar(string nome)
         {
             var app = Path.Combine(raiz, nome, "app");
             Directory.CreateDirectory(Path.Combine(app, "Data"));
+            Directory.CreateDirectory(Path.Combine(app, ".bak-velho"));
+            File.WriteAllText(Path.Combine(app, ".bak-velho", "lixo.txt"), "lixo");
             File.WriteAllText(Path.Combine(app, PackagePaths.AppExeName), "exe-v2");
             File.WriteAllText(Path.Combine(app, "OficinaDiag.Core.dll"), "core-v2");
             File.WriteAllText(Path.Combine(app, "zzz"), "era-um-ficheiro");
             File.WriteAllText(Path.Combine(app, "Data", "models.json"), "[]");
+            File.WriteAllText(Path.Combine(app, "oficinaos-diag.config.json"), configJson);
             return app;
         }
 
@@ -1531,7 +1546,7 @@ internal static class Program
             w.Write(texto);
         }
 
-        (int Codigo, string Registo) Correr(string app, byte[] zip, string tag)
+        (int Codigo, string Registo, string? Espera) Correr(string app, byte[] zip, string tag, bool processoVivo = false)
         {
             var dir = Path.Combine(Path.GetDirectoryName(app)!, "execucao-" + tag);
             Directory.CreateDirectory(dir);
@@ -1539,12 +1554,56 @@ internal static class Program
             File.WriteAllBytes(caminhoZip, zip);
             var log = Path.Combine(dir, "update.log");
             var ps1 = Path.Combine(dir, "update.ps1");
+
+            // PID morto por omissão: o Get-Process do script não encontra
+            // nada e a espera salta-se — o atalho do processo real já morto.
+            var pidDoProcesso = pid;
+            string? relancamento = null;
+            string? sinal = null;
+            System.Diagnostics.Process? appViva = null;
+            var relancarProva = "Write-Output 'relancar desligado na prova'";
+            if (processoVivo)
+            {
+                // O script só espera por um processo com o nome do exe da
+                // app — um powershell renomeado faz de conta. A espera
+                // mede-se por ordem, não por relógio: o sleeper fica VIVO à
+                // espera de um ficheiro-sinal que só a prova escreve (um
+                // WaitForExit(0) relançaria com ele vivo e a janela
+                // negativa apanhar o marcador), e o sleeper.ps1 tem teto de
+                // 2 min para não ficar órfão se a prova morrer a meio.
+                var sleeperExe = Path.Combine(dir, PackagePaths.AppExeName);
+                File.Copy(Path.Combine(Environment.SystemDirectory, "WindowsPowerShell", "v1.0", "powershell.exe"), sleeperExe);
+                sinal = Path.Combine(dir, "processo-pode-sair.txt");
+                relancamento = Path.Combine(dir, "relancamento.txt");
+                var sleeperPs1 = Path.Combine(dir, "sleeper.ps1");
+                // WriteUpdateScript e não WriteAllText: o PS 5.1 lê um .ps1
+                // sem BOM como ANSI e um caminho com acentos (João) ficava
+                // truncado — o sleeper nunca via o sinal e a prova reprovava
+                // uma espera correta.
+                UpdateChecker.WriteUpdateScript(sleeperPs1,
+                    "$porta = '" + UpdateChecker.PsLiteral(sinal) + "'" + Environment.NewLine
+                    + "for ($i = 0; $i -lt 480; $i++) {" + Environment.NewLine
+                    + "  if (Test-Path $porta) { break }" + Environment.NewLine
+                    + "  Start-Sleep -Milliseconds 250" + Environment.NewLine
+                    + "}" + Environment.NewLine);
+                appViva = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(sleeperExe,
+                    $"-NoProfile -ExecutionPolicy Bypass -File \"{sleeperPs1}\"")
+                { CreateNoWindow = true, UseShellExecute = false })!;
+                pidDoProcesso = appViva.Id;
+                relancarProva = $"'relancou' | Out-File '{UpdateChecker.PsLiteral(relancamento)}' -Encoding ascii";
+            }
+
             // Só o relançar fica desligado: um Start-Process sobre um ficheiro
             // de texto chamado .exe não é a app, e a prova não quer processos.
-            UpdateChecker.WriteUpdateScript(ps1, UpdateChecker.BuildUpdateScript(tag, app, caminhoZip, log, pid)
-                // Instrução, não comentário: um `#` comia a chave de fecho do
-                // `if (Test-Path $exe) { ... }` e o script não fazia parse.
-                .Replace("Start-Process $exe", "Write-Output 'relancar desligado na prova'"));
+            // O appDir vai COM o separador final — é o que o
+            // AppContext.BaseDirectory de produção entrega sempre, e é o que
+            // faz o `$bak` do script nascer dentro da instalação (o layout
+            // real do #62). Sem ele a prova corria com o backup fora e o
+            // /XD '*.bak-*' nunca era exercitado a sério.
+            // Instrução, não comentário: um `#` comia a chave de fecho do
+            // `if (Test-Path $exe) { ... }` e o script não fazia parse.
+            UpdateChecker.WriteUpdateScript(ps1, UpdateChecker.BuildUpdateScript(tag, app + Path.DirectorySeparatorChar, caminhoZip, log, pidDoProcesso)
+                .Replace("Start-Process $exe", relancarProva));
             using var p = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("powershell.exe",
                 $"-NoProfile -ExecutionPolicy Bypass -File \"{ps1}\"")
             {
@@ -1553,10 +1612,36 @@ internal static class Program
                 RedirectStandardOutput = true,
                 RedirectStandardError = true,
             });
+            string? espera = null;
+            if (processoVivo)
+            {
+                // Não se lê a saída ainda: ela só acaba quando o processo
+                // sai, e é a saída dele que a prova vem a seguir — ler aqui
+                // era bloquear antes de medir a espera.
+                try
+                {
+                    espera = ProvaDaEspera(p!, relancamento!, sinal!, log);
+                }
+                finally
+                {
+                    // O sleeper já não é preciso em nenhum desfecho — o
+                    // sinal liberta-o à vez (o teto do sleeper.ps1 cobre o
+                    // caso de esta linha nem correr).
+                    try { File.WriteAllText(sinal!, "fim"); } catch { }
+                    if (appViva is not null)
+                    {
+                        if (!appViva.WaitForExit(15_000))
+                        {
+                            try { appViva.Kill(); } catch { }
+                        }
+                        appViva.Dispose();
+                    }
+                }
+            }
             var saida = p!.StandardOutput.ReadToEnd() + p.StandardError.ReadToEnd();
             p.WaitForExit();
             var registo = File.Exists(log) ? File.ReadAllText(log) : "";
-            return (p.ExitCode, saida + registo);
+            return (p.ExitCode, saida + registo, espera);
         }
 
         var appOk = Montar("sucesso");
@@ -1568,10 +1653,13 @@ internal static class Program
             Escrever(a, "sub/novo.dll", "novo-v3");
         }), "v9.9.8");
         // As medidas no log: sem elas uma falha desta prova obriga a outra
-        // corrida inteira só para saber qual das condições caiu.
+        // corrida inteira só para saber qual das condições caiu. O backup
+        // `.bak-<guid>` nasce dentro do appDir (appDir termina em '\', como
+        // em produção) — conta-se lá dentro, não ao lado.
         Console.WriteLine($"  staging sucesso: exit={ok.Codigo} exe='{LerTexto(Path.Combine(appOk, PackagePaths.AppExeName))}' "
             + $"dll='{LerTexto(Path.Combine(appOk, "OficinaDiag.Core.dll"))}' sub={Directory.Exists(Path.Combine(appOk, "sub"))} "
-            + $"bak={Directory.GetDirectories(Path.GetDirectoryName(appOk)!, "app.bak-*").Length} "
+            + $"bak={Directory.GetDirectories(appOk, ".bak-*").Length} "
+            + $"config='{LerTexto(Path.Combine(appOk, "oficinaos-diag.config.json"))}' "
             + $"log='{ok.Registo.Replace(Environment.NewLine, " | ").Trim()}'");
         Verificar("staging: sucesso troca a árvore e limpa o staging",
             ok.Codigo == 0
@@ -1579,7 +1667,14 @@ internal static class Program
             && File.ReadAllText(Path.Combine(appOk, "OficinaDiag.Core.dll")) == "core-v3"
             && File.Exists(Path.Combine(appOk, "sub", "novo.dll"))
             && !File.Exists(Path.Combine(appOk, UpdateChecker.UpdateFailureMarkerName))
-            && Directory.GetDirectories(Path.GetDirectoryName(appOk)!, "app.bak-*").Length == 0);
+            && Directory.GetDirectories(appOk, ".bak-*").Length == 0);
+
+        // O config portátil é o único dado do utilizador em appDir: o /XF
+        // do script tira-o do /MIR — sem ele as preferências e o
+        // emparelhamento Pro iam-se na atualização e o backup era apagado.
+        Verificar("staging: o config portátil sobrevive ao espelho",
+            File.Exists(Path.Combine(appOk, "oficinaos-diag.config.json"))
+            && File.ReadAllText(Path.Combine(appOk, "oficinaos-diag.config.json")) == configJson);
 
         // A falha a meio, pela causa real: um ficheiro em uso (adb/antivírus).
         // O exe e a DLL já foram copiados (v9) quando a cópia do `zzz.dat`
@@ -1596,25 +1691,39 @@ internal static class Program
         string registoFalha;
         // A tranca vive só enquanto o script corre: ler o ficheiro trancado
         // para medir rebentava (foi o que aconteceu no run 43920417682).
-        using (new FileStream(Path.Combine(appFalha, "zzz.dat"), FileMode.Open, FileAccess.Read, FileShare.None))
-            (codigoFalha, registoFalha) = Correr(appFalha, zipFalha, "v9.9.9");
+        // FileShare.Read e não None: o backup do robocopy tem de conseguir
+        // LER o ficheiro — com None a falha acontecia no backup, antes da
+        // aplicação, e o rollback nunca era exercitado. Com Read a escrita
+        // é que é recusada: backup passa, apply falha, rollback repõe.
+        using (new FileStream(Path.Combine(appFalha, "zzz.dat"), FileMode.Open, FileAccess.Read, FileShare.Read))
+            (codigoFalha, registoFalha, _) = Correr(appFalha, zipFalha, "v9.9.9");
 
         var marcador = Path.Combine(appFalha, UpdateChecker.UpdateFailureMarkerName);
         Console.WriteLine($"  staging falha: exit={codigoFalha} exe='{LerTexto(Path.Combine(appFalha, PackagePaths.AppExeName))}' "
             + $"dll='{LerTexto(Path.Combine(appFalha, "OficinaDiag.Core.dll"))}' zzz='{LerTexto(Path.Combine(appFalha, "zzz.dat"))}' "
+            + $"config='{LerTexto(Path.Combine(appFalha, "oficinaos-diag.config.json"))}' "
             + $"marcador={File.Exists(marcador)}");
-        // "deixa" e não "repõe": com um ficheiro em uso o Copy-Item falha
-        // antes de escrever nada (runs 43921766213/43923007685 tirando o
-        // rollback e o resultado é o mesmo), por isso o que se mede aqui é que
-        // não sobra instalação híbrida — a reposição é a defesa para o caso em
-        // que a cópia já escreveu alguma coisa, e essa não é reproduzível.
+        // Com o robocopy os outros ficheiros são copiados na mesma (o exe e a
+        // DLL passam a v9) e o trancado falha — é o rollback /MIR do backup
+        // que os repõe. Mede-se o que importa: não sobra instalação híbrida.
+        // LerTexto e não ReadAllText: num desastre (backup vazio, appDir
+        // esvaziado) o exe pode nem existir — a exceção matava a prova antes
+        // de escrever o [FALHA] e o mutante do backup parecia sobreviver.
         Verificar("staging: falha a meio deixa o build anterior",
             codigoFalha == 1
-            && File.ReadAllText(Path.Combine(appFalha, PackagePaths.AppExeName)) == "exe-v2"
-            && File.ReadAllText(Path.Combine(appFalha, "OficinaDiag.Core.dll")) == "core-v2"
-            && File.ReadAllText(Path.Combine(appFalha, "zzz.dat")) == "dados-v2"
+            && LerTexto(Path.Combine(appFalha, PackagePaths.AppExeName)) == "exe-v2"
+            && LerTexto(Path.Combine(appFalha, "OficinaDiag.Core.dll")) == "core-v2"
+            && LerTexto(Path.Combine(appFalha, "zzz.dat")) == "dados-v2"
             && File.Exists(Path.Combine(appFalha, "Data", "models.json"))
             && registoFalha.Contains("a restaurar o build anterior"));
+
+        // O rollback também é um /MIR: o config é "extra" face ao backup
+        // (que o /XF excluiu) e sem a exclusão na reposição era purgado —
+        // a app voltava à versão antiga mas sem preferências nem emparelhamento.
+        Verificar("staging: a falha preserva o config portátil",
+            File.Exists(Path.Combine(appFalha, "oficinaos-diag.config.json"))
+            && File.ReadAllText(Path.Combine(appFalha, "oficinaos-diag.config.json")) == configJson
+            && Directory.GetDirectories(appFalha, ".bak-*").Length == 0);
 
         var aviso = UpdateChecker.ConsumeUpdateFailure(appFalha);
         Verificar("staging: a falha fica no marcador que o arranque mostra",
@@ -1623,6 +1732,76 @@ internal static class Program
             && aviso.Contains("falhou")
             && !File.Exists(marcador));
 
+        // A espera a sério (revisão #62): as corridas acima passam um PID já
+        // morto — o Get-Process salta a espera e o WaitForExit nunca era
+        // exercitado. Aqui o PID é de um processo VIVO com o nome do exe da
+        // app (um powershell renomeado à espera de um sinal): o updater só
+        // pode relançar depois de ele morrer, e ProvaDaEspera mede a ordem
+        // em duas fases — sem marcador enquanto o processo vive, marcador
+        // depois de o sinal o largar.
+        var appVivo = Montar("vivo");
+        var vivo = Correr(appVivo, Zip(a =>
+        {
+            Escrever(a, PackagePaths.AppExeName, "exe-v4");
+            Escrever(a, "OficinaDiag.Core.dll", "core-v4");
+            Escrever(a, "sub/novo.dll", "novo-v4");
+        }), "v9.9.7", processoVivo: true);
+        Console.WriteLine($"  staging vivo: exit={vivo.Codigo} exe='{LerTexto(Path.Combine(appVivo, PackagePaths.AppExeName))}' "
+            + $"espera='{vivo.Espera}' log='{vivo.Registo.Replace(Environment.NewLine, " | ").Trim()}'");
+        Verificar("staging: a atualização espera pelo processo vivo antes de relançar",
+            vivo.Codigo == 0
+            && vivo.Espera == "esperou"
+            && File.ReadAllText(Path.Combine(appVivo, PackagePaths.AppExeName)) == "exe-v4");
+
+    }
+
+    /// <summary>
+    /// A espera do updater medida por ordem, não por relógio. O processo da
+    /// app está VIVO (o sleeper) durante toda a prova: primeiro exige-se que
+    /// o relançamento <b>não</b> exista enquanto ele vive — a janela é bem
+    /// maior do que uma corrida sem espera precisa (extrair + três robocopy
+    /// de uma árvore de mentira), por isso um <c>WaitForExit(0)</c> cai
+    /// aqui; depois escreve-se o sinal que larga o sleeper e exige-se o
+    /// relançamento — sem ele o script podia ter morrido ou ficado preso
+    /// por outro motivo e a prova não distinguia os dois.
+    /// </summary>
+    /// <returns>"esperou", "nao-esperou" ou null se o relançamento nunca apareceu.</returns>
+    private static string? ProvaDaEspera(
+        System.Diagnostics.Process proc, string relancamento, string sinal, string log)
+    {
+        // Arranque: a primeira linha do log é escrita antes da espera —
+        // quando existe, o updater está no Get-Process/WaitForExit (ou já
+        // passou, se não esperar). Sem ela o script nem arrancou.
+        var fimArranque = Environment.TickCount64 + 15_000;
+        while (Environment.TickCount64 < fimArranque && !proc.HasExited)
+        {
+            if (File.Exists(log) && new FileInfo(log).Length > 0) break;
+            Thread.Sleep(50);
+        }
+
+        // Janela negativa: com o sleeper vivo o marcador não pode existir.
+        // Se o processo do updater sair primeiro, não há mais nada a medir
+        // — o marcador decide na mesma (todas as saídas do script passam
+        // pelo relançar substituído).
+        var fimBloqueio = Environment.TickCount64 + 20_000;
+        while (Environment.TickCount64 < fimBloqueio)
+        {
+            if (File.Exists(relancamento)) return "nao-esperou";
+            if (proc.HasExited) return File.Exists(relancamento) ? "nao-esperou" : null;
+            Thread.Sleep(100);
+        }
+
+        // O updater continua bloqueado no handle — a espera é a sério.
+        // Larga-se o sleeper e exige-se o relançamento a seguir.
+        File.WriteAllText(sinal, "fim");
+        var fimRelanco = Environment.TickCount64 + 30_000;
+        while (Environment.TickCount64 < fimRelanco)
+        {
+            if (File.Exists(relancamento)) return "esperou";
+            if (proc.HasExited) return File.Exists(relancamento) ? "esperou" : null;
+            Thread.Sleep(100);
+        }
+        return null;
     }
 
     private static void ProvarDefeitoDaAtualizacao(string destino)

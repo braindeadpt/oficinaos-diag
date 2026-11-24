@@ -34,6 +34,14 @@ embutida no updater e apaga a cópia solta antiga.
 git tag v0.4.0 && git push --tags
 ```
 
+**Antes do tag**: o `<Version>` dos dois csproj tem de ser `>=` a versão do
+tag. Os builds dev reportam-no ao updater — um csproj atrás do último
+release faz o updater oferecer "actualizações" que são reposições de
+features (incidente #62: dev `0.3.2` oferecido `v0.4.0`). O
+`tools/version-check.mjs` falha o CI se ficar para trás, por isso o bump
+costuma entrar num PR próprio antes do tag — se o tag sair sem bump, o main
+fica vermelho até o bump entrar.
+
 1. O `release.yml` corre testes, faz publish self-contained, empacota
    `oficinaos-diag-v<versão>-win-x64.zip`, **confere o conteúdo do zip**
    (ver abaixo), escreve `SHA256SUMS.txt` (`version` + `commit` + hash) e
