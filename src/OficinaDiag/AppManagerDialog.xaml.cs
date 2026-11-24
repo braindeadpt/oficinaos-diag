@@ -120,6 +120,7 @@ public sealed partial class AppManagerDialog : Window
             L10n.T("apps.sort.installer"), L10n.T("apps.sort.protection"),
         };
         SortBox.SelectedIndex = 0;
+        AutomationProperties.SetName(SortBox, L10n.T("apps.sort.label"));
         AutomationProperties.SetName(SearchBox, L10n.T("apps.search"));
         AutomationProperties.SetName(AppsList, L10n.T("apps.title"));
         AddLog(L10n.T("apps.log.loading"));
@@ -283,8 +284,9 @@ public sealed partial class AppManagerDialog : Window
             if (r.Ok)
             {
                 _lastUndo = r.Undo;
-                if (_lastUndo is not null)
-                    UndoBtn.Content = L10n.F("apps.btn.undo.pkg", _lastUndo.PackageName);
+                UndoBtn.Content = _lastUndo is not null
+                    ? L10n.F("apps.btn.undo.pkg", _lastUndo.PackageName)
+                    : L10n.Btn("apps.btn.undo");
                 AddLog(L10n.F("apps.log.action.ok", ActionName(kind), row.Package,
                     string.IsNullOrWhiteSpace(r.Output) ? "ok" : r.Output.Trim()));
             }

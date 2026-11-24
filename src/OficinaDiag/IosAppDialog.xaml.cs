@@ -23,6 +23,8 @@ public sealed partial class IosAppDialog : Window
         public required string Version { get; init; }
         public required string Size { get; init; }
         public required string Note { get; init; }
+        public required long SizeSort { get; init; }
+        public required System.Version? VersionNumber { get; init; }
     }
 
     private readonly IosAppManager _manager;
@@ -117,6 +119,7 @@ public sealed partial class IosAppDialog : Window
             L10n.T("apps.sort.size"), L10n.T("apps.sort.note"),
         };
         SortBox.SelectedIndex = 0;
+        AutomationProperties.SetName(SortBox, L10n.T("apps.sort.label"));
         AutomationProperties.SetName(SearchBox, L10n.T("iosapps.search"));
         AutomationProperties.SetName(AppsList, L10n.T("iosapps.title"));
         AddLog(L10n.T("iosapps.log.loading"));
@@ -190,8 +193,13 @@ public sealed partial class IosAppDialog : Window
                     e.StaticBytes is long s ? IosAppDecisions.FormatSize(s) : "—",
                     e.DynamicBytes is long d ? IosAppDecisions.FormatSize(d) : "—")
                 : L10n.T("iosapps.usage.none"),
+            SizeSort = e.HasUsage ? e.TotalBytes : long.MaxValue,
+            VersionNumber = ParseVersion(e.Version),
         };
     }
+
+    private static System.Version? ParseVersion(string? raw) =>
+        System.Version.TryParse(raw, out var v) ? v : null;
 
     private void ApplyFilter()
     {
@@ -216,8 +224,11 @@ public sealed partial class IosAppDialog : Window
         return mode switch
         {
             "kind" => rows.OrderBy(r => r.Kind, StringComparer.OrdinalIgnoreCase).ThenBy(r => r.BundleId, StringComparer.OrdinalIgnoreCase).ToList(),
-            "version" => rows.OrderBy(r => r.Version, StringComparer.OrdinalIgnoreCase).ThenBy(r => r.BundleId, StringComparer.OrdinalIgnoreCase).ToList(),
-            "size" => rows.OrderBy(r => r.Size, StringComparer.OrdinalIgnoreCase).ThenBy(r => r.BundleId, StringComparer.OrdinalIgnoreCase).ToList(),
+            "version" => rows.OrderBy(r => r.VersionNumber is null)
+                .ThenBy(r => r.VersionNumber)
+                .ThenBy(r => r.Version, StringComparer.OrdinalIgnoreCase)
+                .ThenBy(r => r.BundleId, StringComparer.OrdinalIgnoreCase).ToList(),
+            "size" => rows.OrderBy(r => r.SizeSort).ThenBy(r => r.BundleId, StringComparer.OrdinalIgnoreCase).ToList(),
             "note" => rows.OrderBy(r => r.Note, StringComparer.OrdinalIgnoreCase).ThenBy(r => r.BundleId, StringComparer.OrdinalIgnoreCase).ToList(),
             _ => rows.OrderBy(r => r.BundleId, StringComparer.OrdinalIgnoreCase).ToList(),
         };
