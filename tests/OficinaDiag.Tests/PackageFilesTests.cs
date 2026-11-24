@@ -81,6 +81,7 @@ public class PackageFilesTests
 
     [Theory]
     [InlineData(PackagePaths.AdbRelativePath)]
+    [InlineData(PackagePaths.ScrcpyExeRelativePath)]
     [InlineData(PackagePaths.ModelsJsonRelativePath)]
     [InlineData(PackagePaths.DeviceTestPageRelativePath)]
     [InlineData(PackagePaths.DeviceTestDecisionsRelativePath)]

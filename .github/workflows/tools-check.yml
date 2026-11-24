@@ -48,4 +48,27 @@ jobs:
           if (-not (Test-Path "tools/platform-tools/adb.exe")) {
             throw "adb.exe não ficou em tools/platform-tools"
           }
-          Write-Host "OK: 50 binários verificados e adb.exe no sítio"
+          if (-not (Test-Path "tools/scrcpy/scrcpy.exe")) {
+            throw "scrcpy.exe não ficou em tools/scrcpy"
+          }
+          if (-not (Test-Path "tools/scrcpy/LICENSE.txt")) {
+            throw "LICENSE.txt do scrcpy (Apache-2.0) não ficou em tools/scrcpy"
+          }
+          Write-Host "OK: 50 binários verificados, adb.exe e scrcpy.exe no sítio"
+
+      # Recuperação do scrcpy: o skip exige o runtime inteiro — apagar uma
+      # DLL (com VERSION e exe intactos) tem de disparar re-download, não
+      # um skip cego. É o caminho que o Devin Review pediu cobertura.
+      - name: scrcpy — re-download quando falta uma DLL
+        shell: pwsh
+        run: |
+          Remove-Item "tools/scrcpy/SDL3.dll" -Force
+          $saida = & ./tools/fetch-tools.ps1
+          $saida | ForEach-Object { Write-Host $_ }
+          if (-not (Test-Path "tools/scrcpy/SDL3.dll")) {
+            throw "SDL3.dll não foi reposta após re-download"
+          }
+          if (-not (Test-Path "tools/scrcpy/VERSION")) {
+            throw "VERSION marker não foi reescrito após re-download"
+          }
+          Write-Host "OK: scrcpy repôs a DLL em falta"

@@ -35,6 +35,9 @@
   <!-- bundled adb, copied to output; Data/models.json + Tests/wwwroot vêm do Core -->
   <ItemGroup>
     <Content Include="..\..\tools\platform-tools\**" LinkBase="tools/platform-tools" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" ExcludeFromSingleFile="true" Condition="Exists('..\..\tools\platform-tools')" />
+    <!-- scrcpy (espelho de ecrã): mesma origem — fetch-tools.ps1, git-ignored,
+         layout oficial do zip (scrcpy.exe + DLLs + LICENSE.txt Apache-2.0). -->
+    <Content Include="..\..\tools\scrcpy\**" LinkBase="tools/scrcpy" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" ExcludeFromSingleFile="true" Condition="Exists('..\..\tools\scrcpy')" />
   </ItemGroup>
 
   <!--

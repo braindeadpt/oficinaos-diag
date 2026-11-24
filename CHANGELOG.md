@@ -5,6 +5,22 @@ Versões seguem o tag `v*` do release.
 
 ## Unreleased
 
+- Espelho de ecrã Android (Fase F.10 do plano Diag Pro): novo botão
+  «Espelho» na vista principal, ativo só com Android `ready` — sem
+  depuração USB ativa o scrcpy não arranca, por isso o botão fica
+  desativado até o detetor confirmar o aparelho. Lança o scrcpy da
+  release oficial com `-s <serial>` e janela própria (título com o
+  serial); o `ADB` do processo aponta para o adb do platform-tools
+  bundled, evitando a guerra de versões do servidor adb com o detetor.
+  É espelho, não controlo remoto: fecha-se pela janela do scrcpy e o
+  botão volta a ficar pronto. O binário chega por
+  `tools/fetch-tools.ps1` (zip win64 v5.0.1 da release oficial pinado
+  por SHA-256 — o upstream publica SHA256SUMS), ~26 MB no pacote, com a
+  `LICENSE.txt` Apache-2.0 a viajar junto; nunca versionado no git.
+  Feature local-first: o Pro é enforced pela cloud (402 por módulo /
+  token scoped) e não existe gate client-side para ferramentas locais —
+  mesmo padrão de bancada/perfil/limpeza. Se um dia se quiser Pro, o
+  desenho é um endpoint de entitlement na cloud, não flag local.
 - Inventário de apps iOS (Fase D.5 do plano Diag Pro): o scan iOS corre
   agora `ideviceinstaller -l -o list_all,xml` — o serviço
   com.apple.mobile.installation_proxy por trás é o mesmo que o iTunes
