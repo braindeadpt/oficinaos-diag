@@ -1596,18 +1596,20 @@ internal static class Program
         string registoFalha;
         // A tranca vive só enquanto o script corre: ler o ficheiro trancado
         // para medir rebentava (foi o que aconteceu no run 43920417682).
-        using (new FileStream(Path.Combine(appFalha, "zzz.dat"), FileMode.Open, FileAccess.Read, FileShare.None))
+        // FileShare.Read e não None: o backup do robocopy tem de conseguir
+        // LER o ficheiro — com None a falha acontecia no backup, antes da
+        // aplicação, e o rollback nunca era exercitado. Com Read a escrita
+        // é que é recusada: backup passa, apply falha, rollback repõe.
+        using (new FileStream(Path.Combine(appFalha, "zzz.dat"), FileMode.Open, FileAccess.Read, FileShare.Read))
             (codigoFalha, registoFalha) = Correr(appFalha, zipFalha, "v9.9.9");
 
         var marcador = Path.Combine(appFalha, UpdateChecker.UpdateFailureMarkerName);
         Console.WriteLine($"  staging falha: exit={codigoFalha} exe='{LerTexto(Path.Combine(appFalha, PackagePaths.AppExeName))}' "
             + $"dll='{LerTexto(Path.Combine(appFalha, "OficinaDiag.Core.dll"))}' zzz='{LerTexto(Path.Combine(appFalha, "zzz.dat"))}' "
             + $"marcador={File.Exists(marcador)}");
-        // "deixa" e não "repõe": com um ficheiro em uso o Copy-Item falha
-        // antes de escrever nada (runs 43921766213/43923007685 tirando o
-        // rollback e o resultado é o mesmo), por isso o que se mede aqui é que
-        // não sobra instalação híbrida — a reposição é a defesa para o caso em
-        // que a cópia já escreveu alguma coisa, e essa não é reproduzível.
+        // Com o robocopy os outros ficheiros são copiados na mesma (o exe e a
+        // DLL passam a v9) e o trancado falha — é o rollback /MIR do backup
+        // que os repõe. Mede-se o que importa: não sobra instalação híbrida.
         Verificar("staging: falha a meio deixa o build anterior",
             codigoFalha == 1
             && File.ReadAllText(Path.Combine(appFalha, PackagePaths.AppExeName)) == "exe-v2"

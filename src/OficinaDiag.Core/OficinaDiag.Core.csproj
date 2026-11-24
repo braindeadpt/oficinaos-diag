@@ -12,7 +12,9 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <RootNamespace>OficinaDiag</RootNamespace>
     <AssemblyName>OficinaDiag.Core</AssemblyName>
-    <Version>0.3.2</Version>
+    <!-- Mesma regra do csproj da app: >= o tag v* mais recente (ver
+         tools/version-check.mjs e o incidente #62). -->
+    <Version>0.4.0</Version>
     <Description>OficinaOS Diag — core (coletores, relatórios, cloud)</Description>
     <Company>Oficina de Sistemas</Company>
   </PropertyGroup>

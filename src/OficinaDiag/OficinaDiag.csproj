@@ -7,7 +7,11 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <UseWPF>true</UseWPF>
     <AssemblyName>OficinaDiag</AssemblyName>
-    <Version>0.3.2</Version>
+    <!-- Tem de acompanhar o tag v* mais recente: builds dev reportam esta
+         versão ao updater e uma abaixo do último release transforma a
+         "actualização" numa reposição de features (incidente #62). A
+         guarda tools/version-check.mjs falha o CI se ficar para trás. -->
+    <Version>0.4.0</Version>
     <Description>USB phone diagnostics — free local scan, Pro reports via oficinaos-cloud</Description>
     <ApplicationIcon>Assets\app.ico</ApplicationIcon>
     <Product>OficinaOS</Product>

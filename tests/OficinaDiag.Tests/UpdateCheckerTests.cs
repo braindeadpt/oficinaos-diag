@@ -180,9 +180,9 @@ public class UpdateCheckerTests
         // Ordem obrigatória: extrair para staging e validar ANTES de copiar
         // para appDir — um tar falhado deixava a instalação híbrida.
         var extract = script.IndexOf("-xf $zip -C $stage", StringComparison.Ordinal);
-        var copy = script.IndexOf("Copy-Item (Join-Path $stage '*') $appDir", StringComparison.Ordinal);
+        var copy = script.IndexOf("$stage $appDir /MIR", StringComparison.Ordinal);
         Assert.True(extract >= 0, "o script tem de extrair o zip para $stage");
-        Assert.True(copy > extract, "a cópia para appDir tem de vir depois da extração");
+        Assert.True(copy > extract, "a aplicação para appDir tem de vir depois da extração");
 
         // Windows real: com Git\usr\bin à frente de System32 no PATH, `tar` nu
         // é o GNU tar, que lê "C:" como host remoto e falha sempre — app em
@@ -193,6 +193,58 @@ public class UpdateCheckerTests
         Assert.Contains("oficinaos-stage-v0.3.0-", script);
         Assert.Contains($"Test-Path (Join-Path $stage '{PackagePaths.AppExeName}')", script);
         Assert.Contains("$LASTEXITCODE -ne 0", script);
+    }
+
+    [Fact]
+    public void UpdateScriptCopiesWithRobocopySoLongPathsSurvive()
+    {
+        // Incidente #62: Copy-Item do PS5.1 morre em >260 chars — dev builds
+        // em bin\Release e pastas profundas falhavam sempre. Robocopy é a
+        // ferramenta que lida com long paths; os exit codes <8 são sucesso.
+        var script = UpdateChecker.BuildUpdateScript(
+            "v0.3.0", @"C:\Apps\Diag", @"C:\Temp\diag.zip", @"C:\Temp\upd.log", 1);
+
+        Assert.DoesNotContain("Copy-Item", script);
+        Assert.Contains(@"System32\robocopy.exe", script);
+        Assert.Contains("/R:0 /W:0", script);   // sem isto um ficheiro trancado pendura o updater
+        Assert.Contains("$LASTEXITCODE -ge 8", script);
+        // Backup inteiro, aplicação em espelho e rollback em espelho.
+        Assert.Contains("$appDir $bak /E", script);
+        Assert.Contains("$stage $appDir /MIR", script);
+        Assert.Contains("$bak $appDir /MIR", script);
+    }
+
+    [Fact]
+    public void UpdateScriptExcludesAndCleansStaleBakLeftovers()
+    {
+        // O veneno do #62: `.bak-<guid>` dentro de appDir (resto de um updater
+        // antigo) nunca era limpo — cada update futuro falhava igual. O
+        // script limpa-os antes do backup e exclui-os de todas as cópias.
+        var script = UpdateChecker.BuildUpdateScript(
+            "v0.3.0", @"C:\Apps\Diag", @"C:\Temp\diag.zip", @"C:\Temp\upd.log", 1);
+
+        Assert.Contains("-like '*.bak-*'", script);
+        Assert.Contains("/XD '*.bak-*'", script);
+        // /XJ: um junction dentro de appDir não pode levar o /MIR a apagar
+        // fora da árvore.
+        Assert.Contains("/XJ", script);
+    }
+
+    [Fact]
+    public void UpdateScriptKillsAdbOnlyAfterStagingValidationAndRestartsIt()
+    {
+        // Ordem revista no #62: matar o adb antes de validar o staging deixava
+        // a app religada sem servidor quando a release era envenenada. O kill
+        // passa a vir depois da extração+ZipSlip, e o start-server repõe-no
+        // antes de cada relançamento que o tenha morto.
+        var script = UpdateChecker.BuildUpdateScript(
+            "v0.3.0", @"C:\Apps\Diag", @"C:\Temp\diag.zip", @"C:\Temp\upd.log", 1);
+
+        var extract = script.IndexOf("-xf $zip -C $stage", StringComparison.Ordinal);
+        var kill = script.IndexOf("kill-server", StringComparison.Ordinal);
+        Assert.True(extract >= 0 && kill > extract,
+            "o adb só pode morrer depois de o staging extrair e validar");
+        Assert.Contains("start-server", script);
     }
 
     [Fact]

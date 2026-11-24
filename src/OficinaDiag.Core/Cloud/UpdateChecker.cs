@@ -307,6 +307,17 @@ public sealed class UpdateChecker
     /// download para poder ser testado sem rede e, sobretudo, para garantir
     /// uma ordem: extrair e validar numa pasta temporária **antes** de tocar
     /// em appDir. Um tar falhado a meio deixava a instalação híbrida.
+    ///
+    /// Cópias com <c>robocopy</c>, não <c>Copy-Item</c> (incidente #62,
+    /// 2026-11-24): o Copy-Item do PowerShell 5.1 morre em caminhos >260
+    /// chars — pastas de instalação profundas (dev <c>bin\Release</c>)
+    /// falhavam sempre — e o <c>Remove-Item -Recurse</c> moía uma árvore
+    /// <c>.bak</c> envenenada durante ~6 minutos antes do relançamento.
+    /// Robocopy lida com long paths nativamente e os seus exit codes são
+    /// bitmask: **&lt;8 é sucesso** (1=copiou, 2=extras, 4=mismatch), ≥8 é
+    /// falha. <c>/R:0 /W:0</c> é obrigatório — o default do robocopy são
+    /// 1M retries com 30 s de espera, e um ficheiro trancado (adb,
+    /// antivírus) pendurava o updater durante dias.
     /// </summary>
     internal static string BuildUpdateScript(
         string tag, string appDir, string zipPath, string logPath, int processId)
@@ -314,6 +325,10 @@ public sealed class UpdateChecker
         var stage = Path.Combine(Path.GetTempPath(), $"oficinaos-stage-{tag}-{Guid.NewGuid():N}");
         var exePath = Path.Combine(appDir, PackagePaths.AppExeName);
         var adbPath = Path.Combine(appDir, PackagePaths.AdbRelativePath);
+        // Pasta vazia para o truque `robocopy vazio alvo /MIR`: espelha o
+        // nada sobre o alvo e apaga a árvore inteira — o Remove-Item do
+        // PS5.1 não chega a caminhos >260 e era o que moía o .bak gigante.
+        var emptyDir = Path.Combine(Path.GetTempPath(), $"oficinaos-vazio-{Guid.NewGuid():N}");
         return string.Join(Environment.NewLine, new[]
         {
             "$ErrorActionPreference = 'Continue'",
@@ -324,25 +339,38 @@ public sealed class UpdateChecker
             $"$zip = '{Psq(zipPath)}'",
             $"$stage = '{Psq(stage)}'",
             $"$adb = '{Psq(adbPath)}'",
+            $"$vazio = '{Psq(emptyDir)}'",
             // O técnico abre a app e tem de saber que a atualização falhou: o
             // log vive em %TEMP% e ninguém o vai ler. O marcador é consumido
             // no arranque seguinte (ConsumeUpdateFailure) e apagado.
             $"$marcador = Join-Path $appDir '{UpdateFailureMarkerName}'",
             $"$bak = $appDir + '.bak-' + [Guid]::NewGuid().ToString('N')",
+            // $backupOk separa os dois desfechos do catch: se o backup não
+            // chegou a completar-se, appDir está intacto e um /MIR de um
+            // backup parcial seria destrutivo (purgava o que faltava).
+            "$backupOk = $false",
             "function Avisar-Falha([string] $porque) {",
             // Formato com aspas simples: o tag vem da release e não pode ser
             // expandido como expressão.
             $"  ('{{0}} atualização {{1}} falhou: {{2}} — continuas na versão anterior. Log: {{3}}' -f (Get-Date -Format o), '{Psq(tag)}', $porque, $log) | Out-File $marcador -Encoding utf8",
             "}",
+            // Apagar uma árvore sem limites de caminho: o /MIR de uma pasta
+            // vazia esvazia o alvo e o Remove-Item tira a casca — ordem que
+            // sobrevive a árvores mais fundas que o MAX_PATH do PS5.1.
+            "function Limpar-Pasta([string] $alvo) {",
+            "  if (Test-Path $alvo) {",
+            // Se o robocopy não arrancar a limpeza não pode morrer aqui —
+            // fica o Remove-Item, que ao menos tenta.
+            "    try { & \"$env:SystemRoot\\System32\\robocopy.exe\" $vazio $alvo /MIR /XJ /R:0 /W:0 /NFL /NDL /NJH /NJS | Out-Null } catch { }",
+            "    Remove-Item $alvo -Recurse -Force -ErrorAction SilentlyContinue",
+            "  }",
+            "}",
+            "New-Item -ItemType Directory -Force -Path $stage, $vazio | Out-Null",
             // 1) Esperar pelo PID real. O Sleep fixo de 3 s deixava o exe
             //    bloqueado e o tar falhava a meio da atualização.
             $"Wait-Process -Id {processId} -Timeout 30 -ErrorAction SilentlyContinue",
-            // 2) adb/idevice seguram .exe dentro de appDir — libertar antes.
-            "if (Test-Path $adb) { & $adb kill-server 2>$null | Out-Null }",
-            "Stop-Process -Name adb,idevicediagnostics,idevicecrashreport -Force -ErrorAction SilentlyContinue",
-            // 3) Extrair para staging limpo: appDir só é tocado depois de o
+            // 2) Extrair para staging limpo: appDir só é tocado depois de o
             //    zip provar que traz o exe da app (PackagePaths.AppExeName).
-            "New-Item -ItemType Directory -Force $stage | Out-Null",
             //    `tar` nu resolve para o GNU tar do Git (usr\bin à frente de
             //    System32 em máquinas de dev), que lê "C:" como host remoto —
             //    a extração falhava sempre e o update voltava a ser oferecido.
@@ -351,11 +379,12 @@ public sealed class UpdateChecker
             $"if ($LASTEXITCODE -ne 0 -or -not (Test-Path (Join-Path $stage '{PackagePaths.AppExeName}'))) {{",
             "  'extract failed — nada em appDir foi alterado' | Out-File $log -Append",
             "  Avisar-Falha 'o zip não extraiu'",
-            "  Remove-Item $stage -Recurse -Force -ErrorAction SilentlyContinue",
+            "  Limpar-Pasta $stage",
+            "  Remove-Item $vazio -Force -ErrorAction SilentlyContinue",
             "  Start-Process $exe",
             "  exit 1",
             "}",
-            // 4) ZipSlip: symlink/junction ou caminho que resolva fora do
+            // 3) ZipSlip: symlink/junction ou caminho que resolva fora do
             //    staging aborta antes de qualquer escrita em appDir.
             "$root = [IO.Path]::GetFullPath($stage).TrimEnd('\\') + '\\'",
             "$escaped = Get-ChildItem $stage -Recurse -Force | Where-Object {",
@@ -365,47 +394,95 @@ public sealed class UpdateChecker
             "if ($escaped) {",
             "  'zip com entradas fora do staging — atualização recusada' | Out-File $log -Append",
             "  Avisar-Falha 'o zip trazia entradas fora do staging'",
-            "  Remove-Item $stage -Recurse -Force -ErrorAction SilentlyContinue",
+            "  Limpar-Pasta $stage",
+            "  Remove-Item $vazio -Force -ErrorAction SilentlyContinue",
             "  Start-Process $exe",
             "  exit 1",
             "}",
-            // 5) Só agora: backup do build **inteiro**, cópia do staging e
-            //    rollback no catch. Antes era só o exe: uma falha a meio
-            //    deixava exe velho com DLLs novas (instalação híbrida) e
-            //    ninguém sabia se a app ainda arrancava. Este passo copia a
-            //    árvore toda, porque no rollback não basta o executável.
+            // 4) Backup do build **inteiro**, aplicação do staging e rollback
+            //    no catch — só agora, com o staging já provado. Copiar a
+            //    árvore toda é o que permite repor tudo no rollback; antes
+            //    era só o exe e uma falha a meio deixava exe velho com DLLs
+            //    novas (instalação híbrida).
             "try {",
-            "  Copy-Item $appDir $bak -Recurse -Force -ErrorAction Stop",
-            "  Copy-Item (Join-Path $stage '*') $appDir -Recurse -Force -ErrorAction Stop",
+            //    `.bak-*`/`*.bak-*` dentro de appDir são restos de updaters
+            //    antigos (o veneno do #62: `.bak-X/.bak-X/...` ~400 níveis,
+            //    ~947 MB) — nunca dados do utilizador, a pasta de instalação
+            //    só tem ficheiros da app. Limpeza best-effort: se uma pasta
+            //    resistir, o /XD das cópias seguintes impede-na de se
+            //    propagar na mesma.
+            "  Get-ChildItem $appDir -Directory -Force -ErrorAction SilentlyContinue | Where-Object { $_.Name -like '*.bak-*' } | ForEach-Object { Limpar-Pasta $_.FullName }",
+            //    Backup: /E copia a árvore toda (sem purge — $bak nasce
+            //    vazio). /XD '*.bak-*' exclui restos de updater a qualquer
+            //    profundidade; /XJ não segue junctions — sem ele um /MIR
+            //    podia apagar fora da árvore. Exit <8 = sucesso.
+            "  & \"$env:SystemRoot\\System32\\robocopy.exe\" $appDir $bak /E /XD '*.bak-*' /XJ /R:0 /W:0 /NFL /NDL /NJH /NJS | Out-File $log -Append",
+            "  \"backup exit=$LASTEXITCODE\" | Out-File $log -Append",
+            "  if ($LASTEXITCODE -ge 8) { throw \"backup falhou (robocopy exit $LASTEXITCODE)\" }",
+            "  $backupOk = $true",
+            //    adb/idevice seguram .exe dentro de appDir — libertar antes
+            //    da aplicação, que é a única fase que escreve. Só aqui e não
+            //    antes da extração: uma release envenenada não pode deixar a
+            //    app religada sem servidor adb (o scan seguinte dizia
+            //    "nenhum dispositivo" — #62), e uma falha de backup também
+            //    não o precisa de matar.
+            "  if (Test-Path $adb) { & $adb kill-server 2>$null | Out-Null }",
+            "  Stop-Process -Name adb,idevicediagnostics,idevicecrashreport -Force -ErrorAction SilentlyContinue",
+            //    Aplicação: /MIR é o espelho verdadeiro — além de copiar,
+            //    purga de appDir o que a versão nova já não traz (o
+            //    Copy-Item deixava DLLs mortas para trás, outra forma de
+            //    híbrido). Os /XD/'/XJ'/'/R:0'/'/W:0' repetem-se: o purge
+            //    também os respeita.
+            "  & \"$env:SystemRoot\\System32\\robocopy.exe\" $stage $appDir /MIR /XD '*.bak-*' /XJ /R:0 /W:0 /NFL /NDL /NJH /NJS | Out-File $log -Append",
+            "  \"apply exit=$LASTEXITCODE\" | Out-File $log -Append",
+            "  if ($LASTEXITCODE -ge 8) { throw \"apply falhou (robocopy exit $LASTEXITCODE)\" }",
             "} catch {",
             "  \"copy failed: $_ — a restaurar o build anterior\" | Out-File $log -Append",
-            // Repor **por cima**, e só depois tentar a troca limpa: o
-            // `Move-Item` para uma pasta que ainda existe move o backup para
-            // dentro dela e não repõe nada (apanhado pela prova), e um
-            // ficheiro em uso (adb, antivírus) impede apagar a pasta.
-            "  if (Test-Path $bak) {",
-            "    Copy-Item (Join-Path $bak '*') $appDir -Recurse -Force -ErrorAction SilentlyContinue",
+            // Rollback: /MIR do backup repõe a versão antiga E remove o que
+            // a aplicação parcial trouxe de novo — mais completo que o
+            // Copy-Item por cima, que deixava ficheiros novos para trás.
+            // Só corre quando o backup está completo: um /MIR de backup
+            // parcial transformava appDir numa instalação truncada.
+            "  if ($backupOk -and (Test-Path $bak)) {",
+            "    & \"$env:SystemRoot\\System32\\robocopy.exe\" $bak $appDir /MIR /XD '*.bak-*' /XJ /R:0 /W:0 /NFL /NDL /NJH /NJS | Out-Null",
             "  }",
-            "  if (-not (Test-Path $exe)) {",
+            //    Repor **por cima**, e só depois tentar a troca limpa: o
+            //    `Move-Item` para uma pasta que ainda existe move o backup para
+            //    dentro dela e não repõe nada (apanhado pela prova), e um
+            //    ficheiro em uso (adb, antivírus) impede apagar a pasta.
+            "  if ($backupOk -and -not (Test-Path $exe)) {",
             "    Remove-Item $appDir -Recurse -Force -ErrorAction SilentlyContinue",
             "    Move-Item $bak $appDir -Force -ErrorAction SilentlyContinue",
             "  }",
-            "  Remove-Item $bak -Recurse -Force -ErrorAction SilentlyContinue",
+            "  Limpar-Pasta $bak",
             // O aviso vem depois de o rollback correr: dentro de appDir, o
-            // marcador escrito antes era apagado pela própria restauração.
-            "  if (Test-Path $exe) {",
-            "    Avisar-Falha 'a cópia do staging falhou a meio'",
+            // marcador escrito antes era apagado pelo /MIR da restauração.
+            "  if ($backupOk) {",
+            "    if (Test-Path $exe) {",
+            "      Avisar-Falha 'a aplicação do staging falhou a meio'",
+            "    } else {",
+            "      Avisar-Falha 'a aplicação do staging falhou e o rollback não repôs o exe — repõe a instalação a partir do zip'",
+            "    }",
             "  } else {",
-            "    Avisar-Falha 'a cópia do staging falhou e o rollback não repôs o exe — repõe a instalação a partir do zip'",
+            "    Avisar-Falha 'a preparação da atualização falhou — nada em appDir foi alterado'",
             "  }",
+            // O adb foi morto antes das cópias: sem start-server a app
+            // religada arrancava com o servidor em baixo e o scan seguinte
+            // reportava «nenhum dispositivo» até um restart manual (#62).
+            // start-server é idempotente — corre também no sucesso.
+            "  if (Test-Path $adb) { & $adb start-server 2>$null | Out-Null }",
             "  if (Test-Path $exe) { Start-Process $exe }",
-            "  Remove-Item $stage -Recurse -Force -ErrorAction SilentlyContinue",
+            "  Limpar-Pasta $stage",
+            "  Remove-Item $zip -Force -ErrorAction SilentlyContinue",
+            "  Remove-Item $vazio -Force -ErrorAction SilentlyContinue",
             "  exit 1",
             "}",
+            "if (Test-Path $adb) { & $adb start-server 2>$null | Out-Null }",
             "Start-Process $exe",
-            "Remove-Item $bak -Recurse -Force -ErrorAction SilentlyContinue",
-            "Remove-Item $stage -Recurse -Force -ErrorAction SilentlyContinue",
+            "Limpar-Pasta $bak",
+            "Limpar-Pasta $stage",
             "Remove-Item $zip -Force -ErrorAction SilentlyContinue",
+            "Remove-Item $vazio -Force -ErrorAction SilentlyContinue",
             "Remove-Item $MyInvocation.MyCommand.Path -ErrorAction SilentlyContinue",
         });
     }
