@@ -106,9 +106,12 @@ public sealed partial class ServiceDialog : Window
     private void SelectTemplate(ServiceTemplate tpl)
     {
         _selected = tpl;
-        // Snapshot do que está digitado antes de deitar fora as TextBox.
+        // Snapshot do que está digitado antes de deitar fora as TextBox —
+        // INCLUSIVE o vazio: se o técnico apagou uma medição, ela tem de
+        // continuar apagada ao voltar ao template (senão o valor antigo
+        // renascia do _measureText e era re-aplicado ao relatório).
         foreach (var (ck, box) in _measure)
-            if (!string.IsNullOrWhiteSpace(box.Text)) _measureText[ck] = box.Text;
+            _measureText[ck] = box.Text;
         ItemsPanel.Children.Clear();
         _row.Clear();
         _measure.Clear();
@@ -118,11 +121,16 @@ public sealed partial class ServiceDialog : Window
         foreach (var item in tpl.Items)
             ItemsPanel.Children.Add(BuildRow(tpl, item));
 
-        if (tpl.RequiredChecks.Count > 0)
+        // No iOS a bateria não expõe health/ciclos — pedir essas medições
+        // seria um "em falta" impossível de resolver.
+        var required = tpl.RequiredChecks
+            .Where(k => ServiceTemplates.RequiredApplies(k, _report.Platform))
+            .ToList();
+        if (required.Count > 0)
         {
             RequiredLabel.Text = L10n.T("svc.required");
             RequiredLabel.Visibility = Visibility.Visible;
-            RequiredText.Text = string.Join("\n", tpl.RequiredChecks.Select(RequiredLine));
+            RequiredText.Text = string.Join("\n", required.Select(RequiredLine));
             RequiredText.Visibility = Visibility.Visible;
         }
         else
@@ -140,12 +148,20 @@ public sealed partial class ServiceDialog : Window
         else MaintHint.Visibility = Visibility.Collapsed;
     }
 
-    /// <summary>Linha das medições que o scan deve trazer — com o valor atual ou "em falta".</summary>
+    /// <summary>Linha das medições que este serviço precisa — com o valor atual ou a ação que o produz.</summary>
     private string RequiredLine(string key)
     {
         if (_report.Results.TryGetValue(key, out var c))
             return $"• {key} — {c.Value ?? c.Status}";
-        return $"• {key} — {L10n.T("svc.missing")}";
+        // A dica aponta a ação certa: test.* vem do ECRÃ+TOQUE (teste no
+        // dispositivo), não do scan; grade.* deriva-se do scan+checklist.
+        var msg = ServiceTemplates.RequiredSource(key) switch
+        {
+            "test" => L10n.F("svc.missing.test", L10n.Btn("btn.test")),
+            "auto" => L10n.T("svc.missing.auto"),
+            _ => L10n.T("svc.missing"),
+        };
+        return $"• {key} — {msg}";
     }
 
     private Grid BuildRow(ServiceTemplate tpl, ServiceTemplateItem item)

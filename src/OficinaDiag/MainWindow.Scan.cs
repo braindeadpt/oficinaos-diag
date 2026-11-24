@@ -37,7 +37,29 @@ public partial class MainWindow : Window
             // derivadas (root, battery.swap) de um scan anterior falseava
             // a nova recolha (aviso obsoleto mantinha o grau limitado).
             if (_report is not null && _reportDeviceId == scannedId)
+            {
                 fresh.PreserveManualFrom(_report);
+            }
+            else if (_report is not null && _reportDeviceId is null && _report.HasManualData())
+            {
+                // Checklist/serviço/notas feitos sem USB não têm
+                // identificador — não se assume que são do aparelho que
+                // acabou de ligar: o técnico confirma antes de copiar os
+                // dados manuais para o scan novo.
+                var nome = fresh.Device.MarketingName ?? fresh.Device.Model ?? scannedId;
+                var resp = MessageBox.Show(this, L10n.F("scan.manual.prompt", nome),
+                    L10n.T("scan.manual.title"),
+                    MessageBoxButton.YesNoCancel, MessageBoxImage.Question);
+                if (resp == MessageBoxResult.Cancel)
+                {
+                    Log(L10n.T("scan.manual.abort"));
+                    return; // o finally repõe os botões — relatório e dados ficam
+                }
+                if (resp == MessageBoxResult.Yes)
+                    fresh.PreserveManualFrom(_report);
+                else
+                    Log(L10n.T("scan.manual.discard"));
+            }
             _report = fresh;
             _reportDeviceId = scannedId;
 
@@ -108,6 +130,14 @@ public partial class MainWindow : Window
                 Device = { Serial = _current?.Id?.TrimEnd('!') },
             };
             _reportDeviceId = _current?.Id;
+        }
+        else if (_current is not null && _reportDeviceId is not null
+                 && _reportDeviceId != _current.Id)
+        {
+            // Mesmo vetor do SERVIÇO: o checklist físico ia para o relatório
+            // de outro aparelho e ficava gravado no histórico dele.
+            Log(L10n.T("log.device.mismatch"));
+            return;
         }
         var dlg = new ChecklistDialog(_report) { Owner = this };
         if (dlg.ShowDialog() != true) return;

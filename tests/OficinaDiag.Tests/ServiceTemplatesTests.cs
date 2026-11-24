@@ -1,5 +1,6 @@
 using OficinaDiag.Devices;
 using OficinaDiag.Grading;
+using OficinaDiag.Maintenance;
 using OficinaDiag.Reports;
 using OficinaDiag.Templates;
 using Xunit;
@@ -219,5 +220,116 @@ public sealed class ServiceTemplatesTests
         Assert.True(m.OpensMaintenanceDialog);
         Assert.Empty(m.Items); // não duplica o maint.* — a limpeza medida é o serviço
         Assert.Equal("maintenance", m.AiPurpose);
+    }
+
+    [Fact]
+    public void HasManualDataDetetaOTabalhoQueOScanNaoReproduz()
+    {
+        // Base do aviso "dados sem aparelho" no scan: um relatório vazio ou
+        // só com dados de scan substitui-se sem perguntar; checklist,
+        // serviço ou notas pedem confirmação antes de copiar.
+        Assert.False(new DeviceReport().HasManualData());
+
+        var soScan = new DeviceReport();
+        soScan.Set("battery.capacity", "pass", "95%");
+        Assert.False(soScan.HasManualData());
+
+        var comServico = new DeviceReport();
+        ServiceTemplates.Apply(comServico, Bateria,
+            new Dictionary<string, int> { ["function"] = 1 },
+            new Dictionary<string, string>(), Rotulo);
+        Assert.True(comServico.HasManualData());
+
+        var soNotas = new DeviceReport { Notes = "cliente espera resposta" };
+        Assert.True(soNotas.HasManualData());
+    }
+
+    [Fact]
+    public void LimpezaGravadaSubstituiOServicoDeTemplateAnterior()
+    {
+        // Otimização escolhida no SERVIÇO depois de "compra de usado": a
+        // limpeza passa a ser o serviço — tpl.used.* e o purpose=sale não
+        // podem ficar presos ao relatório da otimização.
+        var r = new DeviceReport();
+        ServiceTemplates.Apply(r, Usado,
+            new Dictionary<string, int> { ["frame"] = 1 },
+            new Dictionary<string, string>(), Rotulo);
+        r.Maintenance = new MaintenanceReport();
+
+        var substituiu = ServiceTemplates.ApplyMaintenance(r);
+
+        Assert.True(substituiu);
+        Assert.DoesNotContain(r.Results.Keys, k => k.StartsWith("tpl."));
+        Assert.False(r.Results.ContainsKey(ServiceTemplates.AppliedKey));
+        Assert.Null(r.Purpose);
+        // A limpeza medida em si não é tocada — é ela que vira o serviço.
+        Assert.NotNull(r.Maintenance);
+    }
+
+    [Fact]
+    public void LimpezaSemTemplatePreservaPropositoManual()
+    {
+        // O SaleBox do checklist físico não é template — uma limpeza que só
+        // complementa o atendimento não pode apagar uma escolha manual.
+        var r = new DeviceReport { Purpose = "sale" };
+
+        Assert.False(ServiceTemplates.ApplyMaintenance(r));
+        Assert.Equal("sale", r.Purpose);
+    }
+
+    [Fact]
+    public void MedicoesExigidasDistingemOrigemEPlataforma()
+    {
+        // O aviso "em falta" aponta a ação que produz a medição: test.* vem
+        // do ECRÃ+TOQUE, não do scan; grade.* deriva-se do scan+checklist.
+        Assert.Equal("test", ServiceTemplates.RequiredSource("test.touch"));
+        Assert.Equal("test", ServiceTemplates.RequiredSource("test.screen"));
+        Assert.Equal("auto", ServiceTemplates.RequiredSource("grade.overall"));
+        Assert.Equal("scan", ServiceTemplates.RequiredSource("battery.capacity"));
+        Assert.Equal("scan", ServiceTemplates.RequiredSource("battery.health"));
+
+        // battery.health só existe no coletor Android — no iOS seria um
+        // "em falta" impossível de resolver.
+        Assert.False(ServiceTemplates.RequiredApplies("battery.health", "ios"));
+        Assert.True(ServiceTemplates.RequiredApplies("battery.health", "android"));
+        Assert.True(ServiceTemplates.RequiredApplies("battery.capacity", "ios"));
+        Assert.True(ServiceTemplates.RequiredApplies("battery.capacity", null));
+    }
+
+    [Fact]
+    public void HtmlTecnicoNaoRepeteChecklistNaGrelhaGeral()
+    {
+        // A secção SERVIÇO já lista os tpl.* por ordem do template — a
+        // tabela geral não os repete com as chaves técnicas.
+        var r = new DeviceReport();
+        ServiceTemplates.Apply(r, Bateria,
+            new Dictionary<string, int> { ["function"] = 1 },
+            new Dictionary<string, string>(), Rotulo);
+        r.Set("battery.capacity", "pass", "95%");
+
+        var html = ReportBuilder.ToHtml(r);
+
+        Assert.Contains("SERVIÇO — Troca de bateria", html);
+        Assert.DoesNotContain("tpl.battery.function", html);
+        Assert.DoesNotContain("service.template", html);
+        // Os checks de scan continuam na grelha geral.
+        Assert.Contains("battery.capacity", html);
+    }
+
+    [Fact]
+    public void HtmlTecnicoMostraTplOrfaosSemSecaoDeServico()
+    {
+        // tpl.* sem service.template não podem desaparecer do HTML — o
+        // Apply nunca produz este estado, mas um arrasto manual pode.
+        var r = new DeviceReport();
+        ServiceTemplates.Apply(r, Bateria,
+            new Dictionary<string, int> { ["function"] = 1 },
+            new Dictionary<string, string>(), Rotulo);
+        r.Remove(ServiceTemplates.AppliedKey);
+
+        var html = ReportBuilder.ToHtml(r);
+
+        Assert.Contains("tpl.battery.function", html);
+        Assert.DoesNotContain("SERVIÇO —", html);
     }
 }

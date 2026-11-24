@@ -198,6 +198,23 @@ public static class ServiceTemplates
     }
 
     /// <summary>
+    /// A limpeza medida passa a ser o serviço do atendimento: se havia um
+    /// template aplicado (tpl.* + service.template), os checks dele saem —
+    /// um relatório não mistura "compra de usado" com "otimização". O
+    /// Purpose que o template impôs (ex.: "sale") sai também; um Purpose
+    /// manual do checklist físico (SaleBox, sem template aplicado)
+    /// mantém-se. Devolve true quando havia um serviço de template a
+    /// substituir — quem chamou pode avisar no log.
+    /// </summary>
+    public static bool ApplyMaintenance(DeviceReport report)
+    {
+        var tinhaServico = report.Results.ContainsKey(AppliedKey);
+        Clear(report);
+        if (tinhaServico) report.Purpose = null;
+        return tinhaServico;
+    }
+
+    /// <summary>
     /// Rótulo PT de um check tpl.* para as vistas de relatório — null quando
     /// a chave não é de template (ou o item já não existe no catálogo).
     /// </summary>
@@ -208,6 +225,25 @@ public static class ServiceTemplates
         var item = Find(parts[1])?.Items.FirstOrDefault(i => i.Key == parts[2]);
         return item?.LabelPt;
     }
+
+    /// <summary>
+    /// Origem da medição exigida — decide a dica "em falta" do diálogo:
+    /// test.* vem do ECRÃ+TOQUE (teste no dispositivo), grade.* deriva-se
+    /// do scan+checklist já feitos, o resto vem do SCAN. Sem isto o aviso
+    /// mandava correr o scan para checks que o scan nunca produz.
+    /// </summary>
+    public static string RequiredSource(string key) =>
+        key.StartsWith("test.", StringComparison.Ordinal) ? "test"
+        : key.StartsWith("grade.", StringComparison.Ordinal) ? "auto"
+        : "scan";
+
+    /// <summary>
+    /// true = a plataforma consegue produzir esta medição. battery.health
+    /// só existe no coletor Android — no iOS um "em falta" seria
+    /// impossível de resolver e só fazia ruído no diálogo.
+    /// </summary>
+    public static bool RequiredApplies(string key, string? platform) =>
+        platform != "ios" || key is not "battery.health";
 
     /// <summary>
     /// Propósito de IA do serviço aplicado — lido do check service.template.

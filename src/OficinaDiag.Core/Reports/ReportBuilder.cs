@@ -385,8 +385,16 @@ public static class ReportBuilder
         }
 
         sb.AppendLine("<table><tr><th>verificação</th><th>estado</th><th>valor</th><th>detalhe</th></tr>");
+        // Com secção de serviço dedicada (SERVIÇO — …) os checks tpl.* e a
+        // chave service.template não se repetem nesta grelha — a chave
+        // técnica não diz nada a quem lê o relatório.
+        var temServico = r.Results.ContainsKey(ServiceTemplates.AppliedKey);
         foreach (var (key, c) in r.Results.OrderBy(kv => kv.Key))
         {
+            if (temServico
+                && (key.StartsWith(ServiceTemplates.Prefix, StringComparison.Ordinal)
+                    || key == ServiceTemplates.AppliedKey))
+                continue;
             sb.AppendLine($"<tr><td>{System.Net.WebUtility.HtmlEncode(key)}</td>" +
                 $"<td class=\"{SafeCssToken(c.Status)}\">{c.Status.ToUpperInvariant()}</td>" +
                 $"<td>{System.Net.WebUtility.HtmlEncode(c.Value ?? "—")}</td>" +

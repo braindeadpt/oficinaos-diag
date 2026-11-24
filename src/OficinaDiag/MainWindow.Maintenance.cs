@@ -11,19 +11,20 @@ public partial class MainWindow : Window
     /// não é um check de diagnóstico, não entra no grau nem nas vistas automáticas).
     /// </summary>
     private void Maintenance_Click(object sender, RoutedEventArgs e) =>
-        OpenMaintenance();
+        _ = OpenMaintenance();
 
     /// <summary>
     /// Corpo da limpeza — chamado pelo botão LIMPEZA e pelo template de
     /// serviço "otimização" (ServiceDialog), que não tem checklist próprio:
-    /// a limpeza medida já é o serviço.
+    /// a limpeza medida já é o serviço. Devolve true quando a limpeza foi
+    /// gravada — quem entrou pelo SERVIÇO usa-o para fechar o serviço.
     /// </summary>
-    private void OpenMaintenance()
+    private bool OpenMaintenance()
     {
         if (_current is null || _current.Kind != DeviceKind.Android || _current.State != "ready")
         {
             Log(L10n.T("log.maint.nodev"));
-            return;
+            return false;
         }
         // Limpeza sem scan é válida — o relatório mínimo é o mesmo do checklist.
         if (_report is null)
@@ -40,7 +41,7 @@ public partial class MainWindow : Window
             // O relatório aberto é de OUTRO aparelho — gravar a limpeza dele
             // aqui misturava medições de dois telemóveis no mesmo documento.
             Log(L10n.T("log.test.mismatch"));
-            return;
+            return false;
         }
 
         // _busy pausa o ticker de telemetria durante o diálogo inteiro: as
@@ -50,14 +51,19 @@ public partial class MainWindow : Window
         {
             var serial = _current.Id.TrimEnd('!');
             var dlg = new MaintenanceDialog(_report, _adbPath, serial, Log) { Owner = this };
-            if (dlg.ShowDialog() != true || !dlg.Saved) return;
+            if (dlg.ShowDialog() != true || !dlg.Saved) return false;
 
             Log(L10n.T("maint.saved"));
             // A limpeza não mexe em Results nem no grau — mas o relatório ficou
             // mais completo, por isso os botões de exportação acordam como no scan.
-            ExportButton.IsEnabled = SendButton.IsEnabled = AiButton.IsEnabled =
+            // UpdateAiButtons (e não AiButton.IsEnabled direto) acende também a
+            // IA MANUT. — sem isto a entrada via SERVIÇO→Otimização só tinha a
+            // IA genérica e perdia o relatório de manutenção dedicado.
+            ExportButton.IsEnabled = SendButton.IsEnabled =
                 InsuranceButton.IsEnabled = CompareButton.IsEnabled =
                 LabelButton.IsEnabled = ClientButton.IsEnabled = true;
+            UpdateAiButtons();
+            return true;
         }
         finally { _busy = false; }
     }
