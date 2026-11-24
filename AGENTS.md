@@ -14,9 +14,9 @@ certo com o runner `windows-2022` do CI:
 
 ### Fluxo correto quando a UI muda intencionalmente
 
-1. Faz push do código — o job Windows do CI falha nos baselines mas
-   **publica o artifact `ui-shots`** com as capturas renderizadas no
-   próprio runner (a referência correta).
+1. Faz push do código com a mudança de UI — o job Windows do CI falha
+   nos baselines mas **publica o artifact `ui-shots`** com as capturas
+   renderizadas no próprio runner (a referência correta).
 2. Descarrega o artifact do run falhado:
 
    ```powershell
@@ -28,11 +28,15 @@ certo com o runner `windows-2022` do CI:
 4. Commit + push — o CI volta a passar porque baseline e render são o
    mesmo ambiente.
 
-`tools/atualizar-baselines-ui.ps1` continua útil para **iterar no
-harness** (ver as capturas localmente), mas os PNGs que produz não servem
-como baseline de CI numa máquina Win11. Se um dia o harness correr no
-próprio CI e escrever os baselines, este workaround deixa de ser
-preciso.
+Notas:
+
+- Se o CI passa, os baselines já batem certo — não precisas de fazer
+  nada (o artifact existe na mesma, mas não há o que atualizar).
+- **`tools/atualizar-baselines-ui.ps1` é armadilhoso**: corre o harness
+  local (que produz renders diferentes do CI em Win11) e, se correr sem
+  falhas, **apaga os baselines e substitui-os pelos renders locais** —
+  exatamente o que não queremos commitar. Só o uses para iterar no
+  harness; nunca deixes os seus PNGs irem para um commit.
 
 ### Flakiness conhecida do harness
 
