@@ -178,7 +178,9 @@ public sealed partial class PerfWindow : Window
                 await RunPhase(samples, 2, sw,
                     sw.Elapsed + TimeSpan.FromSeconds(stressSecs + PageWallGraceSec),
                     earlyExit: () => _pageStats?.Invoke() is not null);
-                stressRan = true;
+                var pageStats = _pageStats?.Invoke();
+                stressRan = pageStats is null
+                    || (pageStats.Engine is not null && pageStats.Engine != "none" && pageStats.Frames > 0);
 
                 SetPhase(2, 3);
                 Instr.Text = L10n.T("perf.phase3");
