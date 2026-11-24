@@ -2472,6 +2472,17 @@ internal static class Program
     private static Color? Cor(Brush? brush) => brush is SolidColorBrush s ? s.Color : null;
 
     /// <summary>
+    /// O primeiro texto de uma linha de resultado: salta os cabeçalhos de
+    /// categoria (DataContext de grupo) e o chip de estado (FontSize 11), que
+    /// não são o corpo do item.
+    /// </summary>
+    private static TextBlock? PrimeiroTextoDeResultado(ItemsControl lista) =>
+        Descendentes<TextBlock>(lista).FirstOrDefault(tb =>
+            tb.DataContext is ResultRow &&
+            tb.FontSize > 11.5 &&
+            tb.FontWeight == FontWeights.Normal);
+
+    /// <summary>
     /// Troca de tema com a janela **já aberta**: prova que os DynamicResource
     /// chegam à ResultsList e aos cinco diálogos sem os reabrir. Antes só se
     /// sabia que abrem já no tema — o T-06 pede a troca a quente.
@@ -2499,10 +2510,10 @@ internal static class Program
             // TextBlock tem de ser buscado de novo — segurar a referência antiga
             // media um elemento já fora da árvore e dava um falso negativo.
             var itemAntes = janela.FindName("ResultsList") is ItemsControl lista
-                ? Primeiro<TextBlock>(lista)
+                ? PrimeiroTextoDeResultado(lista)
                 : null;
             var textoAntes = Cor(itemAntes?.Foreground);
-            var tagAntes = itemAntes?.Text;
+            var chaveAntes = (itemAntes?.DataContext as ResultRow)?.Key;
 
             Gravar(raiz, Path.Combine(destino, "troca-terminal.png"));
             Console.WriteLine("  troca-terminal.png");
@@ -2514,10 +2525,10 @@ internal static class Program
 
             var fundoDepois = Cor(Application.Current.TryFindResource("BgBrush") as Brush);
             var itemDepois = janela.FindName("ResultsList") is ItemsControl listaDepois
-                ? Primeiro<TextBlock>(listaDepois)
+                ? PrimeiroTextoDeResultado(listaDepois)
                 : null;
             var textoDepois = Cor(itemDepois?.Foreground);
-            var tagDepois = itemDepois?.Text;
+            var chaveDepois = (itemDepois?.DataContext as ResultRow)?.Key;
 
             Verificar($"troca: fundo muda (terminal {fundoAntes} → win95 {fundoDepois})",
                 fundoAntes is not null && fundoDepois is not null && fundoAntes != fundoDepois);
@@ -2525,9 +2536,8 @@ internal static class Program
                 Cor(janela.Background) is { } fundoJanela && fundoJanela == fundoDepois);
             Verificar($"troca: ResultsList repinta sem reabrir ({textoAntes} → {textoDepois})",
                 textoAntes is not null && textoDepois is not null && textoAntes != textoDepois);
-            // Formato: o terminal pinta `[pass]`, os outros temas `pass`.
-            Verificar($"troca: ResultsList muda de formato ('{tagAntes}' → '{tagDepois}')",
-                tagAntes?.StartsWith('[') == true && tagDepois?.StartsWith('[') == false);
+            Verificar($"troca: ResultsList mantém a mesma linha ('{chaveAntes}' → '{chaveDepois}')",
+                chaveAntes is not null && chaveAntes == chaveDepois);
 
             Gravar(raiz, Path.Combine(destino, "troca-win95.png"));
             Console.WriteLine("  troca-win95.png");
