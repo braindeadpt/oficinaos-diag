@@ -24,7 +24,7 @@ public sealed class DeviceDetector : IDisposable
     private readonly Func<IReadOnlyList<DetectedDevice>> _adbSource;
     private readonly Func<IReadOnlyList<string>> _iosSource;
     private readonly Func<IReadOnlyList<DetectedDevice>> _serviceModesSource;
-    private DateTime _serviceModesFailedAt = DateTime.MinValue;
+    private long _serviceModesFailedAt = -1;   // TickCount64 do último registo; -1 = sem falha
     private int _polling;
 
     public event Action<DetectedDevice>? Attached;
@@ -107,12 +107,14 @@ public sealed class DeviceDetector : IDisposable
             try
             {
                 modes = _serviceModesSource();
-                _serviceModesFailedAt = DateTime.MinValue;
+                _serviceModesFailedAt = -1;
             }
             catch (Exception ex)
             {
-                var agora = DateTime.UtcNow;
-                if (agora - _serviceModesFailedAt >= TimeSpan.FromMinutes(5))
+                // TickCount64 é monótono — um acerto do relógio do sistema
+                // não atrasa o lembrete como atrasaria com DateTime.UtcNow.
+                var agora = Environment.TickCount64;
+                if (_serviceModesFailedAt < 0 || agora - _serviceModesFailedAt >= 5 * 60 * 1000)
                 {
                     AppLog.Exception("DeviceDetector.ServiceModes", ex);
                     _serviceModesFailedAt = agora;
