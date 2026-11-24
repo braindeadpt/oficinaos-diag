@@ -1,4 +1,5 @@
 using System.Windows;
+using System.Windows.Controls;
 
 namespace OficinaDiag;
 
@@ -32,27 +33,34 @@ public partial class SendDialog : Window
     // "sale" — the customer wants a buy-quote for a used phone, not a repair.
     public string Purpose => PurposeSale.IsChecked == true ? "sale" : "repair";
 
+    private void ClearError() => ErrorText.Visibility = Visibility.Collapsed;
+
+    private void ShowError(string message, TextBox field)
+    {
+        ErrorText.Text = message;
+        ErrorText.Visibility = Visibility.Visible;
+        field.Focus();
+        field.SelectAll();
+    }
+
     private void Send_Click(object sender, RoutedEventArgs e)
     {
+        ClearError();
         // a cloud gera códigos de loja com exatamente 6 caracteres
         if (ShopCode.Length < 6)
         {
-            MessageBox.Show(this, L10n.T("send.err.code"),
-                L10n.T("send.title"), MessageBoxButton.OK, MessageBoxImage.Warning);
+            ShowError(L10n.T("send.err.code"), ShopCodeBox);
             return;
         }
         if (CustomerName.Length == 0 || CustomerPhone.Length < 3)
         {
-            MessageBox.Show(this, L10n.T("send.err.contact"),
-                L10n.T("send.title"), MessageBoxButton.OK, MessageBoxImage.Warning);
+            ShowError(L10n.T("send.err.contact"), CustomerName.Length == 0 ? NameBox : PhoneBox);
             return;
         }
         // email é opcional, mas se vier tem de passar o z.email() da Cloud
         if (CustomerEmail is not null && !Cloud.IntakeRules.IsValidEmail(CustomerEmail))
         {
-            MessageBox.Show(this, L10n.T("send.err.email"),
-                L10n.T("send.title"), MessageBoxButton.OK, MessageBoxImage.Warning);
-            EmailBox.Focus();
+            ShowError(L10n.T("send.err.email"), EmailBox);
             return;
         }
         DialogResult = true;

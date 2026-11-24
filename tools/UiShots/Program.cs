@@ -2304,17 +2304,17 @@ internal static class Program
             ThemeManager.Apply(ThemeManager.Terminal);
         }
 
-        // 3–5. Os três que validam campos: o botão abre um aviso (MessageBox
-        // nativo) e o diálogo fica aberto. O aviso prova que o handler correu
-        // até ao fim sem exceção; o `Clicar` é que garante que a exceção, se
-        // houver, aparece como «! UI:».
-        var validacoes = new (string Nome, Func<Window> Criar, string Botao, string Chave)[]
+        // 3–5. Os três que validam campos: seguro/envio mostram o erro na
+        // própria janela (ErrorText) e o diálogo fica aberto; o token ainda
+        // abre um aviso nativo (MessageBox). O clique tem de correr o handler
+        // até ao fim sem exceção; o erro prova que a validação disparou.
+        var validacoes = new (string Nome, Func<Window> Criar, string Botao, string Chave, bool Inline)[]
         {
-            ("seguro", () => new InsuranceDialog(DiagConfig.Load()), "GenerateBtn", "ins.err.insured"),
-            ("envio", () => new SendDialog(), "SendBtn", "send.err.code"),
-            ("token", () => new TokenDialog(), "OkBtn", "dlg.ai.token.empty"),
+            ("seguro", () => new InsuranceDialog(DiagConfig.Load()), "GenerateBtn", "ins.err.insured", true),
+            ("envio", () => new SendDialog(), "SendBtn", "send.err.code", true),
+            ("token", () => new TokenDialog(), "OkBtn", "dlg.ai.token.empty", false),
         };
-        foreach (var (nome, criar, botao, chave) in validacoes)
+        foreach (var (nome, criar, botao, chave, inline) in validacoes)
         {
             Marcar($"clique: {nome} (abrir)");
             var dialogo = criar();
@@ -2327,16 +2327,36 @@ internal static class Program
                     continue;
                 }
 
+                Marcar($"clique: {nome} ({botao})");
+                if (inline)
+                {
+                    // Se o diálogo voltar a abrir um MessageBox por engano, o
+                    // clique bloqueia na thread da UI: a vigia fecha o aviso
+                    // nativo ao fim de 5 s e a verificação falha em vez de
+                    // pendurar o run até ao limite global.
+                    using var vigiaInline = new CancellationTokenSource();
+                    var redeInline = VigiaDoMessageBox(vigiaInline.Token, 5000);
+                    var clicou = Clicar(alvo);
+                    vigiaInline.Cancel();
+                    redeInline.Wait(500);
+                    var erro = dialogo.FindName("ErrorText") as TextBlock;
+
+                    Verificar($"clique: {nome} correu o handler sem exceção", clicou);
+                    Verificar($"clique: {nome} mostrou «{chave}» no erro inline",
+                        erro is { Visibility: Visibility.Visible } && erro.Text == L10n.T(chave));
+                    Verificar($"clique: {nome} continua aberto depois do erro", dialogo.IsLoaded);
+                    continue;
+                }
+
                 using var vigia = new CancellationTokenSource();
                 var rede = VigiaDoMessageBox(vigia.Token);
                 var resposta = ResponderMessageBoxDetalhado("ok");
-                Marcar($"clique: {nome} ({botao})");
-                var clicou = Clicar(alvo); // fica dentro do MessageBox até alguém responder
+                var clicouMsg = Clicar(alvo); // fica dentro do MessageBox até alguém responder
                 var (corpo, porque) = resposta.GetAwaiter().GetResult();
                 vigia.Cancel();
                 rede.Wait(500);
 
-                Verificar($"clique: {nome} correu o handler sem exceção", clicou);
+                Verificar($"clique: {nome} correu o handler sem exceção", clicouMsg);
                 Verificar($"clique: {nome} avisou «{chave}» em vez de seguir ({porque})",
                     TextoDoAviso(corpo, chave));
                 Verificar($"clique: {nome} continua aberto depois do aviso", dialogo.IsLoaded);
@@ -2452,6 +2472,17 @@ internal static class Program
     private static Color? Cor(Brush? brush) => brush is SolidColorBrush s ? s.Color : null;
 
     /// <summary>
+    /// O primeiro texto de uma linha de resultado: salta os cabeçalhos de
+    /// categoria (DataContext de grupo) e o chip de estado (FontSize 11), que
+    /// não são o corpo do item.
+    /// </summary>
+    private static TextBlock? PrimeiroTextoDeResultado(ItemsControl lista) =>
+        Descendentes<TextBlock>(lista).FirstOrDefault(tb =>
+            tb.DataContext is ResultRow &&
+            tb.FontSize > 11.5 &&
+            tb.FontWeight == FontWeights.Normal);
+
+    /// <summary>
     /// Troca de tema com a janela **já aberta**: prova que os DynamicResource
     /// chegam à ResultsList e aos cinco diálogos sem os reabrir. Antes só se
     /// sabia que abrem já no tema — o T-06 pede a troca a quente.
@@ -2479,10 +2510,10 @@ internal static class Program
             // TextBlock tem de ser buscado de novo — segurar a referência antiga
             // media um elemento já fora da árvore e dava um falso negativo.
             var itemAntes = janela.FindName("ResultsList") is ItemsControl lista
-                ? Primeiro<TextBlock>(lista)
+                ? PrimeiroTextoDeResultado(lista)
                 : null;
             var textoAntes = Cor(itemAntes?.Foreground);
-            var tagAntes = itemAntes?.Text;
+            var chaveAntes = (itemAntes?.DataContext as ResultRow)?.Key;
 
             Gravar(raiz, Path.Combine(destino, "troca-terminal.png"));
             Console.WriteLine("  troca-terminal.png");
@@ -2494,10 +2525,10 @@ internal static class Program
 
             var fundoDepois = Cor(Application.Current.TryFindResource("BgBrush") as Brush);
             var itemDepois = janela.FindName("ResultsList") is ItemsControl listaDepois
-                ? Primeiro<TextBlock>(listaDepois)
+                ? PrimeiroTextoDeResultado(listaDepois)
                 : null;
             var textoDepois = Cor(itemDepois?.Foreground);
-            var tagDepois = itemDepois?.Text;
+            var chaveDepois = (itemDepois?.DataContext as ResultRow)?.Key;
 
             Verificar($"troca: fundo muda (terminal {fundoAntes} → win95 {fundoDepois})",
                 fundoAntes is not null && fundoDepois is not null && fundoAntes != fundoDepois);
@@ -2505,9 +2536,8 @@ internal static class Program
                 Cor(janela.Background) is { } fundoJanela && fundoJanela == fundoDepois);
             Verificar($"troca: ResultsList repinta sem reabrir ({textoAntes} → {textoDepois})",
                 textoAntes is not null && textoDepois is not null && textoAntes != textoDepois);
-            // Formato: o terminal pinta `[pass]`, os outros temas `pass`.
-            Verificar($"troca: ResultsList muda de formato ('{tagAntes}' → '{tagDepois}')",
-                tagAntes?.StartsWith('[') == true && tagDepois?.StartsWith('[') == false);
+            Verificar($"troca: ResultsList mantém a mesma linha ('{chaveAntes}' → '{chaveDepois}')",
+                chaveAntes is not null && chaveAntes == chaveDepois);
 
             Gravar(raiz, Path.Combine(destino, "troca-win95.png"));
             Console.WriteLine("  troca-win95.png");

@@ -38,6 +38,7 @@ public sealed partial class ChecklistDialog : Window
 
         foreach (var item in Grader.ChecklistItems)
             ItemsPanel.Children.Add(BuildRow(item));
+        RefreshProgress();
         RefreshPhotoCount();
 
         // Nunca maior que o ecrã: a 620 DIP num portátil 1366×768 a 125% (614
@@ -116,6 +117,7 @@ public sealed partial class ChecklistDialog : Window
         // KeyNotFoundException dentro do handler (a marca nunca pegava).
         ChecklistMarks.Toggle(_state, key, s); // tocar de novo desmarca
         Paint(key);
+        RefreshProgress();
     }
 
     private void Paint(string key)
@@ -129,11 +131,18 @@ public sealed partial class ChecklistDialog : Window
         ok.Foreground = s == 1 ? pass : fg;
         fail.Foreground = s == 2 ? warn : fg;
         na.Foreground = s == 3 ? dim : fg;
+        ok.BorderBrush = s == 1 ? pass : dim;
+        fail.BorderBrush = s == 2 ? warn : dim;
+        na.BorderBrush = s == 3 ? fg : dim;
         ok.FontWeight = fail.FontWeight = na.FontWeight = FontWeights.Normal;
         if (s == 1) ok.FontWeight = FontWeights.Bold;
         if (s == 2) fail.FontWeight = FontWeights.Bold;
         if (s == 3) na.FontWeight = FontWeights.Bold;
     }
+
+    private void RefreshProgress() =>
+        ProgressText.Text = L10n.F("progress.marked",
+            _state.Values.Count(v => v != 0), _row.Count);
 
     private void Photo_Click(object sender, RoutedEventArgs e)
     {

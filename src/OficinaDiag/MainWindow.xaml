@@ -115,16 +115,33 @@
                                    Foreground="{DynamicResource DimBrush}"
                                    Visibility="Collapsed"/>
                         <ItemsControl x:Name="ResultsList" FontFamily="{DynamicResource MonoFont}" FontSize="12">
+                            <ItemsControl.GroupStyle>
+                                <GroupStyle>
+                                    <GroupStyle.HeaderTemplate>
+                                        <DataTemplate>
+                                            <TextBlock Text="{Binding Name}"
+                                                       FontFamily="{DynamicResource UiFont}"
+                                                       FontSize="12" FontWeight="SemiBold"
+                                                       Foreground="{DynamicResource DimBrush}"
+                                                       Margin="0,10,0,3"/>
+                                        </DataTemplate>
+                                    </GroupStyle.HeaderTemplate>
+                                </GroupStyle>
+                            </ItemsControl.GroupStyle>
                             <ItemsControl.ItemTemplate>
                                 <DataTemplate>
                                     <Grid Margin="0,2">
                                         <Grid.ColumnDefinitions>
-                                            <!-- 78 = cabe `[skipped]` (9 caracteres a 12px mono); 62 cortava o `]` -->
-                                            <ColumnDefinition Width="78"/>
+                                            <ColumnDefinition Width="92"/>
                                             <ColumnDefinition Width="*"/>
                                         </Grid.ColumnDefinitions>
-                                        <TextBlock Text="{Binding Status, Converter={StaticResource StatusTag}}"
-                                                   Foreground="{Binding Status, Converter={StaticResource StatusBrush}}"/>
+                                        <Border BorderBrush="{Binding Status, Converter={StaticResource StatusBrush}}"
+                                                BorderThickness="1" Padding="4,0" Margin="0,0,6,0"
+                                                VerticalAlignment="Center" HorizontalAlignment="Left">
+                                            <TextBlock Text="{Binding StatusLabel}"
+                                                       Foreground="{Binding Status, Converter={StaticResource StatusBrush}}"
+                                                       FontSize="11"/>
+                                        </Border>
                                         <TextBlock Grid.Column="1" Foreground="{DynamicResource TextBrush}" TextWrapping="Wrap">
                                             <Run Text="{Binding Key}"/><Run Text="  "/>
                                             <Run Text="{Binding Display}" Foreground="{DynamicResource DimBrush}"/>

@@ -1,4 +1,5 @@
 using System.Windows;
+using System.Windows.Controls;
 using OficinaDiag.Cloud;
 using OficinaDiag.Reports;
 
@@ -53,24 +54,32 @@ public partial class InsuranceDialog : Window
 
     public InsuranceForm? Form { get; private set; }
 
+    private void ClearError() => ErrorText.Visibility = Visibility.Collapsed;
+
+    private void ShowError(string message, TextBox field)
+    {
+        ErrorText.Text = message;
+        ErrorText.Visibility = Visibility.Visible;
+        field.Focus();
+        field.SelectAll();
+    }
+
     private void Generate_Click(object sender, RoutedEventArgs e)
     {
+        ClearError();
         if (InsuredNameBox.Text.Trim().Length == 0)
         {
-            MessageBox.Show(this, L10n.T("ins.err.insured"),
-                L10n.T("ins.title"), MessageBoxButton.OK, MessageBoxImage.Warning);
+            ShowError(L10n.T("ins.err.insured"), InsuredNameBox);
             return;
         }
         if (DamageBox.Text.Trim().Length < 5)
         {
-            MessageBox.Show(this, L10n.T("ins.err.damage"),
-                L10n.T("ins.title"), MessageBoxButton.OK, MessageBoxImage.Warning);
+            ShowError(L10n.T("ins.err.damage"), DamageBox);
             return;
         }
         if (ShopNameBox.Text.Trim().Length == 0)
         {
-            MessageBox.Show(this, L10n.T("ins.err.shop"),
-                L10n.T("ins.title"), MessageBoxButton.OK, MessageBoxImage.Warning);
+            ShowError(L10n.T("ins.err.shop"), ShopNameBox);
             return;
         }
 
