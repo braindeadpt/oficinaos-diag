@@ -160,8 +160,18 @@ $scVer = "5.0.1"
 $scAsset = "scrcpy-win64-v$scVer.zip"
 $scSha = "b12a2c4ee8be317422451fc7dcf8ee20a71b5ea7ef9ad73ddd825a25316227a5"
 $scMarker = Join-Path $sc "VERSION"
-$scPresente = (Test-Path "$sc\scrcpy.exe") -and (Test-Path $scMarker) -and
-    ([string](Get-Content $scMarker -Raw)).Trim() -eq $scVer
+# O skip exige o runtime INTEIRO presente — exe+marker bastavam para uma
+# pasta com DLLs apagadas parecer completa (o review apanhou isto). A
+# lista espelha tools/package-files.txt: se o zip mudar de conteúdo,
+# atualiza aqui e lá.
+$scRuntime = @(
+    "scrcpy.exe", "SDL3.dll", "avcodec-63.dll", "avformat-63.dll",
+    "avutil-61.dll", "swresample-7.dll", "scrcpy-server", "adb.exe",
+    "AdbWinApi.dll", "AdbWinUsbApi.dll", "libusb-1.0.dll", "LICENSE.txt"
+)
+$scPresente = (Test-Path $scMarker) -and
+    ([string](Get-Content $scMarker -Raw)).Trim() -eq $scVer -and
+    -not ($scRuntime | Where-Object { -not (Test-Path (Join-Path $sc $_)) })
 if ($scPresente) {
     Write-Output "scrcpy v$scVer already present - skipping download"
 } else {
