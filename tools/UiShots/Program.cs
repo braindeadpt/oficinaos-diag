@@ -2330,7 +2330,15 @@ internal static class Program
                 Marcar($"clique: {nome} ({botao})");
                 if (inline)
                 {
+                    // Se o diálogo voltar a abrir um MessageBox por engano, o
+                    // clique bloqueia na thread da UI: a vigia fecha o aviso
+                    // nativo ao fim de 5 s e a verificação falha em vez de
+                    // pendurar o run até ao limite global.
+                    using var vigiaInline = new CancellationTokenSource();
+                    var redeInline = VigiaDoMessageBox(vigiaInline.Token, 5000);
                     var clicou = Clicar(alvo);
+                    vigiaInline.Cancel();
+                    redeInline.Wait(500);
                     var erro = dialogo.FindName("ErrorText") as TextBlock;
 
                     Verificar($"clique: {nome} correu o handler sem exceção", clicou);
