@@ -366,9 +366,18 @@ public sealed class UpdateChecker
             "  }",
             "}",
             "New-Item -ItemType Directory -Force -Path $stage, $vazio | Out-Null",
-            // 1) Esperar pelo PID real. O Sleep fixo de 3 s deixava o exe
-            //    bloqueado e o tar falhava a meio da atualização.
-            $"Wait-Process -Id {processId} -Timeout 30 -ErrorAction SilentlyContinue",
+            // 1) Esperar pelo processo real — pelo HANDLE e sem timeout.
+            //    O diálogo «a app reinicia já» fica aberto o tempo que o
+            //    técnico demorar a carregar em OK, e um Wait-Process com
+            //    timeout avançava com a app viva: o /MIR falhava nos
+            //    ficheiros trancados e cada Start-Process abaixo lançava uma
+            //    instância que morria no mutex de instância única — a app
+            //    terminava sem janela nenhuma. Get-Process confirma que o
+            //    PID ainda é o nosso exe: um PID reutilizado por outro
+            //    processo não nos faz esperar por ele (e se o PID já não
+            //    existe, a app já saiu e não há nada a esperar).
+            $"$alvo = Get-Process -Id {processId} -ErrorAction SilentlyContinue",
+            $"if ($alvo -and $alvo.ProcessName -eq [IO.Path]::GetFileNameWithoutExtension($exe)) {{ try {{ $alvo.WaitForExit() }} catch {{ }} }}",
             // 2) Extrair para staging limpo: appDir só é tocado depois de o
             //    zip provar que traz o exe da app (PackagePaths.AppExeName).
             //    `tar` nu resolve para o GNU tar do Git (usr\bin à frente de
@@ -404,6 +413,23 @@ public sealed class UpdateChecker
             //    árvore toda é o que permite repor tudo no rollback; antes
             //    era só o exe e uma falha a meio deixava exe velho com DLLs
             //    novas (instalação híbrida).
+            //
+            //    Inventário do que vive em appDir mas NÃO vem no zip
+            //    (revisão #62): o único ficheiro do utilizador é
+            //    `oficinaos-diag.config.json` — config portátil com tema,
+            //    idioma, token Pro (DPAPI) e identidade da loja
+            //    (DiagConfig.cs); o /XF nas três cópias impede o /MIR de o
+            //    purgar — sem ele as preferências e o emparelhamento
+            //    perdiam-se e o backup era apagado no sucesso. O histórico
+            //    (history.jsonl), o diag.log e o outbox vivem em
+            //    %APPDATA%\OficinaDiag, e os relatórios vão para a pasta que
+            //    o técnico escolhe — nada disso entra em appDir.
+            //    `tools/` É versionado com a app: fetch-tools.ps1 +
+            //    package-files.txt põem scrcpy e platform-tools no zip, por
+            //    isso o espelho tem de a sincronizar como qualquer outro
+            //    ficheiro da app. `.update-falhou` é do próprio updater:
+            //    purgá-lo numa aplicação bem-sucedida é o comportamento
+            //    certo (o aviso já não se aplica).
             "try {",
             //    `.bak-*`/`*.bak-*` dentro de appDir são restos de updaters
             //    antigos (o veneno do #62: `.bak-X/.bak-X/...` ~400 níveis,
@@ -414,9 +440,14 @@ public sealed class UpdateChecker
             "  Get-ChildItem $appDir -Directory -Force -ErrorAction SilentlyContinue | Where-Object { $_.Name -like '*.bak-*' } | ForEach-Object { Limpar-Pasta $_.FullName }",
             //    Backup: /E copia a árvore toda (sem purge — $bak nasce
             //    vazio). /XD '*.bak-*' exclui restos de updater a qualquer
-            //    profundidade; /XJ não segue junctions — sem ele um /MIR
-            //    podia apagar fora da árvore. Exit <8 = sucesso.
-            "  & \"$env:SystemRoot\\System32\\robocopy.exe\" $appDir $bak /E /XD '*.bak-*' /XJ /R:0 /W:0 /NFL /NDL /NJH /NJS | Out-File $log -Append",
+            //    profundidade — incluindo o próprio $bak, que nasce DENTRO
+            //    de appDir (o appDir de produção termina em '\'): sem a
+            //    exclusão o robocopy recopiava o destino para dentro de si
+            //    mesmo, o veneno original do #62. /XF tira o config
+            //    portátil do snapshot: é dado do utilizador, não do build.
+            //    /XJ não segue junctions — sem ele um /MIR podia apagar
+            //    fora da árvore. Exit <8 = sucesso.
+            "  & \"$env:SystemRoot\\System32\\robocopy.exe\" $appDir $bak /E /XD '*.bak-*' /XF 'oficinaos-diag.config.json' /XJ /R:0 /W:0 /NFL /NDL /NJH /NJS | Out-File $log -Append",
             "  \"backup exit=$LASTEXITCODE\" | Out-File $log -Append",
             "  if ($LASTEXITCODE -ge 8) { throw \"backup falhou (robocopy exit $LASTEXITCODE)\" }",
             "  $backupOk = $true",
@@ -431,9 +462,11 @@ public sealed class UpdateChecker
             //    Aplicação: /MIR é o espelho verdadeiro — além de copiar,
             //    purga de appDir o que a versão nova já não traz (o
             //    Copy-Item deixava DLLs mortas para trás, outra forma de
-            //    híbrido). Os /XD/'/XJ'/'/R:0'/'/W:0' repetem-se: o purge
-            //    também os respeita.
-            "  & \"$env:SystemRoot\\System32\\robocopy.exe\" $stage $appDir /MIR /XD '*.bak-*' /XJ /R:0 /W:0 /NFL /NDL /NJH /NJS | Out-File $log -Append",
+            //    híbrido). Os /XD/'/XF'/'/XJ'/'/R:0'/'/W:0' repetem-se: o
+            //    purge também os respeita — o /XF é o que poupa o config
+            //    portátil e o .bak-* poupa o backup que vive dentro de
+            //    appDir durante a aplicação.
+            "  & \"$env:SystemRoot\\System32\\robocopy.exe\" $stage $appDir /MIR /XD '*.bak-*' /XF 'oficinaos-diag.config.json' /XJ /R:0 /W:0 /NFL /NDL /NJH /NJS | Out-File $log -Append",
             "  \"apply exit=$LASTEXITCODE\" | Out-File $log -Append",
             "  if ($LASTEXITCODE -ge 8) { throw \"apply falhou (robocopy exit $LASTEXITCODE)\" }",
             "} catch {",
@@ -441,10 +474,12 @@ public sealed class UpdateChecker
             // Rollback: /MIR do backup repõe a versão antiga E remove o que
             // a aplicação parcial trouxe de novo — mais completo que o
             // Copy-Item por cima, que deixava ficheiros novos para trás.
+            // O /XF repete-se: sem ele o config portátil (extra face ao
+            // backup, que também o exclui) era purgado na reposição.
             // Só corre quando o backup está completo: um /MIR de backup
             // parcial transformava appDir numa instalação truncada.
             "  if ($backupOk -and (Test-Path $bak)) {",
-            "    & \"$env:SystemRoot\\System32\\robocopy.exe\" $bak $appDir /MIR /XD '*.bak-*' /XJ /R:0 /W:0 /NFL /NDL /NJH /NJS | Out-Null",
+            "    & \"$env:SystemRoot\\System32\\robocopy.exe\" $bak $appDir /MIR /XD '*.bak-*' /XF 'oficinaos-diag.config.json' /XJ /R:0 /W:0 /NFL /NDL /NJH /NJS | Out-Null",
             "  }",
             //    Repor **por cima**, e só depois tentar a troca limpa: o
             //    `Move-Item` para uma pasta que ainda existe move o backup para

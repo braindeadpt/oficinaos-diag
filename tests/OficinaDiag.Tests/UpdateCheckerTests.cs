@@ -165,7 +165,14 @@ public class UpdateCheckerTests
             @"C:\Temp\diag-update.log", 4242);
 
         // O Sleep fixo deixava o exe bloqueado e o adb segurava os .exe.
-        Assert.Contains("Wait-Process -Id 4242 -Timeout 30", script);
+        // A espera é pelo HANDLE do processo (WaitForExit, sem timeout): o
+        // diálogo «a app reinicia já» pode ficar aberto o tempo que o
+        // técnico demorar — um timeout avançava com a app viva, o /MIR
+        // falhava nos ficheiros trancados e o relançamento morria no mutex
+        // de instância única, deixando a app sem janela nenhuma.
+        Assert.Contains("Get-Process -Id 4242", script);
+        Assert.Contains("WaitForExit()", script);
+        Assert.DoesNotContain("Wait-Process", script);
         Assert.DoesNotContain("Start-Sleep", script);
         Assert.Contains("kill-server", script);
         Assert.Contains("Stop-Process -Name adb,idevicediagnostics,idevicecrashreport", script);
@@ -228,6 +235,23 @@ public class UpdateCheckerTests
         // /XJ: um junction dentro de appDir não pode levar o /MIR a apagar
         // fora da árvore.
         Assert.Contains("/XJ", script);
+    }
+
+    [Fact]
+    public void UpdateScriptPreservesPortableConfigOutsideTheMirror()
+    {
+        // Revisão do #62: o config portátil (tema, idioma, token Pro DPAPI,
+        // identidade da loja — DiagConfig.cs) vive em appDir mas não vem no
+        // zip. Sem /XF o /MIR purgava-o na aplicação e o rollback purgava-o
+        // outra vez (é "extra" face ao backup, que também o exclui) — as
+        // preferências e o emparelhamento Perdiam-se para sempre. O /XF tem
+        // de estar nas TRÊS cópias: backup, aplicação e rollback.
+        var script = UpdateChecker.BuildUpdateScript(
+            "v0.3.0", @"C:\Apps\Diag", @"C:\Temp\diag.zip", @"C:\Temp\upd.log", 1);
+
+        var exclusoes = script.Split(
+            "/XF 'oficinaos-diag.config.json'", StringSplitOptions.None).Length - 1;
+        Assert.Equal(3, exclusoes);
     }
 
     [Fact]

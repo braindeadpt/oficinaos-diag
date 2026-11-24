@@ -133,7 +133,7 @@ const mutantes = [
   {
     nome: "o backup do staging não copia a árvore",
     ficheiro: "src/OficinaDiag.Core/Cloud/UpdateChecker.cs",
-    de: String.raw`            "  & \"$env:SystemRoot\\System32\\robocopy.exe\" $appDir $bak /E /XD '*.bak-*' /XJ /R:0 /W:0 /NFL /NDL /NJH /NJS | Out-File $log -Append",`,
+    de: String.raw`            "  & \"$env:SystemRoot\\System32\\robocopy.exe\" $appDir $bak /E /XD '*.bak-*' /XF 'oficinaos-diag.config.json' /XJ /R:0 /W:0 /NFL /NDL /NJH /NJS | Out-File $log -Append",`,
     para: `            "  New-Item -ItemType Directory -Force $bak | Out-Null",`,
     guarda: "uishots",
     prova: "staging: falha a meio deixa o build anterior",
@@ -141,10 +141,30 @@ const mutantes = [
   {
     nome: "o rollback do staging não repõe o backup",
     ficheiro: "src/OficinaDiag.Core/Cloud/UpdateChecker.cs",
-    de: String.raw`            "    & \"$env:SystemRoot\\System32\\robocopy.exe\" $bak $appDir /MIR /XD '*.bak-*' /XJ /R:0 /W:0 /NFL /NDL /NJH /NJS | Out-Null",`,
+    de: String.raw`            "    & \"$env:SystemRoot\\System32\\robocopy.exe\" $bak $appDir /MIR /XD '*.bak-*' /XF 'oficinaos-diag.config.json' /XJ /R:0 /W:0 /NFL /NDL /NJH /NJS | Out-Null",`,
     para: `            "    # mutante: rollback desligado",`,
     guarda: "uishots",
     prova: "staging: falha a meio deixa o build anterior",
+  },
+  // O /XF 'oficinaos-diag.config.json' é o que tira o config portátil do
+  // /MIR: sem ele na aplicação o config é purgado logo no sucesso; sem ele
+  // no rollback é purgado outra vez na reposição (é "extra" face ao
+  // backup). Cada mutante morre na sua prova de preservação.
+  {
+    nome: "o update espelha por cima do config portátil",
+    ficheiro: "src/OficinaDiag.Core/Cloud/UpdateChecker.cs",
+    de: String.raw`            "  & \"$env:SystemRoot\\System32\\robocopy.exe\" $stage $appDir /MIR /XD '*.bak-*' /XF 'oficinaos-diag.config.json' /XJ /R:0 /W:0 /NFL /NDL /NJH /NJS | Out-File $log -Append",`,
+    para: String.raw`            "  & \"$env:SystemRoot\\System32\\robocopy.exe\" $stage $appDir /MIR /XD '*.bak-*' /XJ /R:0 /W:0 /NFL /NDL /NJH /NJS | Out-File $log -Append",`,
+    guarda: "uishots",
+    prova: "staging: o config portátil sobrevive ao espelho",
+  },
+  {
+    nome: "o rollback do staging apaga o config portátil",
+    ficheiro: "src/OficinaDiag.Core/Cloud/UpdateChecker.cs",
+    de: String.raw`            "    & \"$env:SystemRoot\\System32\\robocopy.exe\" $bak $appDir /MIR /XD '*.bak-*' /XF 'oficinaos-diag.config.json' /XJ /R:0 /W:0 /NFL /NDL /NJH /NJS | Out-Null",`,
+    para: String.raw`            "    & \"$env:SystemRoot\\System32\\robocopy.exe\" $bak $appDir /MIR /XD '*.bak-*' /XJ /R:0 /W:0 /NFL /NDL /NJH /NJS | Out-Null",`,
+    guarda: "uishots",
+    prova: "staging: a falha preserva o config portátil",
   },
   {
     nome: "a falha do staging fica sem aviso",
