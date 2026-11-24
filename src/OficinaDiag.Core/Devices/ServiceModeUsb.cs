@@ -103,6 +103,15 @@ internal static class ServiceModeUsb
         return Query();
     }
 
+    /// <summary>
+    /// TickCount64 do último registo da falha da WMI (-1 = sem falha): uma
+    /// entrada por série + lembrete a cada 5 min enquanto persistir — o
+    /// envio do log de suporte leva só a cauda do ficheiro e a entrada
+    /// única podia ficar de fora. Monotónico: um acerto do relógio não
+    /// atrasa o lembrete.
+    /// </summary>
+    private static long _queryFailedAt = -1;
+
     /// <summary>WMI real — isolado para o matcher puro ficar testável sem Windows.</summary>
     [SupportedOSPlatform("windows")]
     private static List<DetectedDevice> Query()
@@ -121,11 +130,18 @@ internal static class ServiceModeUsb
                 if (m is not null)
                     found.Add(new DetectedDevice(m.Kind, deviceId, m.Label, m.State));
             }
+            _queryFailedAt = -1;
         }
         catch (Exception ex)
         {
             // WMI indisponível/falhou — ronda vazia, nunca deitar a app.
-            AppLog.Exception("ServiceModeUsb.Query", ex);
+            // Uma entrada por série + lembrete periódico (ver _queryFailedAt).
+            var agora = Environment.TickCount64;
+            if (_queryFailedAt < 0 || agora - _queryFailedAt >= 5 * 60 * 1000)
+            {
+                AppLog.Exception("ServiceModeUsb.Query", ex);
+                _queryFailedAt = agora;
+            }
         }
         return found;
     }

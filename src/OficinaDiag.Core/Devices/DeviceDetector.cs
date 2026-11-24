@@ -21,6 +21,10 @@ public sealed class DeviceDetector : IDisposable
     private readonly Timer _timer;
     private readonly Dictionary<string, DetectedDevice> _seen = new();
     private readonly Func<IReadOnlyList<DetectedDevice>> _current;
+    private readonly Func<IReadOnlyList<DetectedDevice>> _adbSource;
+    private readonly Func<IReadOnlyList<string>> _iosSource;
+    private readonly Func<IReadOnlyList<DetectedDevice>> _serviceModesSource;
+    private long _serviceModesFailedAt = -1;   // TickCount64 do último registo; -1 = sem falha
     private int _polling;
 
     public event Action<DetectedDevice>? Attached;
@@ -32,6 +36,9 @@ public sealed class DeviceDetector : IDisposable
     {
         _adbPath = adbPath;
         _current = Current;
+        _adbSource = AdbDevices;
+        _iosSource = () => _ios.ListDevices();
+        _serviceModesSource = ServiceModeUsb.List;
         _timer = new Timer(_ => Poll(), null, 0, 2000);
     }
 
@@ -44,45 +51,39 @@ public sealed class DeviceDetector : IDisposable
     {
         _adbPath = "";
         _current = source;
+        _adbSource = static () => Array.Empty<DetectedDevice>();
+        _iosSource = static () => Array.Empty<string>();
+        _serviceModesSource = static () => Array.Empty<DetectedDevice>();
+        _timer = new Timer(_ => { }, null, Timeout.Infinite, Timeout.Infinite);
+    }
+
+    /// <summary>
+    /// Seam de teste da composição real de <see cref="Current"/>: adb, iOS e
+    /// modos de serviço injectados à parte — permite simular a falha de UMA
+    /// fonte (ex.: ServiceModeUsb a rebentar) com as outras a encontrar
+    /// aparelhos, que é o que o detector tem de sobreviver.
+    /// </summary>
+    internal DeviceDetector(
+        Func<IReadOnlyList<DetectedDevice>> adbSource,
+        Func<IReadOnlyList<string>> iosSource,
+        Func<IReadOnlyList<DetectedDevice>> serviceModesSource)
+    {
+        _adbPath = "";
+        _current = Current;
+        _adbSource = adbSource;
+        _iosSource = iosSource;
+        _serviceModesSource = serviceModesSource;
         _timer = new Timer(_ => { }, null, Timeout.Infinite, Timeout.Infinite);
     }
 
     private List<DetectedDevice> Current()
     {
         var found = new List<DetectedDevice>();
-
-        if (AdbAvailable)
-        {
-            try
-            {
-                var psi = new ProcessStartInfo(_adbPath, "devices")
-                {
-                    RedirectStandardOutput = true,
-                    UseShellExecute = false,
-                    CreateNoWindow = true,
-                };
-                using var p = Process.Start(psi);
-                if (p is not null)
-                {
-                    var readTask = p.StandardOutput.ReadToEndAsync();
-                    if (!p.WaitForExit(5000))
-                    {
-                        try { p.Kill(entireProcessTree: true); } catch { }
-                        return found;
-                    }
-                    var output = readTask.GetAwaiter().GetResult();
-                    found.AddRange(ParseAdbDevices(output));
-                    // `fastboot devices` custa um processo: só vale a pena
-                    // quando nenhum Android chegou a `ready` (bootloader/recovery).
-                    if (!found.Any(d => d.State == "ready")) found.AddRange(FastbootDevices());
-                }
-            }
-            catch { /* adb falhou — ignora nesta ronda */ }
-        }
+        found.AddRange(_adbSource());
 
         try
         {
-            foreach (var udid in _ios.ListDevices())
+            foreach (var udid in _iosSource())
                 found.Add(new DetectedDevice(DeviceKind.Ios, udid, "iPhone/iPad"));
         }
         catch { /* usbmuxd indisponível */ }
@@ -94,11 +95,73 @@ public sealed class DeviceDetector : IDisposable
         var needIos = !found.Any(d => d.Kind == DeviceKind.Ios && d.State == "ready");
         if (needAndroid || needIos)
         {
-            var modes = ServiceModeUsb.List();
+            // Sem try/catch uma falha aqui (ex.: System.Management não resolve
+            // no contexto da app — issue #63) propagava-se para Poll e
+            // deitava fora a ronda inteira: o Samsung que o adb já tinha
+            // encontrado nunca chegava ao _seen. Regista-se uma vez por
+            // série de falhas + lembrete a cada 5 min — o poll corre a cada
+            // 2 s (o log enchia-se da mesma exceção) e o upload de suporte
+            // envia só a cauda do ficheiro, por isso a entrada única podia
+            // ficar de fora dum incidente prolongado.
+            IReadOnlyList<DetectedDevice> modes;
+            try
+            {
+                modes = _serviceModesSource();
+                _serviceModesFailedAt = -1;
+            }
+            catch (Exception ex)
+            {
+                // TickCount64 é monótono — um acerto do relógio do sistema
+                // não atrasa o lembrete como atrasaria com DateTime.UtcNow.
+                var agora = Environment.TickCount64;
+                if (_serviceModesFailedAt < 0 || agora - _serviceModesFailedAt >= 5 * 60 * 1000)
+                {
+                    AppLog.Exception("DeviceDetector.ServiceModes", ex);
+                    _serviceModesFailedAt = agora;
+                }
+                modes = Array.Empty<DetectedDevice>();
+            }
             if (needAndroid) found.AddRange(modes.Where(d => d.Kind == DeviceKind.Android));
             if (needIos) found.AddRange(modes.Where(d => d.Kind == DeviceKind.Ios));
         }
 
+        return found;
+    }
+
+    /// <summary>
+    /// `adb devices` + fallback `fastboot devices`. Melhor-esforço: qualquer
+    /// falha devolve lista vazia — uma fonte não derruba as restantes.
+    /// </summary>
+    private List<DetectedDevice> AdbDevices()
+    {
+        var found = new List<DetectedDevice>();
+        if (!AdbAvailable) return found;
+
+        try
+        {
+            var psi = new ProcessStartInfo(_adbPath, "devices")
+            {
+                RedirectStandardOutput = true,
+                UseShellExecute = false,
+                CreateNoWindow = true,
+            };
+            using var p = Process.Start(psi);
+            if (p is not null)
+            {
+                var readTask = p.StandardOutput.ReadToEndAsync();
+                if (!p.WaitForExit(5000))
+                {
+                    try { p.Kill(entireProcessTree: true); } catch { }
+                    return found;
+                }
+                var output = readTask.GetAwaiter().GetResult();
+                found.AddRange(ParseAdbDevices(output));
+                // `fastboot devices` custa um processo: só vale a pena
+                // quando nenhum Android chegou a `ready` (bootloader/recovery).
+                if (!found.Any(d => d.State == "ready")) found.AddRange(FastbootDevices());
+            }
+        }
+        catch { /* adb falhou — ignora nesta ronda */ }
         return found;
     }
 
