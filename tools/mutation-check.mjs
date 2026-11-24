@@ -16,7 +16,7 @@
 // Saída: 0 = todos mortos · 1 = algum sobreviveu ou não aplicou ·
 //        2 = não consegui repor um ficheiro (para tudo e grita).
 
-import { readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { join } from "node:path";
 
@@ -406,13 +406,20 @@ function correrGuarda(m) {
   const destino = join(raiz, "out-store", "mutation-ui-shots");
   const r = mundo(exe, [destino]);
   if (r.erro) return { vermelho: false, motivo: `não arrancou: ${r.erro.message}` };
-  const falha = r.saida.includes("[FALHA]") && r.saida.includes(m.prova);
+  // O veredito lê-se do provas.txt, não do stdout: o Console do Windows
+  // escreve na codepage OEM e o spawnSync descodifica como UTF-8 — uma
+  // prova com acentos («portátil», «relançar») nunca batia certa na saída
+  // e um mutante morto saía «sobreviveu». O provas.txt é UTF-8 por
+  // construção e o harness reescreve-o a cada corrida.
+  const provasFile = join(destino, "provas.txt");
+  const provas = existsSync(provasFile) ? readFileSync(provasFile, "utf8") : "";
+  const falha = provas.includes(`[FALHA] ${m.prova}`);
   return {
     vermelho: r.codigo !== 0 && falha,
     motivo: r.codigo === 0
       ? "harness continuou verde"
       : falha ? `[FALHA] ${m.prova}` : "harness vermelho, mas sem a verificação esperada",
-    falhas: r.saida.split("\n").filter((l) => l.includes("[FALHA]")),
+    falhas: provas.split("\n").filter((l) => l.includes("[FALHA]")),
     cauda: r.saida.split("\n").filter((l) => l.trim().length > 0),
   };
 }
