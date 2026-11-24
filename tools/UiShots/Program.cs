@@ -1641,11 +1641,14 @@ internal static class Program
         // Com o robocopy os outros ficheiros são copiados na mesma (o exe e a
         // DLL passam a v9) e o trancado falha — é o rollback /MIR do backup
         // que os repõe. Mede-se o que importa: não sobra instalação híbrida.
+        // LerTexto e não ReadAllText: num desastre (backup vazio, appDir
+        // esvaziado) o exe pode nem existir — a exceção matava a prova antes
+        // de escrever o [FALHA] e o mutante do backup parecia sobreviver.
         Verificar("staging: falha a meio deixa o build anterior",
             codigoFalha == 1
-            && File.ReadAllText(Path.Combine(appFalha, PackagePaths.AppExeName)) == "exe-v2"
-            && File.ReadAllText(Path.Combine(appFalha, "OficinaDiag.Core.dll")) == "core-v2"
-            && File.ReadAllText(Path.Combine(appFalha, "zzz.dat")) == "dados-v2"
+            && LerTexto(Path.Combine(appFalha, PackagePaths.AppExeName)) == "exe-v2"
+            && LerTexto(Path.Combine(appFalha, "OficinaDiag.Core.dll")) == "core-v2"
+            && LerTexto(Path.Combine(appFalha, "zzz.dat")) == "dados-v2"
             && File.Exists(Path.Combine(appFalha, "Data", "models.json"))
             && registoFalha.Contains("a restaurar o build anterior"));
 
