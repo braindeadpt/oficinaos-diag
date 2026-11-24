@@ -54,9 +54,12 @@ Notas:
   não queremos commitar.
 - Para **iterar** no harness sem tocar nos baselines, corre-o
   diretamente para uma pasta de saída separada (o `--baselines`
-  compara mas não escreve nada lá):
+  compara mas não escreve nada lá). **Limpa a pasta de saída antes de
+  cada corrida** — capturas de runs anteriores ficam lá e podem
+  mascarar uma captura que já não é produzida:
 
   ```powershell
+  Remove-Item out\ui-shots-local\*.png -ErrorAction SilentlyContinue
   dotnet run --project tools/UiShots/UiShots.csproj -c Release -- out\ui-shots-local --baselines tools/UiShots/baselines
   ```
 
@@ -66,9 +69,15 @@ Notas:
   restauro completo é:
 
   ```powershell
-  git restore --staged --worktree tools/UiShots/baselines/
+  git status tools/UiShots/baselines/   # vê o que está modificado/não rastreado
+  git restore --source=HEAD --staged --worktree tools/UiShots/baselines/
   git clean -fd tools/UiShots/baselines/
   ```
+
+  **⚠️ O `git clean -fd` apaga TODOS os ficheiros untracked da pasta** —
+  incluindo PNGs novos que queiras manter (p.ex. um baseline novo que
+  ainda não commitaste). Se houver algo a salvar, move-o ou commita-o
+  antes de limpar.
 
 ### Flakiness conhecida do harness
 
