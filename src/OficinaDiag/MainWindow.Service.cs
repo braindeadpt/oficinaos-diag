@@ -25,12 +25,14 @@ public partial class MainWindow : Window
             _reportDeviceId = _current?.Id;
         }
         else if (_current is not null && _reportDeviceId is not null
-                 && _reportDeviceId != _current.Id)
+                 && !DeviceIds.Same(_reportDeviceId, _current.Id))
         {
             // O relatório aberto é de OUTRO aparelho — o seletor troca o
             // telefone ativo sem substituir o relatório. Gravar aqui o
             // checklist/finalidade dele misturava atendimentos de dois
             // telemóveis no histórico (mesma regra da limpeza/teste).
+            // DeviceIds.Same ignora o '!' de estado pendente: o mesmo
+            // Android muda de Id quando o técnico autoriza a depuração.
             // Relatório sem aparelho associado (_reportDeviceId null) passa:
             // quem decide se os dados manuais são deste scan é a confirmação
             // do Scan_Click — não se bloqueia trabalho já começado.

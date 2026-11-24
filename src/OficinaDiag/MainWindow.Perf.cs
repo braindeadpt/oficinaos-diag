@@ -24,7 +24,7 @@ public partial class MainWindow : Window
         var d = _current;
         // O perfil escreve no relatório aberto — se ele descreve outro
         // aparelho, parar ANTES da sessão (mesma regra da bancada).
-        if (_report is not null && _reportDeviceId != d.Id)
+        if (_report is not null && !DeviceIds.Same(_reportDeviceId, d.Id))
         {
             Log(L10n.T("log.test.mismatch"));
             return;
@@ -172,7 +172,7 @@ public partial class MainWindow : Window
         finally { _busy = false; _detector!.Detached -= OnDrop; }
 
         if (!saved || res is null) return;
-        if (_report is not null && _reportDeviceId != d.Id)
+        if (_report is not null && !DeviceIds.Same(_reportDeviceId, d.Id))
         {
             Log(L10n.T("log.test.wrongdev"));
             return;

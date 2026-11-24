@@ -36,7 +36,7 @@ public partial class MainWindow : Window
             };
             _reportDeviceId = _current.Id;
         }
-        else if (_reportDeviceId != _current.Id)
+        else if (!DeviceIds.Same(_reportDeviceId, _current.Id))
         {
             // O relatório aberto é de OUTRO aparelho — gravar a limpeza dele
             // aqui misturava medições de dois telemóveis no mesmo documento.

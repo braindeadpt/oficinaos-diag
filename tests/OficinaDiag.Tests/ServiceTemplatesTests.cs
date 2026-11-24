@@ -260,10 +260,27 @@ public sealed class ServiceTemplatesTests
 
         Assert.True(substituiu);
         Assert.DoesNotContain(r.Results.Keys, k => k.StartsWith("tpl."));
-        Assert.False(r.Results.ContainsKey(ServiceTemplates.AppliedKey));
         Assert.Null(r.Purpose);
         // A limpeza medida em si não é tocada — é ela que vira o serviço.
         Assert.NotNull(r.Maintenance);
+    }
+
+    [Fact]
+    public void LimpezaGravadaMarcaOServicoComoOtimizacao()
+    {
+        // O marcador service.template=maintenance faz o seletor SERVIÇO
+        // reabrir na otimização — sem ele a limpeza gravada era
+        // indistinguível de uma limpeza complementar (botão LIMPEZA).
+        var r = new DeviceReport();
+        r.Maintenance = new MaintenanceReport();
+
+        Assert.False(ServiceTemplates.ApplyMaintenance(r)); // nada a substituir
+
+        Assert.Equal(ServiceTemplates.MaintenanceId,
+            r.Results[ServiceTemplates.AppliedKey].Value);
+        Assert.Equal("maintenance", ServiceTemplates.AiPurposeFor(r));
+        // Reaplicar a mesma otimização não conta como substituição.
+        Assert.False(ServiceTemplates.ApplyMaintenance(r));
     }
 
     [Fact]
@@ -275,6 +292,28 @@ public sealed class ServiceTemplatesTests
 
         Assert.False(ServiceTemplates.ApplyMaintenance(r));
         Assert.Equal("sale", r.Purpose);
+        // O serviço do atendimento fica marcado na mesma — o Purpose manual
+        // é enquadramento de venda, não o serviço executado.
+        Assert.Equal(ServiceTemplates.MaintenanceId,
+            r.Results[ServiceTemplates.AppliedKey].Value);
+    }
+
+    [Fact]
+    public void HtmlDaOtimizacaoNaoEmiteTabelaDeChecklistVazia()
+    {
+        // service.template=maintenance não tem itens tpl.* — a secção
+        // SERVIÇO aponta para a secção LIMPEZA em vez de uma tabela vazia.
+        var r = new DeviceReport();
+        r.Maintenance = new MaintenanceReport();
+        ServiceTemplates.ApplyMaintenance(r);
+
+        var html = ReportBuilder.ToHtml(r);
+
+        // O título leva acentos — o HtmlEncode escapa-os; os fragmentos
+        // asserts são ASCII como nos outros testes de HTML.
+        Assert.Contains("SERVIÇO — ", html);
+        Assert.Contains("limpeza e otimização medidas", html);
+        Assert.Contains("LIMPEZA E OTIMIZAÇÃO", html);
     }
 
     [Fact]

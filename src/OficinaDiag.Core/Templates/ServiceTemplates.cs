@@ -55,6 +55,9 @@ public static class ServiceTemplates
     /// <summary>Prefixo dos checks de item de template — ManualPrefixes do DeviceReport.</summary>
     public const string Prefix = "tpl.";
 
+    /// <summary>Id do template de otimização — o mesmo que abre a janela LIMPEZA.</summary>
+    public const string MaintenanceId = "maintenance";
+
     public static readonly ServiceTemplate[] All =
     [
         new("battery",
@@ -107,7 +110,7 @@ public static class ServiceTemplates
                 new("accounts", "Contas removidas — sem FRP pendente", "Accounts removed — no pending FRP"),
                 new("water", "Sinais de líquido / humidade", "Liquid / moisture signs"),
             ]),
-        new("maintenance",
+        new(MaintenanceId,
             "Otimização / manutenção",
             "Optimization / maintenance",
             "Limpeza e otimização medida antes/depois — já existe como janela própria (LIMPEZA, adb). Escolher este serviço abre-a.",
@@ -203,15 +206,24 @@ public static class ServiceTemplates
     /// um relatório não mistura "compra de usado" com "otimização". O
     /// Purpose que o template impôs (ex.: "sale") sai também; um Purpose
     /// manual do checklist físico (SaleBox, sem template aplicado)
-    /// mantém-se. Devolve true quando havia um serviço de template a
-    /// substituir — quem chamou pode avisar no log.
+    /// mantém-se.
+    /// No fim grava service.template=maintenance: o seletor SERVIÇO reabre
+    /// na otimização e distingue-a da limpeza complementar (o botão LIMPEZA
+    /// direto não passa por aqui e não deixa marcador). Devolve true quando
+    /// substituiu um serviço anterior — quem chamou pode avisar no log.
     /// </summary>
     public static bool ApplyMaintenance(DeviceReport report)
     {
-        var tinhaServico = report.Results.ContainsKey(AppliedKey);
+        var serviceAnterior = report.Results.TryGetValue(AppliedKey, out var c)
+            ? c.Value : null;
+        var substituiu = report.Results.Keys.Any(k => k.StartsWith(Prefix, StringComparison.Ordinal))
+            || (serviceAnterior is not null && serviceAnterior != MaintenanceId);
         Clear(report);
-        if (tinhaServico) report.Purpose = null;
-        return tinhaServico;
+        if (serviceAnterior is not null && serviceAnterior != MaintenanceId)
+            report.Purpose = null;
+        var tpl = Find(MaintenanceId);
+        report.Set(AppliedKey, "info", MaintenanceId, $"serviço: {tpl?.LabelPt ?? MaintenanceId}");
+        return substituiu;
     }
 
     /// <summary>

@@ -20,7 +20,6 @@ public partial class MainWindow : Window
                 Log(L10n.T("log.nodev"));
                 return;
             }
-            _lastAiReport = null;
             // Os WaitForExit dentro dos coletores são síncronos — sem o
             // Task.Run cada chamada adb bloqueava a UI thread e a janela
             // congelava durante o scan inteiro.
@@ -36,7 +35,7 @@ public partial class MainWindow : Window
             // PreserveManualFrom copia só esses: arrastar chaves USB/
             // derivadas (root, battery.swap) de um scan anterior falseava
             // a nova recolha (aviso obsoleto mantinha o grau limitado).
-            if (_report is not null && _reportDeviceId == scannedId)
+            if (_report is not null && DeviceIds.Same(_reportDeviceId, scannedId))
             {
                 fresh.PreserveManualFrom(_report);
             }
@@ -62,6 +61,11 @@ public partial class MainWindow : Window
             }
             _report = fresh;
             _reportDeviceId = scannedId;
+            // O parecer de IA era do relatório anterior — só se invalida
+            // quando a substituição acontece mesmo: um Cancel no aviso de
+            // dados manuais (ou um erro na recolha) não o pode apagar, senão
+            // o envio à loja ia sem ele.
+            _lastAiReport = null;
 
             // iOS: o serial da célula não se repete — se mudou desde a última
             // visita, a bateria foi trocada e isso tem de ficar no relatório.
@@ -132,7 +136,7 @@ public partial class MainWindow : Window
             _reportDeviceId = _current?.Id;
         }
         else if (_current is not null && _reportDeviceId is not null
-                 && _reportDeviceId != _current.Id)
+                 && !DeviceIds.Same(_reportDeviceId, _current.Id))
         {
             // Mesmo vetor do SERVIÇO: o checklist físico ia para o relatório
             // de outro aparelho e ficava gravado no histórico dele.

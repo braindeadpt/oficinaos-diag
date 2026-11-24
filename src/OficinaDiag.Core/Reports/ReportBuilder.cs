@@ -156,9 +156,18 @@ public static class ReportBuilder
         var tpl = ServiceTemplates.Find(svc.Value);
         var title = tpl?.LabelPt ?? svc.Detail ?? svc.Value;
         sb.AppendLine($"<h1 style=\"font-size:1em\">SERVIÇO — {System.Net.WebUtility.HtmlEncode(title)}</h1>");
-        sb.AppendLine("<table><tr><th>verificação</th><th>estado</th><th>valor</th><th>detalhe</th></tr>");
 
         var prefix = $"{ServiceTemplates.Prefix}{svc.Value}.";
+        // Otimização não tem checklist tpl.* — o serviço são as medições da
+        // secção LIMPEZA E OTIMIZAÇÃO, renderizada logo a seguir. Sem esta
+        // saída a tabela saía só com o cabeçalho.
+        if (tpl?.OpensMaintenanceDialog == true
+            && !r.Results.Keys.Any(k => k.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)))
+        {
+            sb.AppendLine("<p>limpeza e otimização medidas — ver a secção seguinte.</p>");
+            return;
+        }
+        sb.AppendLine("<table><tr><th>verificação</th><th>estado</th><th>valor</th><th>detalhe</th></tr>");
         var shown = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         if (tpl is not null)
             foreach (var item in tpl.Items)
