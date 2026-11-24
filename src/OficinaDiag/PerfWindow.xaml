@@ -44,8 +44,15 @@
 
             <!-- instrução guiada -->
             <Border Grid.Row="1" Padding="16,8">
-                <TextBlock x:Name="Instr" FontFamily="{DynamicResource UiFont}" FontSize="14"
-                           Foreground="{DynamicResource WarnBrush}"/>
+                <StackPanel>
+                    <TextBlock x:Name="Instr" FontFamily="{DynamicResource UiFont}" FontSize="14"
+                               Foreground="{DynamicResource WarnBrush}"/>
+                    <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+                        <TextBlock x:Name="Phase1" FontFamily="{DynamicResource UiFont}" FontSize="11"/>
+                        <TextBlock x:Name="Phase2" Margin="18,0,0,0" FontFamily="{DynamicResource UiFont}" FontSize="11"/>
+                        <TextBlock x:Name="Phase3" Margin="18,0,0,0" FontFamily="{DynamicResource UiFont}" FontSize="11"/>
+                    </StackPanel>
+                </StackPanel>
             </Border>
 
             <!-- duração do stress — técnico escolhe 5–15 min (default 5) -->
@@ -85,7 +92,9 @@
             </Border>
 
             <!-- veredicto -->
-            <Border Grid.Row="5" Padding="16,4">
+            <Border x:Name="VerdictCard" Grid.Row="5" Margin="16,4" Padding="10,8"
+                    BorderBrush="{DynamicResource LineBrush}" BorderThickness="1" CornerRadius="4"
+                    Background="{DynamicResource PanelBrush}" Visibility="Collapsed">
                 <TextBlock x:Name="Verdict" FontFamily="{DynamicResource UiFont}" FontSize="12.5"
                            Foreground="{DynamicResource DimBrush}" TextWrapping="Wrap" Text=""/>
             </Border>

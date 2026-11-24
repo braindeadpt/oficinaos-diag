@@ -312,6 +312,12 @@ public static class L10n
             ["bench.confirm.abort"] = "sessão a meio — fechar e deitar fora as medições?",
             ["bench.elapsed"] = "{0}s · restam {1}s",
             ["bench.legend.temp"] = "— temp",
+            ["bench.step.base"] = "1 · base",
+            ["bench.step.load"] = "2 · carga",
+            ["bench.step.recover"] = "3 · recupera",
+            ["perf.step.base"] = "1 · base",
+            ["perf.step.stress"] = "2 · stress",
+            ["perf.step.recover"] = "3 · recupera",
 
             // perfil de desempenho/bateria (PERFIL — Fase C)
             ["perf.title"] = "OFICINA-OS // PERFIL",
@@ -832,6 +838,12 @@ public static class L10n
             ["bench.confirm.abort"] = "session in progress — close and discard the measurements?",
             ["bench.elapsed"] = "{0}s · {1}s left",
             ["bench.legend.temp"] = "— temp",
+            ["bench.step.base"] = "1 · base",
+            ["bench.step.load"] = "2 · load",
+            ["bench.step.recover"] = "3 · recovery",
+            ["perf.step.base"] = "1 · base",
+            ["perf.step.stress"] = "2 · stress",
+            ["perf.step.recover"] = "3 · recovery",
 
             // performance/battery profile (PROFILE — Phase C)
             ["perf.title"] = "OFICINA-OS // PROFILE",

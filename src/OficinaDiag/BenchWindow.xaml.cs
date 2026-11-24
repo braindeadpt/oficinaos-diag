@@ -1,6 +1,8 @@
 using System.ComponentModel;
 using System.Diagnostics;
 using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Media;
 using OficinaDiag.Devices;
 
 namespace OficinaDiag;
@@ -41,6 +43,7 @@ public sealed partial class BenchWindow : Window
         HeaderText.Text = $"{(ThemeManager.IsTerminal ? "▓ " : "")}{L10n.T("bench.header")}";
         Instr.Text = L10n.T("bench.instr.idle");
         TempLegend.Text = L10n.T("bench.legend.temp");
+        ResetPhases();
         StartBtn.Content = L10n.Btn("btn.start");
         DoneBtn.Content = L10n.Btn("btn.saveclose");
         CloseBtn.Content = L10n.Btn("btn.close");
@@ -63,6 +66,32 @@ public sealed partial class BenchWindow : Window
         Scope.Reset(BaseSec + LoadSec + RecoverSec);
     }
 
+    private void ResetPhases()
+    {
+        Phase1.Text = L10n.T("bench.step.base");
+        Phase2.Text = L10n.T("bench.step.load");
+        Phase3.Text = L10n.T("bench.step.recover");
+        SetPhase(0, 0);
+    }
+
+    private void SetPhase(int done, int current)
+    {
+        MarkPhase(Phase1, done >= 1 ? 2 : current == 1 ? 1 : 0);
+        MarkPhase(Phase2, done >= 2 ? 2 : current == 2 ? 1 : 0);
+        MarkPhase(Phase3, done >= 3 ? 2 : current == 3 ? 1 : 0);
+    }
+
+    private void MarkPhase(TextBlock tb, int state)
+    {
+        tb.Foreground = state switch
+        {
+            2 => (Brush)FindResource("PassBrush"),
+            1 => (Brush)FindResource("WarnBrush"),
+            _ => (Brush)FindResource("FaintBrush"),
+        };
+        tb.FontWeight = state == 1 ? FontWeights.SemiBold : FontWeights.Normal;
+    }
+
     private async void Start_Click(object sender, RoutedEventArgs e)
     {
         StartBtn.IsEnabled = false;
@@ -79,17 +108,21 @@ public sealed partial class BenchWindow : Window
         var loadApplied = false;
         try
         {
+            SetPhase(0, 1);
             Instr.Text = L10n.T("bench.phase1");
             await RunPhase(samples, 1, sw, sw.Elapsed + TimeSpan.FromSeconds(BaseSec));
 
+            SetPhase(1, 2);
             Instr.Text = L10n.T(_loadOn is not null ? "bench.phase2.auto" : "bench.phase2.ios");
             if (_loadOn is not null) { await _loadOn(); loadApplied = true; }
             await RunPhase(samples, 2, sw, sw.Elapsed + TimeSpan.FromSeconds(LoadSec));
 
+            SetPhase(2, 3);
             Instr.Text = L10n.T(_loadOff is not null ? "bench.phase3.auto" : "bench.phase3.ios");
             if (_loadOff is not null) { await _loadOff(); loadApplied = false; }
             await RunPhase(samples, 3, sw, sw.Elapsed + TimeSpan.FromSeconds(RecoverSec));
 
+            SetPhase(3, 0);
             Instr.Text = L10n.T("bench.done");
             Result = PowerAnalyzer.Analyze(samples);
             if (Result.SampleCount == 0)
@@ -140,6 +173,7 @@ public sealed partial class BenchWindow : Window
             // a desligar o cabo para gravar) já não são do teste.
             _sessionEnded?.Invoke();
         }
+        if (!string.IsNullOrEmpty(Verdict.Text)) VerdictCard.Visibility = Visibility.Visible;
     }
 
     private async Task RunPhase(List<PowerSample> samples, int phase, Stopwatch sw, TimeSpan end)

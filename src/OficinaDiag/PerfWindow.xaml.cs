@@ -2,6 +2,8 @@ using System.ComponentModel;
 using System.Diagnostics;
 using System.Globalization;
 using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Media;
 using OficinaDiag.Devices;
 using OficinaDiag.Tests;
 
@@ -69,6 +71,7 @@ public sealed partial class PerfWindow : Window
         DurationLabel.Text = L10n.T("perf.duration");
         DurationHint.Text = L10n.T("perf.duration.hint");
         TempLegend.Text = L10n.T("bench.legend.temp");
+        ResetPhases();
         DurationBox.ItemsSource = new[] { "5", "7", "10" };
         DurationBox.SelectedItem = DefaultStressMin.ToString();
         StartBtn.Content = L10n.Btn("btn.start");
@@ -109,6 +112,32 @@ public sealed partial class PerfWindow : Window
         return (int)Math.Round(Math.Clamp(mins * 60, MinStressSec, MaxStressSec));
     }
 
+    private void ResetPhases()
+    {
+        Phase1.Text = L10n.T("perf.step.base");
+        Phase2.Text = L10n.T("perf.step.stress");
+        Phase3.Text = L10n.T("perf.step.recover");
+        SetPhase(0, 0);
+    }
+
+    private void SetPhase(int done, int current)
+    {
+        MarkPhase(Phase1, done >= 1 ? 2 : current == 1 ? 1 : 0);
+        MarkPhase(Phase2, done >= 2 ? 2 : current == 2 ? 1 : 0);
+        MarkPhase(Phase3, done >= 3 ? 2 : current == 3 ? 1 : 0);
+    }
+
+    private void MarkPhase(TextBlock tb, int state)
+    {
+        tb.Foreground = state switch
+        {
+            2 => (Brush)FindResource("PassBrush"),
+            1 => (Brush)FindResource("WarnBrush"),
+            _ => (Brush)FindResource("FaintBrush"),
+        };
+        tb.FontWeight = state == 1 ? FontWeights.SemiBold : FontWeights.Normal;
+    }
+
     private async void Start_Click(object sender, RoutedEventArgs e)
     {
         var stressSecs = StressSeconds();
@@ -124,13 +153,16 @@ public sealed partial class PerfWindow : Window
         var samples = new List<PowerSample>();
         var sw = Stopwatch.StartNew();
         var loadApplied = false;
+        var stressRan = false;
         try
         {
+            SetPhase(0, 1);
             Instr.Text = L10n.T("perf.phase1");
             await RunPhase(samples, 1, sw, sw.Elapsed + TimeSpan.FromSeconds(BaseSec));
 
             // Abre a página no telemóvel e espera o sinal de arranque —
             // no Android são ~2 s; no iOS depende do QR ser lido.
+            SetPhase(1, 2);
             Instr.Text = L10n.T("perf.phase2.wait");
             if (_loadOn is not null) { await _loadOn(); loadApplied = true; }
             if (_openPage is not null) await _openPage(stressSecs);
@@ -146,7 +178,11 @@ public sealed partial class PerfWindow : Window
                 await RunPhase(samples, 2, sw,
                     sw.Elapsed + TimeSpan.FromSeconds(stressSecs + PageWallGraceSec),
                     earlyExit: () => _pageStats?.Invoke() is not null);
+                var pageStats = _pageStats?.Invoke();
+                stressRan = pageStats is null
+                    || (pageStats.Engine is not null && pageStats.Engine != "none" && pageStats.Frames > 0);
 
+                SetPhase(2, 3);
                 Instr.Text = L10n.T("perf.phase3");
                 if (_loadOff is not null) { await _loadOff(); loadApplied = false; }
                 await RunPhase(samples, 3, sw, sw.Elapsed + TimeSpan.FromSeconds(RecoverSec));
@@ -160,6 +196,7 @@ public sealed partial class PerfWindow : Window
                 { await _loadOff(); loadApplied = false; }
             }
 
+            SetPhase(stressRan ? 3 : 1, 0);
             Instr.Text = L10n.T("perf.done");
             Result = PerfAnalyzer.Analyze(samples, _pageStats?.Invoke(),
                 stressSecs, _usbDropCount?.Invoke() ?? 0);
@@ -210,6 +247,7 @@ public sealed partial class PerfWindow : Window
             // As medições acabaram — quedas a partir daqui já não são do perfil.
             _sessionEnded?.Invoke();
         }
+        if (!string.IsNullOrEmpty(Verdict.Text)) VerdictCard.Visibility = Visibility.Visible;
     }
 
     /// <summary>Espera o sinal perf-started da página — true se arrancou, false se estourou o timeout.</summary>
