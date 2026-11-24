@@ -332,14 +332,14 @@ public sealed class UpdateChecker
         return string.Join(Environment.NewLine, new[]
         {
             "$ErrorActionPreference = 'Continue'",
-            $"$log = '{Psq(logPath)}'",
-            $"\"update {Psq(tag)} @ $(Get-Date -Format o)\" | Out-File $log",
-            $"$appDir = '{Psq(appDir)}'",
-            $"$exe = '{Psq(exePath)}'",
-            $"$zip = '{Psq(zipPath)}'",
-            $"$stage = '{Psq(stage)}'",
-            $"$adb = '{Psq(adbPath)}'",
-            $"$vazio = '{Psq(emptyDir)}'",
+            $"$log = '{PsLiteral(logPath)}'",
+            $"\"update {PsLiteral(tag)} @ $(Get-Date -Format o)\" | Out-File $log",
+            $"$appDir = '{PsLiteral(appDir)}'",
+            $"$exe = '{PsLiteral(exePath)}'",
+            $"$zip = '{PsLiteral(zipPath)}'",
+            $"$stage = '{PsLiteral(stage)}'",
+            $"$adb = '{PsLiteral(adbPath)}'",
+            $"$vazio = '{PsLiteral(emptyDir)}'",
             // O técnico abre a app e tem de saber que a atualização falhou: o
             // log vive em %TEMP% e ninguém o vai ler. O marcador é consumido
             // no arranque seguinte (ConsumeUpdateFailure) e apagado.
@@ -352,7 +352,7 @@ public sealed class UpdateChecker
             "function Avisar-Falha([string] $porque) {",
             // Formato com aspas simples: o tag vem da release e não pode ser
             // expandido como expressão.
-            $"  ('{{0}} atualização {{1}} falhou: {{2}} — continuas na versão anterior. Log: {{3}}' -f (Get-Date -Format o), '{Psq(tag)}', $porque, $log) | Out-File $marcador -Encoding utf8",
+            $"  ('{{0}} atualização {{1}} falhou: {{2}} — continuas na versão anterior. Log: {{3}}' -f (Get-Date -Format o), '{PsLiteral(tag)}', $porque, $log) | Out-File $marcador -Encoding utf8",
             "}",
             // Apagar uma árvore sem limites de caminho: o /MIR de uma pasta
             // vazia esvazia o alvo e o Remove-Item tira a casca — ordem que
@@ -596,6 +596,11 @@ public sealed class UpdateChecker
         return null;
     }
 
-    /// <summary>Escapes a string for a single-quoted PowerShell literal.</summary>
-    private static string Psq(string value) => value.Replace("'", "''");
+    /// <summary>
+    /// Escapes a string for a single-quoted PowerShell literal. Internal
+    /// porque a prova do UiShots monta literais com os mesmos caminhos —
+    /// um checkout com apóstrofo (ex.: <c>C:\Users\Dj'Ávila</c>) partiria
+    /// a prova se ela tivesse a sua própria regra de escape.
+    /// </summary>
+    internal static string PsLiteral(string value) => value.Replace("'", "''");
 }

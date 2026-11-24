@@ -176,7 +176,8 @@ const mutantes = [
   },
   // A espera pelo handle é o que impede o relançamento com a app viva:
   // WaitForExit(0) devolve já e o script avança para a cópia — a prova do
-  // processo vivo apanha-o pelo «nao-esperou» no marcador de relançamento.
+  // processo vivo apanha-o na janela negativa: o relançamento não pode
+  // existir enquanto o sleeper vive, e com o mutante existe.
   {
     nome: "o updater não espera pelo processo vivo",
     ficheiro: "src/OficinaDiag.Core/Cloud/UpdateChecker.cs",

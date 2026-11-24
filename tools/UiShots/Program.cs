@@ -1559,25 +1559,34 @@ internal static class Program
             // nada e a espera salta-se — o atalho do processo real já morto.
             var pidDoProcesso = pid;
             string? relancamento = null;
+            string? sinal = null;
             System.Diagnostics.Process? appViva = null;
             var relancarProva = "Write-Output 'relancar desligado na prova'";
             if (processoVivo)
             {
                 // O script só espera por um processo com o nome do exe da
-                // app — um powershell renomeado faz de conta. Dorme 4 s e
-                // só então escreve o marcador e morre: se o updater não
-                // esperasse pelo handle, o relançamento corria antes e o
-                // Test-Path lia «nao-esperou». A ordem é provada por
-                // conteúdo, não por relógio.
+                // app — um powershell renomeado faz de conta. A espera
+                // mede-se por ordem, não por relógio: o sleeper fica VIVO à
+                // espera de um ficheiro-sinal que só a prova escreve (um
+                // WaitForExit(0) relançaria com ele vivo e a janela
+                // negativa apanhar o marcador), e o sleeper.ps1 tem teto de
+                // 2 min para não ficar órfão se a prova morrer a meio.
                 var sleeperExe = Path.Combine(dir, PackagePaths.AppExeName);
                 File.Copy(Path.Combine(Environment.SystemDirectory, "WindowsPowerShell", "v1.0", "powershell.exe"), sleeperExe);
-                var feito = Path.Combine(dir, "processo-fechou.txt");
+                sinal = Path.Combine(dir, "processo-pode-sair.txt");
                 relancamento = Path.Combine(dir, "relancamento.txt");
+                var sleeperPs1 = Path.Combine(dir, "sleeper.ps1");
+                File.WriteAllText(sleeperPs1,
+                    "$porta = '" + UpdateChecker.PsLiteral(sinal) + "'" + Environment.NewLine
+                    + "for ($i = 0; $i -lt 480; $i++) {" + Environment.NewLine
+                    + "  if (Test-Path $porta) { break }" + Environment.NewLine
+                    + "  Start-Sleep -Milliseconds 250" + Environment.NewLine
+                    + "}" + Environment.NewLine);
                 appViva = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(sleeperExe,
-                    $"-NoProfile -Command \"Start-Sleep -Seconds 4; Set-Content -LiteralPath '{feito}' -Value 'fim' -NoNewline\"")
+                    $"-NoProfile -ExecutionPolicy Bypass -File \"{sleeperPs1}\"")
                 { CreateNoWindow = true, UseShellExecute = false })!;
                 pidDoProcesso = appViva.Id;
-                relancarProva = $"if (Test-Path '{feito}') {{ 'esperou' | Out-File '{relancamento}' -Encoding ascii }} else {{ 'nao-esperou' | Out-File '{relancamento}' -Encoding ascii }}";
+                relancarProva = $"'relancou' | Out-File '{UpdateChecker.PsLiteral(relancamento)}' -Encoding ascii";
             }
 
             // Só o relançar fica desligado: um Start-Process sobre um ficheiro
@@ -1599,17 +1608,35 @@ internal static class Program
                 RedirectStandardOutput = true,
                 RedirectStandardError = true,
             });
+            string? espera = null;
+            if (processoVivo)
+            {
+                // Não se lê a saída ainda: ela só acaba quando o processo
+                // sai, e é a saída dele que a prova vem a seguir — ler aqui
+                // era bloquear antes de medir a espera.
+                try
+                {
+                    espera = ProvaDaEspera(p!, relancamento!, sinal!, log);
+                }
+                finally
+                {
+                    // O sleeper já não é preciso em nenhum desfecho — o
+                    // sinal liberta-o à vez (o teto do sleeper.ps1 cobre o
+                    // caso de esta linha nem correr).
+                    try { File.WriteAllText(sinal!, "fim"); } catch { }
+                    if (appViva is not null)
+                    {
+                        if (!appViva.WaitForExit(15_000))
+                        {
+                            try { appViva.Kill(); } catch { }
+                        }
+                        appViva.Dispose();
+                    }
+                }
+            }
             var saida = p!.StandardOutput.ReadToEnd() + p.StandardError.ReadToEnd();
             p.WaitForExit();
-            // O sleeper morre sozinho ao fim do Start-Sleep — se o script
-            // esperou, já saiu; se não esperou, este WaitForExit apanha-o
-            // na mesma e o «nao-esperou» fica escrito na same.
-            appViva?.WaitForExit();
-            appViva?.Dispose();
             var registo = File.Exists(log) ? File.ReadAllText(log) : "";
-            var espera = relancamento is not null && File.Exists(relancamento)
-                ? File.ReadAllText(relancamento).Trim()
-                : null;
             return (p.ExitCode, saida + registo, espera);
         }
 
@@ -1704,9 +1731,10 @@ internal static class Program
         // A espera a sério (revisão #62): as corridas acima passam um PID já
         // morto — o Get-Process salta a espera e o WaitForExit nunca era
         // exercitado. Aqui o PID é de um processo VIVO com o nome do exe da
-        // app (um powershell renomeado a dormir 4 s): o updater só pode
-        // relançar depois de ele morrer, e o marcador «relancamento.txt» diz
-        // se o «processo-fechou.txt» já existia quando a linha corria.
+        // app (um powershell renomeado à espera de um sinal): o updater só
+        // pode relançar depois de ele morrer, e ProvaDaEspera mede a ordem
+        // em duas fases — sem marcador enquanto o processo vive, marcador
+        // depois de o sinal o largar.
         var appVivo = Montar("vivo");
         var vivo = Correr(appVivo, Zip(a =>
         {
@@ -1721,6 +1749,55 @@ internal static class Program
             && vivo.Espera == "esperou"
             && File.ReadAllText(Path.Combine(appVivo, PackagePaths.AppExeName)) == "exe-v4");
 
+    }
+
+    /// <summary>
+    /// A espera do updater medida por ordem, não por relógio. O processo da
+    /// app está VIVO (o sleeper) durante toda a prova: primeiro exige-se que
+    /// o relançamento <b>não</b> exista enquanto ele vive — a janela é bem
+    /// maior do que uma corrida sem espera precisa (extrair + três robocopy
+    /// de uma árvore de mentira), por isso um <c>WaitForExit(0)</c> cai
+    /// aqui; depois escreve-se o sinal que larga o sleeper e exige-se o
+    /// relançamento — sem ele o script podia ter morrido ou ficado preso
+    /// por outro motivo e a prova não distinguia os dois.
+    /// </summary>
+    /// <returns>"esperou", "nao-esperou" ou null se o relançamento nunca apareceu.</returns>
+    private static string? ProvaDaEspera(
+        System.Diagnostics.Process proc, string relancamento, string sinal, string log)
+    {
+        // Arranque: a primeira linha do log é escrita antes da espera —
+        // quando existe, o updater está no Get-Process/WaitForExit (ou já
+        // passou, se não esperar). Sem ela o script nem arrancou.
+        var fimArranque = Environment.TickCount64 + 15_000;
+        while (Environment.TickCount64 < fimArranque && !proc.HasExited)
+        {
+            if (File.Exists(log) && new FileInfo(log).Length > 0) break;
+            Thread.Sleep(50);
+        }
+
+        // Janela negativa: com o sleeper vivo o marcador não pode existir.
+        // Se o processo do updater sair primeiro, não há mais nada a medir
+        // — o marcador decide na mesma (todas as saídas do script passam
+        // pelo relançar substituído).
+        var fimBloqueio = Environment.TickCount64 + 20_000;
+        while (Environment.TickCount64 < fimBloqueio)
+        {
+            if (File.Exists(relancamento)) return "nao-esperou";
+            if (proc.HasExited) return File.Exists(relancamento) ? "nao-esperou" : null;
+            Thread.Sleep(100);
+        }
+
+        // O updater continua bloqueado no handle — a espera é a sério.
+        // Larga-se o sleeper e exige-se o relançamento a seguir.
+        File.WriteAllText(sinal, "fim");
+        var fimRelanco = Environment.TickCount64 + 30_000;
+        while (Environment.TickCount64 < fimRelanco)
+        {
+            if (File.Exists(relancamento)) return "esperou";
+            if (proc.HasExited) return File.Exists(relancamento) ? "esperou" : null;
+            Thread.Sleep(100);
+        }
+        return null;
     }
 
     private static void ProvarDefeitoDaAtualizacao(string destino)
