@@ -237,9 +237,15 @@ public partial class MainWindow : Window
 
     private void SyncReportButtons()
     {
-        var hasReport = _report is not null;
+        // Durante scan/teste o BeginBusy já bloqueou tudo — re-sync (tema/idioma)
+        // não pode reativar botões a meio da operação.
+        if (BusyBar.Visibility == Visibility.Visible) return;
+        // Um relatório criado só para receber o teste no ecrã ainda não tem
+        // medições — não pode acordar exportação/envio antes do telemóvel responder.
+        var hasReport = _report is not null
+            && (_report.Results.Count > 0 || _report.HasManualData());
         ExportButton.IsEnabled = hasReport;
-        SendButton.IsEnabled = hasReport;
+        SendButton.IsEnabled = hasReport && !_sendBusy;
         InsuranceButton.IsEnabled = hasReport;
         CompareButton.IsEnabled = hasReport;
         LabelButton.IsEnabled = hasReport;

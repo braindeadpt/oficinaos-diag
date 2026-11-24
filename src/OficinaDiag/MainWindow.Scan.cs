@@ -10,6 +10,7 @@ public partial class MainWindow : Window
 {
     private async void Scan_Click(object sender, RoutedEventArgs e)
     {
+        if (BusyBar.Visibility == Visibility.Visible) return;
         if (_current is null)
         {
             Log(L10n.T("log.nodev"));
@@ -90,10 +91,6 @@ public partial class MainWindow : Window
             // histórico guarda o scan já com grau — o antes/depois mostra-o na lista
             _history.Add(_report);
             Log(L10n.F("log.scan.done", _report.Results.Count));
-            ExportButton.IsEnabled = TestButton.IsEnabled = SendButton.IsEnabled =
-                InsuranceButton.IsEnabled = CompareButton.IsEnabled = LabelButton.IsEnabled =
-                ClientButton.IsEnabled = true;
-            UpdateAiButtons();
         }
         catch (OperationCanceledException) { Log(L10n.T("busy.cancelled")); }
         catch (Exception ex) { Log(L10n.F("log.err", ex.Message)); }
@@ -147,9 +144,7 @@ public partial class MainWindow : Window
         var dlg = new ChecklistDialog(_report) { Owner = this };
         if (dlg.ShowDialog() != true) return;
         ApplyGrade();
-        ExportButton.IsEnabled = SendButton.IsEnabled = InsuranceButton.IsEnabled =
-            CompareButton.IsEnabled = LabelButton.IsEnabled = ClientButton.IsEnabled = true;
-        UpdateAiButtons();
+        SyncReportButtons();
         Log(L10n.T("log.checklist.saved"));
     }
 

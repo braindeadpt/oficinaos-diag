@@ -14,6 +14,7 @@ public partial class MainWindow
         BusyText.Text = text;
         BusyCancelButton.Visibility = cancellable ? Visibility.Visible : Visibility.Collapsed;
         BusyBar.Visibility = Visibility.Visible;
+        DeviceSelector.IsEnabled = false;
 
         foreach (var b in BusyBlockedButtons()) b.IsEnabled = false;
     }
@@ -27,6 +28,7 @@ public partial class MainWindow
         _opCts?.Dispose();
         _opCts = null;
         _busy = false;
+        DeviceSelector.IsEnabled = true;
 
         SelectDevice(_current, announce: false);
         ChecklistButton.IsEnabled = ServiceButton.IsEnabled = true;

@@ -9,6 +9,7 @@ public partial class MainWindow : Window
 {
     private async void Test_Click(object sender, RoutedEventArgs e)
     {
+        if (BusyBar.Visibility == Visibility.Visible) return;
         try
         {
             // O resultado só pode aterrar num relatório DESTE aparelho.
@@ -74,10 +75,7 @@ public partial class MainWindow : Window
                     // O teste pode correr antes do primeiro scan — os botões
                     // do relatório têm de acordar como no scan/bancada, senão
                     // as medições ficavam invisíveis para exportar/enviar.
-                    ExportButton.IsEnabled = SendButton.IsEnabled =
-                        InsuranceButton.IsEnabled = CompareButton.IsEnabled = LabelButton.IsEnabled =
-                        ClientButton.IsEnabled = true;
-                    UpdateAiButtons();
+                    SyncReportButtons();
                 }
                 finally
                 {
@@ -217,9 +215,7 @@ public partial class MainWindow : Window
         res.UsbDrops = drops.Count;
         res.ApplyTo(_report);
         ApplyGrade();
-        ExportButton.IsEnabled = SendButton.IsEnabled = InsuranceButton.IsEnabled =
-            CompareButton.IsEnabled = LabelButton.IsEnabled = ClientButton.IsEnabled = true;
-        UpdateAiButtons();
+        SyncReportButtons();
         Log(L10n.F("log.bench.saved", res.ChargeValue, res.SampleCount));
     }
 }
