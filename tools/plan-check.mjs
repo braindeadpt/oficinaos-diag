@@ -15,7 +15,7 @@ const erros = [];
 const avisos = [];
 
 // --- tickets -------------------------------------------------------------
-const dirTickets = join("plan-nota10", "tickets");
+const dirTickets = join("docs/internal/plan-nota10", "tickets");
 const tickets = readdirSync(dirTickets)
   .filter((f) => f.endsWith(".md"))
   .sort();
@@ -29,7 +29,7 @@ for (const f of tickets) {
   });
 }
 
-if (criterios.length === 0) erros.push("nenhum critério encontrado em plan-nota10/tickets");
+if (criterios.length === 0) erros.push("nenhum critério encontrado em docs/internal/plan-nota10/tickets");
 
 // --- 1. cada [x] declara a prova e cita algo verificável ------------------
 const provados = criterios.filter((c) => c.feito);
@@ -143,8 +143,8 @@ if (existsSync(caminhoHarness)) {
 // uma regex que já tinha engolido um placar histórico do handoff. Agora a
 // fonte é estruturada: `--escrever` recria-a a partir dos tickets, e o STATUS
 // continua a citá-la — mas quem manda é o JSON.
-const caminhoPlacar = join("plan-nota10", "placar.json");
-const status = readFileSync(join("plan-nota10", "STATUS.md"), "utf8");
+const caminhoPlacar = join("docs/internal/plan-nota10", "placar.json");
+const status = readFileSync(join("docs/internal/plan-nota10", "STATUS.md"), "utf8");
 
 if (process.argv.includes("--escrever")) {
   writeFileSync(
@@ -169,7 +169,7 @@ try {
   placar = JSON.parse(readFileSync(caminhoPlacar, "utf8"));
 } catch (e) {
   erros.push(
-    `plan-nota10/placar.json ilegível ou ausente (${e.message}) — ` +
+    `docs/internal/plan-nota10/placar.json ilegível ou ausente (${e.message}) — ` +
       `corre \`node tools/plan-check.mjs --escrever\``,
   );
 }
@@ -209,5 +209,5 @@ if (erros.length) {
 console.log(
   `✓ plano coerente: ${provados.length} provados, ${pendentes.length} ` +
   `${pendentes.length === 1 ? "pendente" : "pendentes"} ` +
-    `em ${tickets.length} tickets (placar: plan-nota10/placar.json), todos com prova ou motivo`,
+    `em ${tickets.length} tickets (placar: docs/internal/plan-nota10/placar.json), todos com prova ou motivo`,
 );

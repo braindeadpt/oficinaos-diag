@@ -1,76 +1,76 @@
-# Publicar o OficinaOS Diag na Microsoft Store
+# Publishing OficinaDiag on the Microsoft Store
 
-Guia completo para submeter a app como **gratuita** na Microsoft Store.
-Distribuída pela Store, a app instala-se com um clique, atualiza sozinha e
-**não dispara o SmartScreen** (a Microsoft assina o pacote).
+Complete guide to submitting the app as **free** on the Microsoft Store.
+Store-distributed, the app installs with one click, updates itself and
+**doesn't trigger SmartScreen** (Microsoft signs the package).
 
-> Estado: **publicada**. Listagem live em
-> <https://apps.microsoft.com/detail/9P2BM91SFKFM> (editor: conta individual
-> do Partner Center). Este guia fica como referência para **submeter versões
-> novas** — cada release = novo `tools\build-store.ps1` + nova submissão
-> (review ~24–72h), começando no passo 3.
+> Status: **published**. Live listing at
+> <https://apps.microsoft.com/detail/9P2BM91SFKFM> (publisher: individual
+> Partner Center account). This guide stays as reference for **submitting
+> new versions** — each release = new `tools\build-store.ps1` + new
+> submission (review ~24–72h), starting at step 3.
 
 ---
 
-## 1. Conta no Partner Center (uma vez)
+## 1. Partner Center account (once)
 
-1. Ir a <https://partner.microsoft.com/dashboard> → **Apps and games**.
-2. Criar conta de programador:
-   - **Individual** — gratuita; a Store mostra o teu nome pessoal como editor.
-   - **Empresa** — paga (~$99 uma vez) e exige validação da empresa; mostra
-     «Oficina de Sistemas» como editor. Recomendado se quisermos o nome da
-     empresa na Store.
-3. Em **Apps → New app**, reservar o nome **`OficinaOS Diag`**.
+1. Go to <https://partner.microsoft.com/dashboard> → **Apps and games**.
+2. Create a developer account:
+   - **Individual** — free; the Store shows your personal name as publisher.
+   - **Company** — paid (~$99 once) and requires company validation; shows
+     "Oficina de Sistemas" as publisher. Recommended if we want the company
+     name on the Store.
+3. Under **Apps → New app**, reserve the name **`OficinaOS Diag`**.
 
-## 2. Copiar a identidade para o manifesto
+## 2. Copy the identity into the manifest
 
-No Partner Center: a tua app → **Product management → App identity**. Copiar:
+In Partner Center: your app → **Product management → App identity**. Copy:
 
-| Campo | Para onde |
+| Field | Into |
 |---|---|
-| `Package/Identity/Name` | `Name` em `packaging/store/AppxManifest.xml` |
-| `Package/Identity/Publisher` | `Publisher` no mesmo ficheiro |
+| `Package/Identity/Name` | `Name` in `packaging/store/AppxManifest.xml` |
+| `Package/Identity/Publisher` | `Publisher` in the same file |
 
-E substituir `REPLACE_PUBLISHER_DISPLAY_NAME` pelo nome legal (o que aparece
-como editor na Store).
+And replace `REPLACE_PUBLISHER_DISPLAY_NAME` with the legal name (what
+appears as publisher on the Store).
 
-## 3. Gerar o pacote
+## 3. Build the package
 
 ```powershell
 tools\build-store.ps1
 ```
 
-Faz publish self-contained, gera o índice de recursos (tiles em scale-200) e
-produz em `out-store\`:
+Does a self-contained publish, generates the resource index (scale-200
+tiles) and produces in `out-store\`:
 
-- `OficinaOSDiag_<versão>_x64.msix` — pacote em si
-- `OficinaOSDiag_<versão>_x64.msixupload` — **é este que se envia**
+- `OficinaOSDiag_<version>_x64.msix` — the package itself
+- `OficinaOSDiag_<version>_x64.msixupload` — **this is what you upload**
 
-Notas:
+Notes:
 
-- O `.msix` vai **não assinado** de propósito — a Store assina na publicação.
-- A versão sai do `Version` no `.csproj`; a MSIX exige 4 segmentos
-  (`0.1.9` → `0.1.9.0` automaticamente).
-- Para testar localmente antes da Store, é preciso assinar com um certificado
-  de teste — para iterar rápido continua a valer o ZIP normal.
+- The `.msix` goes **unsigned** on purpose — the Store signs at publish.
+- The version comes from `Version` in the `.csproj`; MSIX requires 4
+  segments (`0.1.9` → `0.1.9.0` automatically).
+- To test locally before the Store you must sign with a test certificate —
+  for fast iteration the normal ZIP still works.
 
-## 4. Submissão — o que preencher
+## 4. Submission — what to fill in
 
-| Passo | O que meter |
+| Step | What to put |
 |---|---|
-| **Packages** | Upload do `.msixupload` |
-| **Properties** | Categoria: **Utilitários / Utilities & tools** |
-| **Age ratings** | Questionário IARC — sem conteúdo sensível → **Everyone / 3+** |
+| **Packages** | Upload the `.msixupload` |
+| **Properties** | Category: **Utilities & tools** |
+| **Age ratings** | IARC questionnaire — no sensitive content → **Everyone / 3+** |
 | **Pricing** | **Free** |
-| **Availability** | Todos os mercados; publicar quando aprovada |
-| **Store listings** | PT + EN mínimo (ES opcional) — textos em baixo |
-| **Privacy policy** | URL pública obrigatória — usar `https://cloud.oficinaos.app/privacy.html` (já existe) ou a secção «Privacidade» do README |
-| **Notes for certification** | Texto em baixo — inclui a justificação do `runFullTrust` |
+| **Availability** | All markets; publish when approved |
+| **Store listings** | PT + EN minimum (ES optional) — texts below |
+| **Privacy policy** | Mandatory public URL — use `https://cloud.oficinaos.app/privacy.html` (already exists) or the "Privacy" section of the README |
+| **Notes for certification** | Text below — includes the `runFullTrust` justification |
 
-### Porque `runFullTrust` (justificação para a review)
+### Why `runFullTrust` (justification for review)
 
-A Store deteta a capability restrita e pede uma justificação escrita. Texto
-pronto a colar (inglês — a review é feita em inglês):
+The Store detects the restricted capability and asks for a written
+justification. Ready-to-paste text (English — the review is done in English):
 
 > This is a packaged classic (desktop bridge) app. It diagnoses phones over
 > USB by spawning bundled child processes: Google's `adb.exe`
@@ -78,7 +78,7 @@ pronto a colar (inglês — a review é feita em inglês):
 > Child process spawning requires `runFullTrust`. The app is a free,
 > open-source utility (MIT) — source: github.com/braindeadpt/oficinaos-diag.
 
-### Notas de teste para a review
+### Test notes for review
 
 > The app works standalone without a phone: the main window, scan history,
 > HTML/JSON export and settings all function without a device. USB scans
@@ -87,13 +87,13 @@ pronto a colar (inglês — a review é feita em inglês):
 > a page on the local network (privateNetworkClientServer). Optional cloud
 > features (send-to-shop, AI report) are opt-in buttons only.
 
-## 5. Texto da listagem (PT + EN)
+## 5. Listing text (PT + EN)
 
-**Nome:** OficinaOS Diag
-**Descrição curta (PT):** Diagnóstico de telemóveis por USB — bateria, ecrã, sensores. Grátis e local.
-**Descrição curta (EN):** USB phone diagnostics — battery, screen, sensors. Free and local.
+**Name:** OficinaOS Diag
+**Short description (PT):** Diagnóstico de telemóveis por USB — bateria, ecrã, sensores. Grátis e local.
+**Short description (EN):** USB phone diagnostics — battery, screen, sensors. Free and local.
 
-**Descrição longa (PT):**
+**Long description (PT):**
 
 > O OficinaOS Diag lê qualquer Android ou iPhone ligado por cabo: modelo,
 > bateria (nível, ciclos, capacidade real), ecrã, sensores e armazenamento.
@@ -102,7 +102,7 @@ pronto a colar (inglês — a review é feita em inglês):
 > scans. Ferramenta gratuita do ecossistema OficinaOS, open source (MIT).
 > iPhone: requer o driver USB da Apple (iTunes ou app «Apple Devices»).
 
-**Descrição longa (EN):**
+**Long description (EN):**
 
 > OficinaOS Diag reads any Android or iPhone over USB: model, battery
 > (level, cycles, real capacity), screen, sensors and storage. Scans run
@@ -111,14 +111,14 @@ pronto a colar (inglês — a review é feita em inglês):
 > free tool from the OficinaOS ecosystem, open source (MIT). iPhone
 > requires the Apple USB driver (iTunes or Apple Devices app).
 
-**Screenshots (obrigatório ≥1, 1366×768 ou superior):** janela principal,
-resultado de um scan, página de teste no telemóvel. Tirar da app a correr.
+**Screenshots (required ≥1, 1366×768 or larger):** main window, scan
+result, test page on the phone. Taken from the running app.
 
-## 6. Depois de publicado
+## 6. After publishing
 
-- A app passa a instalar-se da Store com um clique — sem SmartScreen, e
-  atualiza automaticamente para toda a gente.
-- **Cada versão nova** = novo `build-store.ps1` + nova submissão (review
-  ~24–72h). O ZIP nas GitHub Releases continua para quem preferir portátil.
-- O histórico (`%APPDATA%\OficinaDiag`) migra para o espaço privado do
-  pacote MSIX — quem muda do ZIP para a Store começa com histórico vazio.
+- The app installs from the Store with one click — no SmartScreen, and
+  updates automatically for everyone.
+- **Each new version** = new `build-store.ps1` + new submission (review
+  ~24–72h). The ZIP on GitHub Releases stays for those who prefer portable.
+- History (`%APPDATA%\OficinaDiag`) migrates to the MSIX package's private
+  space — switching from ZIP to Store starts with an empty history.
