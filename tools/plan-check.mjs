@@ -169,7 +169,7 @@ try {
   placar = JSON.parse(readFileSync(caminhoPlacar, "utf8"));
 } catch (e) {
   erros.push(
-    `plan-nota10/placar.json ilegível ou ausente (${e.message}) — ` +
+    `docs/internal/plan-nota10/placar.json ilegível ou ausente (${e.message}) — ` +
       `corre \`node tools/plan-check.mjs --escrever\``,
   );
 }
@@ -209,5 +209,5 @@ if (erros.length) {
 console.log(
   `✓ plano coerente: ${provados.length} provados, ${pendentes.length} ` +
   `${pendentes.length === 1 ? "pendente" : "pendentes"} ` +
-    `em ${tickets.length} tickets (placar: plan-nota10/placar.json), todos com prova ou motivo`,
+    `em ${tickets.length} tickets (placar: docs/internal/plan-nota10/placar.json), todos com prova ou motivo`,
 );
