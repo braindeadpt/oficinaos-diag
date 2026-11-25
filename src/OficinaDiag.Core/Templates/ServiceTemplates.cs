@@ -122,8 +122,8 @@ public static class ServiceTemplates
         new("whatsapp",
             "Migração WhatsApp",
             "WhatsApp migration",
-            "Checklist da migração WhatsApp (ver docs/whatsapp-migration.md): backup, transferência e verificação no destino.",
-            "WhatsApp migration checklist (see docs/whatsapp-migration.md): backup, transfer and destination verification.",
+            "Checklist da migração WhatsApp (ver docs/internal/whatsapp-migration.md): backup, transferência e verificação no destino.",
+            "WhatsApp migration checklist (see docs/internal/whatsapp-migration.md): backup, transfer and destination verification.",
             AiPurpose: null,
             RequiredChecks: [],
             Items:

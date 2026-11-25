@@ -64,6 +64,7 @@ Notes:
 | **Pricing** | **Free** |
 | **Availability** | All markets; publish when approved |
 | **Store listings** | PT + EN minimum (ES optional) — texts below |
+| **Privacy policy** | Mandatory public URL — use `https://cloud.oficinaos.app/privacy.html` (already exists) or the "Privacy" section of the README |
 | **Notes for certification** | Text below — includes the `runFullTrust` justification |
 
 ### Why `runFullTrust` (justification for review)
