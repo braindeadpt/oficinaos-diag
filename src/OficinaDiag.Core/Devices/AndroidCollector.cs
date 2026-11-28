@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.IO;
 using System.Globalization;
 using System.Text.RegularExpressions;
 
@@ -12,16 +13,24 @@ public sealed class AndroidCollector
 {
     private readonly string _adbPath;
     private readonly bool _securityAudit;
+    private readonly bool _bugreportConsent;
     private CancellationToken _ct;
 
     /// <param name="securityAudit">
     /// Falso no scan gratuito: a auditoria de segurança das apps é Pro
     /// (decisão do dono) e sem ela o scan poupa os dumpsys extra.
     /// </param>
-    public AndroidCollector(string adbPath, bool securityAudit = true)
+    /// <param name="bugreportConsent">
+    /// Consentimento explícito do operador para recolher o `adb bugreport`
+    /// — contém dados pessoais do dono do telefone. Sem ele, as contagens
+    /// profundas de crashes não correm (o dropbox/logcat sem dados
+    /// pessoais continuam). Da contagem saem só tipos e quantidades.
+    /// </param>
+    public AndroidCollector(string adbPath, bool securityAudit = true, bool bugreportConsent = false)
     {
         _adbPath = adbPath;
         _securityAudit = securityAudit;
+        _bugreportConsent = bugreportConsent;
     }
 
     private async Task<string?> AdbAsync(string serial, string args, int timeoutMs = 8000)
@@ -270,18 +279,29 @@ public sealed class AndroidCollector
 
         // Desgaste NAND (eMMC life_time / pre_eol) — raro sem root, mas quando
         // exposto é um aviso "vai morrer" que nenhuma app de cliente mostra.
-        var nand = (await AdbAsync(serial,
-            "shell cat /sys/block/mmcblk0/device/life_time " +
-            "/sys/class/mmc_host/mmc0/mmc0:0001/life_time 2>/dev/null"))?.Trim();
-        var life = Regex.Matches(nand ?? "", @"0x([0-9A-Fa-f]{2})")
-            .Select(m => Convert.ToInt32(m.Groups[1].Value, 16)).ToList();
-        if (life.Count > 0)
+        var nandProbe = (await AdbAsync(serial,
+            "shell for n in /sys/block/mmcblk0/device/life_time " +
+            "/sys/class/mmc_host/mmc0/mmc0:0001/life_time; " +
+            "do if [ -e $n ]; then v=$(cat $n 2>/dev/null); " +
+            "if [ -z \"$v\" ]; then echo denied; else echo \"value:$v\"; fi; " +
+            "else echo missing; fi; done"))?.Trim();
+        var nandLines = (nandProbe ?? "").Split('\n').Select(l => l.Trim()).ToList();
+        var nandVals = string.Join("\n",
+            nandLines.Where(l => l.StartsWith("value:", StringComparison.Ordinal)).Select(l => l[6..]));
+        var worstLife = DeepReadingParsing.ParseEmmcLifeClass(nandVals);
+        if (worstLife is { } worst)
         {
-            var worst = life.Max(); // classes 1–11, ~10% de vida gasta por classe
+            // classes 1–11, ~10% de vida gasta por classe
             r.Set("storage.wear", worst >= 9 ? "warn" : "info",
                 $"classe {worst}/11 (~{Math.Min(100, worst * 10)}% de vida gasta)",
                 "desgaste estimado da NAND reportado pelo controlador eMMC");
         }
+        else if (nandLines.Any(l => l == "denied"))
+            r.Set("storage.wear", "skipped", "requer root",
+                "o controlador eMMC expõe o desgaste mas o shell não o lê");
+        else
+            r.Set("storage.wear", "skipped", "não disponível neste aparelho",
+                "UFS e a maioria dos eMMC modernos não expõem life_time ao shell");
 
         await CollectBatteryAsync(r, serial);
 
@@ -326,6 +346,9 @@ public sealed class AndroidCollector
         // software (informativo) — falhas repetidas de componentes de sistema
         // é que sugerem hardware.
         await CollectLogsAsync(r, serial);
+
+        if (_bugreportConsent)
+            await CollectBugreportCountsAsync(r, serial);
 
         // Se nem modelo nem OS vieram, o aparelho não respondeu (unauthorized,
         // adb morto, driver) — reportar "completo" aqui escondia uma recolha vazia.
@@ -419,20 +442,57 @@ public sealed class AndroidCollector
         // Um só shell para todos os nós sysfs — cada `adb shell cat` custava
         // um roundtrip inteiro. Xiaomi/Qualcomm expõem a capacidade no nó
         // `bms` (alguns no max170xx) em vez de `battery`.
+        // O probe marca cada nó: «missing» (o aparelho não expõe),
+        // «denied» (existe mas o shell não lê — requer root) ou o valor.
+        // Sem a distinção, uma leitura bloqueada por permissões saía como
+        // "não disponível" e a bancada não sabia que o root a expõe.
         var sysfsDump = await AdbAsync(serial,
             "shell for f in battery/cycle_count battery/charge_full " +
             "battery/charge_full_design bms/charge_full bms/charge_full_design " +
             "max170xx_battery/charge_full max170xx_battery/charge_full_design; " +
-            "do echo \"$f: $(cat /sys/class/power_supply/$f 2>/dev/null)\"; done");
+            "do n=/sys/class/power_supply/$f; " +
+            "if [ -e $n ]; then v=$(cat $n 2>/dev/null); " +
+            "if [ -z \"$v\" ]; then echo \"$f:denied\"; else echo \"$f:value:$v\"; fi; " +
+            "else echo \"$f:missing\"; fi; done");
         var sysfs = new Dictionary<string, string>(StringComparer.Ordinal);
+        var sysfsState = new Dictionary<string, string>(StringComparer.Ordinal);
         foreach (var line in (sysfsDump ?? "").Split('\n'))
         {
             var sep = line.IndexOf(':');
-            if (sep > 0 && !sysfs.ContainsKey(line[..sep].Trim()))
-                sysfs[line[..sep].Trim()] = line[(sep + 1)..].Trim();
+            if (sep <= 0) continue;
+            var node = line[..sep].Trim();
+            if (sysfs.ContainsKey(node)) continue;
+            var rest = line[(sep + 1)..].Trim();
+            if (rest.StartsWith("value:", StringComparison.Ordinal))
+            {
+                sysfsState[node] = "value";
+                sysfs[node] = rest[6..].Trim();
+            }
+            else if (rest is "denied" or "missing")
+            {
+                sysfsState[node] = rest;
+            }
+            else if (rest.Length > 0)
+            {
+                // Aparelho com shell antiga sem os marcadores: valor direto.
+                sysfsState[node] = "value";
+                sysfs[node] = rest;
+            }
         }
         string? Sysfs(string node)
             => sysfs.TryGetValue(node, out var v) && v.Length > 0 ? v : null;
+        // «requer root» se ALGUM nó da família existe mas está bloqueado;
+        // «não disponível» quando todos faltam. Um nó com valor não declara
+        // estado nenhum — a leitura já saiu.
+        string? DeepState(params string[] nodes)
+        {
+            if (nodes.Any(n => sysfs.ContainsKey(n))) return null;
+            if (nodes.Any(n => sysfsState.TryGetValue(n, out var st) && st == "denied"))
+                return "requer root";
+            if (nodes.Any(n => sysfsState.TryGetValue(n, out var st) && st is "denied" or "missing"))
+                return "não disponível neste aparelho";
+            return "não disponível neste aparelho";
+        }
         // Primeiro nó com um número positivo — um valor inválido não vazio
         // num nó não bloqueia o seguinte (a lógica de antes do batch).
         string? FirstNumeric(params string[] nodes)
@@ -447,10 +507,13 @@ public sealed class AndroidCollector
             "bms/charge_full", "max170xx_battery/charge_full");
         var chargeDesign = FirstNumeric("battery/charge_full_design",
             "bms/charge_full_design", "max170xx_battery/charge_full_design");
-        if (AdbParsing.TryInt(cycles?.Trim(), out var c))
+        if (DeepReadingParsing.ParseCycleCount(cycles) is { } c)
             r.Set("battery.cycles", c > 800 ? "warn" : "info",
                 c.ToString(CultureInfo.InvariantCulture),
                 c > 800 ? "acima de ~800 ciclos a degradação é esperada" : null);
+        else if (DeepState("battery/cycle_count") is { } cyclesState)
+            r.Set("battery.cycles", "skipped", cyclesState,
+                "o contador de ciclos não é exposto por todas as marcas");
 
         double? designMah = null;
         if (AdbParsing.TryDouble(chargeDesign?.Trim(), out var cd) && cd > 0)
@@ -485,6 +548,16 @@ public sealed class AndroidCollector
             r.Set("battery.capacity_learned", "info", $"{learnedMah:0} mAh",
                 "estimativa aprendida pelo Android — compara com a capacidade de design");
         }
+
+        // Nem sysfs, nem asoc, nem estimativa: a leitura declara-se
+        // explicitamente — «requer root» quando o nó existe mas está
+        // bloqueado, «não disponível» quando o aparelho não o expõe.
+        if (!r.Results.ContainsKey("battery.capacity")
+            && !r.Results.ContainsKey("battery.capacity_learned")
+            && DeepState("battery/charge_full", "bms/charge_full",
+                "max170xx_battery/charge_full") is { } capState)
+            r.Set("battery.capacity", "skipped", capState,
+                "capacidade real de fábrica não medida neste aparelho");
     }
 
     /// <summary>
@@ -713,5 +786,65 @@ public sealed class AndroidCollector
             sysCrashes > 3
                 ? "falhas repetidas de componentes de sistema — investigar"
                 : "crashes de apps = software, informativo — não é defeito de hardware");
+    }
+
+    /// <summary>
+    /// Contagens de crashes do `adb bugreport` — só corre com consentimento
+    /// explícito do operador (o zip contém dados pessoais do dono). Daqui
+    /// saem apenas contagens e tipos; o zip é sempre apagado no fim.
+    /// </summary>
+    private async Task CollectBugreportCountsAsync(DeviceReport r, string serial)
+    {
+        var tmp = Path.Combine(Path.GetTempPath(), $"oficinadiag-br-{Guid.NewGuid():N}.zip");
+        try
+        {
+            // Processo dedicado: o caminho local pode ter espaços e o
+            // AdbAsync parte os argumentos em espaços. O adb moderno aceita
+            // o caminho de destino no host como argumento único.
+            var psi = new ProcessStartInfo(_adbPath)
+            {
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+                CreateNoWindow = true,
+            };
+            psi.ArgumentList.Add("-s");
+            psi.ArgumentList.Add(serial);
+            psi.ArgumentList.Add("bugreport");
+            psi.ArgumentList.Add(tmp);
+            using (var p = Process.Start(psi))
+            {
+                if (p is not null)
+                {
+                    var drainOut = p.StandardOutput.ReadToEndAsync();
+                    var drainErr = p.StandardError.ReadToEndAsync();
+                    // O bugreport demora minutos — 4 min de teto, kill limpo.
+                    if (!p.WaitForExit(240000))
+                        try { p.Kill(entireProcessTree: true); } catch { }
+                }
+            }
+            if (!File.Exists(tmp) || new FileInfo(tmp).Length == 0)
+            {
+                r.Set("logs.bugreport", "skipped", "bugreport não produzido",
+                    "o aparelho não gerou o bugreport — contagens profundas indisponíveis");
+                return;
+            }
+            using var zip = System.IO.Compression.ZipFile.OpenRead(tmp);
+            var counts = BugreportCrashes.CountEntries(zip);
+            r.Set("logs.bugreport", BugreportCrashes.Status(counts),
+                BugreportCrashes.Summarize(counts),
+                "contagens do bugreport (com consentimento) — tipos e quantidades, sem conteúdo; " +
+                "tombstones/panics repetidos são indício de hardware, não prova");
+        }
+        catch (Exception)
+        {
+            // Nunca rebenta o scan por causa da contagem profunda.
+            r.Set("logs.bugreport", "skipped", "leitura falhou",
+                "o bugreport foi produzido mas não se conseguiu contar");
+        }
+        finally
+        {
+            try { if (File.Exists(tmp)) File.Delete(tmp); } catch { }
+        }
     }
 }
