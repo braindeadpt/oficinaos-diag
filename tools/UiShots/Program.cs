@@ -286,6 +286,10 @@ internal static class Program
             // divergência aparelho/relatório: aviso + caixa de confirmação, Enviar desligado
             Capturar(() => new SendDialog(null, "Samsung Galaxy S21 — R5CT1234567", mismatch: true),
                 Path.Combine(destino, $"envio-mismatch-{tema}.png"), 420, 560);
+            // área útil curta: a rolagem do formulário tem de aparecer e o
+            // Enviar continua alcançável — a regressão do botão fora do ecrã
+            Capturar(() => new SendDialog(null, "Samsung Galaxy S21 — R5CT1234567", mismatch: true),
+                Path.Combine(destino, $"envio-scroll-{tema}.png"), 420, 560, workArea: 380);
             Capturar(() => new TokenDialog(), Path.Combine(destino, $"token-{tema}.png"), 380, 320);
             // ecrã curto: força o scroll das Opções (o que o SizeToContent escondia)
             Capturar(() => new SettingsDialog(DiagConfig.Load()),

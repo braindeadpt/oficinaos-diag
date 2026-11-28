@@ -41,6 +41,11 @@
             </StackPanel>
         </Border>
 
+        <!-- erros de validação aqui em cima: com scroll no formulário, um erro
+             no fundo ficava fora da vista e o envio parecia não responder -->
+        <TextBlock x:Name="ErrorText" Foreground="{DynamicResource WarnBrush}"
+                   TextWrapping="Wrap" Visibility="Collapsed" Margin="0,8,0,0"/>
+
         <TextBlock x:Name="CodeLabel"/>
         <TextBox x:Name="ShopCodeBox" MaxLength="8" CharacterCasing="Upper"/>
 
@@ -58,9 +63,6 @@
                      Margin="0,2,0,0"/>
         <RadioButton x:Name="PurposeSale" Foreground="{DynamicResource FgBrush}"
                      Margin="0,4,0,0"/>
-
-        <TextBlock x:Name="ErrorText" Foreground="{DynamicResource WarnBrush}"
-                   TextWrapping="Wrap" Visibility="Collapsed" Margin="0,8,0,0"/>
 
         <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,16,0,0">
             <Button x:Name="SendBtn" IsDefault="True" Click="Send_Click"/>

@@ -10,8 +10,48 @@ public partial class SendDialog : Window
     protected override void OnSourceInitialized(EventArgs e)
     {
         base.OnSourceInitialized(e);
-        // teto real da área útil deste monitor — o scroll só aparece quando faz falta
-        Scroller.MaxHeight = Math.Max(400, SystemParameters.WorkArea.Height - 80);
+        // teto da área útil do monitor ONDE o diálogo abre — um secundário
+        // mais baixo que o principal não pode deixar o Enviar fora do ecrã
+        var (_, h) = WorkAreaDoMonitor();
+        Scroller.MaxHeight = Math.Max(320, h - 120);
+    }
+
+    // mesmo padrão do AppManagerDialog/IosAppDialog — SystemParameters.WorkArea
+    // é sempre o monitor principal e aqui não serve
+    private struct RectNativo { public int Left, Top, Right, Bottom; }
+
+    private struct MonitorInfo
+    {
+        public int cbSize;
+        public RectNativo rcMonitor;
+        public RectNativo rcWork;
+        public uint dwFlags;
+    }
+
+    [System.Runtime.InteropServices.DllImport("user32.dll")]
+    private static extern IntPtr MonitorFromWindow(IntPtr hwnd, uint flags);
+
+    [System.Runtime.InteropServices.DllImport("user32.dll")]
+    private static extern bool GetMonitorInfo(IntPtr monitor, ref MonitorInfo info);
+
+    private (double Width, double Height) WorkAreaDoMonitor()
+    {
+        var wa = SystemParameters.WorkArea;
+        try
+        {
+            var hwnd = new System.Windows.Interop.WindowInteropHelper(this).Handle;
+            if (hwnd == IntPtr.Zero) return (wa.Width, wa.Height);
+            var info = new MonitorInfo { cbSize = System.Runtime.InteropServices.Marshal.SizeOf<MonitorInfo>() };
+            const uint MonitorDefaultToNearest = 2;
+            if (!GetMonitorInfo(MonitorFromWindow(hwnd, MonitorDefaultToNearest), ref info))
+                return (wa.Width, wa.Height);
+            var escala = PresentationSource.FromVisual(this)?.CompositionTarget?.TransformToDevice.M11 ?? 1.0;
+            if (!(escala > 0)) escala = 1.0;
+            var dpi = 96 * escala;
+            var r = info.rcWork;
+            return ((r.Right - r.Left) * 96.0 / dpi, (r.Bottom - r.Top) * 96.0 / dpi);
+        }
+        catch { return (wa.Width, wa.Height); }
     }
 
     /// <param name="reportIdentity">modelo + série do relatório que vai ser enviado.</param>
