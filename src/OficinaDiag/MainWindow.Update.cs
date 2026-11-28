@@ -59,6 +59,15 @@ public partial class MainWindow : Window
     private async void Update_Click(object sender, RoutedEventArgs e)
     {
         if (_update is null) return;
+        // Aplicar a atualização encerra a app à força — o shutdown do updater
+        // não respeita o cancelamento do OnClosing. Com uma sessão de teste
+        // aberta isso perdia as medições e deixava o Android em modo de
+        // carga: recusar até o técnico gravar ou fechar a sessão.
+        if (HasInteractive)
+        {
+            Log(L10n.T("log.update.interactive"));
+            return;
+        }
         UpdateButton.IsEnabled = false;
         Log(L10n.F("log.update.dl", _update.Tag));
         try

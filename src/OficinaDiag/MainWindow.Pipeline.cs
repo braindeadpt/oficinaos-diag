@@ -76,10 +76,21 @@ public partial class MainWindow : Window
 
     internal void OpenInteractive(UIElement panel)
     {
+        // Uma sessão de cada vez: abrir outra por cima substituía o painel
+        // sem confirmação — a primeira continuava em segundo plano e as
+        // medições já não tinham onde ser gravadas.
+        if (_interactive is not null)
+        {
+            Log(L10n.T("log.interactive.busy"));
+            return;
+        }
         _interactive = panel;
         InteractiveContent.Content = panel;
         InteractiveHost.Visibility = Visibility.Visible;
     }
+
+    /// <summary>Há uma sessão interativa aberta (mesmo antes de começar a medir).</summary>
+    internal bool HasInteractive => _interactive is not null;
 
     internal void CloseInteractive()
     {

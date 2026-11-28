@@ -99,6 +99,10 @@ public partial class MainWindow : Window
             // histórico guarda o scan já com grau — o antes/depois mostra-o na lista
             _history.Add(_report);
             Log(L10n.F("log.scan.done", _report.Results.Count));
+            // O re-scan criou a referência que faltava — o aviso de «sem
+            // scans anteriores» na etapa ③ ficava desatualizado até ao
+            // próximo clique em Comparar.
+            VerificarStatus.Text = "";
         }
         catch (OperationCanceledException) { Log(L10n.T("busy.cancelled")); }
         catch (Exception ex) { Log(L10n.F("log.err", ex.Message)); }
