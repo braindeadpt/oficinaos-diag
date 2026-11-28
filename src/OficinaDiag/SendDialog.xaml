@@ -19,6 +19,9 @@
         </Style>
         <Style TargetType="Button" BasedOn="{StaticResource TermButton}"/>
     </Window.Resources>
+    <!-- com o aviso de outro aparelho o conteúdo cresce — sem scroll o botão
+         Enviar saía da área útil em 1366×768 a 150% e a janela não redimensiona -->
+    <ScrollViewer x:Name="Scroller" VerticalScrollBarVisibility="Auto">
     <StackPanel Margin="20">
         <TextBlock x:Name="HeaderText" FontSize="14" Foreground="{DynamicResource FgBrush}"
                    Margin="0,0,0,4"/>
@@ -64,4 +67,5 @@
             <Button x:Name="CancelBtn" IsCancel="True" Margin="10,0,0,0"/>
         </StackPanel>
     </StackPanel>
+    </ScrollViewer>
 </Window>

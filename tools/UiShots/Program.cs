@@ -281,7 +281,11 @@ internal static class Program
             // tema é o que o T-06 pede («abrem nos três temas»).
             Capturar(() => new InsuranceDialog(DiagConfig.Load()),
                 Path.Combine(destino, $"seguradora-{tema}.png"), 480, 640);
-            Capturar(() => new SendDialog(), Path.Combine(destino, $"envio-{tema}.png"), 420, 560);
+            Capturar(() => new SendDialog(null, "Samsung Galaxy S21 — R5CT1234567"),
+                Path.Combine(destino, $"envio-{tema}.png"), 420, 560);
+            // divergência aparelho/relatório: aviso + caixa de confirmação, Enviar desligado
+            Capturar(() => new SendDialog(null, "Samsung Galaxy S21 — R5CT1234567", mismatch: true),
+                Path.Combine(destino, $"envio-mismatch-{tema}.png"), 420, 560);
             Capturar(() => new TokenDialog(), Path.Combine(destino, $"token-{tema}.png"), 380, 320);
             // ecrã curto: força o scroll das Opções (o que o SizeToContent escondia)
             Capturar(() => new SettingsDialog(DiagConfig.Load()),

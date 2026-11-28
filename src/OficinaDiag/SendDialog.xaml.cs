@@ -7,6 +7,13 @@ public partial class SendDialog : Window
 {
     private readonly bool _mismatch;
 
+    protected override void OnSourceInitialized(EventArgs e)
+    {
+        base.OnSourceInitialized(e);
+        // teto real da área útil deste monitor — o scroll só aparece quando faz falta
+        Scroller.MaxHeight = Math.Max(400, SystemParameters.WorkArea.Height - 80);
+    }
+
     /// <param name="reportIdentity">modelo + série do relatório que vai ser enviado.</param>
     /// <param name="mismatch">true quando o relatório não pertence ao aparelho
     /// ativo — o envio fica bloqueado até à confirmação explícita.</param>
