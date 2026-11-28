@@ -213,6 +213,10 @@ public sealed partial class BenchPanel : UserControl, IInteractiveSession
     /// O host pede o fecho. Com a sessão a correr confirma-se primeiro —
     /// 60 s de medições não se deitam fora com um clique no voltar.
     /// </summary>
+    public bool SessionRunning => _sessaoACorrer;
+
+    public void AbortForAppExit() => _cts?.Cancel();
+
     public void RequestClose()
     {
         if (_sessaoACorrer && MessageBox.Show(

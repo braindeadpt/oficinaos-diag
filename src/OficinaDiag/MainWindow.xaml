@@ -241,12 +241,17 @@
                         <TextBlock x:Name="VerificarDesc" FontFamily="{DynamicResource UiFont}"
                                    FontSize="12" TextWrapping="Wrap"
                                    Foreground="{DynamicResource DimBrush}" Margin="0,0,0,12"/>
-                        <WrapPanel Margin="0,0,0,12">
+                        <WrapPanel Margin="0,0,0,4">
                             <Button Style="{DynamicResource TermButton}" x:Name="RescanButton"
                                     Click="Scan_Click" FontWeight="Bold"/>
                             <Button Style="{DynamicResource TermButton}" x:Name="CompareButton"
                                     Click="Compare_Click" IsEnabled="False" Margin="8,0,0,0"/>
                         </WrapPanel>
+                        <!-- o motivo de um compare que não abre aparece aqui —
+                             ir só para a consola da etapa ① era invisível daqui -->
+                        <TextBlock x:Name="VerificarStatus" FontFamily="{DynamicResource UiFont}"
+                                   FontSize="12" TextWrapping="Wrap"
+                                   Foreground="{DynamicResource WarnBrush}" Margin="0,0,0,8" Text=""/>
                         <ContentPresenter x:Name="CompareHost"/>
                     </StackPanel>
                 </ScrollViewer>

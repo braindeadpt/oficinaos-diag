@@ -10,6 +10,10 @@ public partial class MainWindow : Window
 {
     private async void Scan_Click(object sender, RoutedEventArgs e)
     {
+        // Um scan novo invalida o antes/depois aberto: a coluna «Agora» do
+        // painel continuaria a mostrar o scan anterior — a prova da reparação
+        // tinha dados viciados das duas colunas.
+        CompareHost.Content = null;
         if (BusyBar.Visibility == Visibility.Visible) return;
         if (_current is null)
         {
@@ -169,8 +173,10 @@ public partial class MainWindow : Window
         if (previous.Count == 0)
         {
             Log(L10n.T("log.cmp.none"));
+            VerificarStatus.Text = L10n.T("verificar.noscans");
             return;
         }
+        VerificarStatus.Text = "";
         // O compare é um painel da etapa ③ — a prova antes/depois fica na
         // sessão, não numa janela descartável.
         CompareHost.Content = new ComparePanel(_report, previous);

@@ -401,6 +401,32 @@ public partial class MainWindow : Window
 
     protected override void OnClosing(CancelEventArgs e)
     {
+        // Uma sessão interativa a medir não morre em silêncio com o X: em
+        // Android a fase de carga deixa brilho máximo e stay-on ligados no
+        // aparelho do cliente se ninguém os repuser. Confirma-se a saída e
+        // aborta-se a sessão — o cancelamento dispara o restauro no painel
+        // (catch OperationCanceledException → loadOff), e damos-lhe um
+        // momento de dispatcher para aterrar antes do processo sair.
+        if (_interactive is IInteractiveSession sessao)
+        {
+            if (MessageBox.Show(this, L10n.T("interactive.confirm.exit"),
+                    Title, MessageBoxButton.YesNo, MessageBoxImage.Warning) != MessageBoxResult.Yes)
+            {
+                e.Cancel = true;
+                return;
+            }
+            sessao.AbortForAppExit();
+            var limite = Environment.TickCount64 + 4000;
+            while (sessao.SessionRunning && Environment.TickCount64 < limite)
+            {
+                // Pump mínimo do dispatcher: a continuação async do painel
+                // precisa de voltar à UI para repor brilho/stay-on no Android.
+                System.Windows.Threading.Dispatcher.CurrentDispatcher.Invoke(
+                    () => { }, System.Windows.Threading.DispatcherPriority.Background);
+                System.Threading.Thread.Sleep(50);
+            }
+            CloseInteractive();
+        }
         // Sem estas saídas o MainWindow ficava refletido em L10n/ThemeManager
         // e continuava a ser notificado depois de fechado.
         ClearReverseBlocking(); // fechar a app não deixa o túnel adb montado

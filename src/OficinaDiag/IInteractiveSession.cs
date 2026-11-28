@@ -16,4 +16,14 @@ internal interface IInteractiveSession
 
     /// <summary>O host pede o fecho (botão voltar) — o painel confirma se houver dados a perder.</summary>
     void RequestClose();
+
+    /// <summary>Sessão a decorrer — o host espera por ela terminar antes de sair da app.</summary>
+    bool SessionRunning { get; }
+
+    /// <summary>
+    /// Saída da aplicação já confirmada pelo técnico: cancela sem perguntar
+    /// outra vez — o restauro do estado do aparelho acontece na continuação
+    /// cancelada da sessão.
+    /// </summary>
+    void AbortForAppExit();
 }
