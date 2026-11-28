@@ -13,7 +13,17 @@ public partial class MainWindow : Window
     private async void Send_Click(object sender, RoutedEventArgs e)
     {
         if (_report is null || _sendBusy) return;
-        var dlg = new SendDialog(_report.Purpose) { Owner = this };
+        // O relatório pode ser de outro aparelho — trocar de telemóvel na
+        // bancada não invalida o scan anterior, e em DFU/EDL nunca há scan
+        // novo. O envio identifica sempre o aparelho do relatório; se não
+        // bater no ativo, exige confirmação explícita. Não se apaga o
+        // relatório: em modos de firmware o mesmo aparelho apresenta outro
+        // identificador USB e um falso mismatch é a norma, não a exceção.
+        var mismatch = !Devices.DeviceIds.Same(_reportDeviceId, _current?.Id);
+        var identidade = $"{_report.Device.Brand} {_report.Device.Model}".Trim();
+        if (!string.IsNullOrWhiteSpace(_report.Device.Serial))
+            identidade += $" — {_report.Device.Serial}";
+        var dlg = new SendDialog(_report.Purpose, identidade, mismatch) { Owner = this };
         if (dlg.ShowDialog() != true) return;
         Log(L10n.F("log.send.start", dlg.ShopCode));
         _sendBusy = true;

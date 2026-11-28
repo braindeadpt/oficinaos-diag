@@ -5,9 +5,25 @@ namespace OficinaDiag;
 
 public partial class SendDialog : Window
 {
-    public SendDialog(string? initialPurpose = null)
+    private readonly bool _mismatch;
+
+    /// <param name="reportIdentity">modelo + série do relatório que vai ser enviado.</param>
+    /// <param name="mismatch">true quando o relatório não pertence ao aparelho
+    /// ativo — o envio fica bloqueado até à confirmação explícita.</param>
+    public SendDialog(string? initialPurpose = null, string? reportIdentity = null, bool mismatch = false)
     {
         InitializeComponent();
+        _mismatch = mismatch;
+        if (reportIdentity is not null)
+            DeviceLine.Text = L10n.F("send.device.line", reportIdentity);
+        if (mismatch)
+        {
+            MismatchWarn.Text = L10n.T("send.mismatch.warn");
+            MismatchWarn.Visibility = Visibility.Visible;
+            MismatchConfirm.Content = L10n.T("send.mismatch.confirm");
+            MismatchConfirm.Visibility = Visibility.Visible;
+            SendBtn.IsEnabled = false;
+        }
         // O checklist pode já ter marcado "venda" — o radio reflete isso em
         // vez de voltar sempre a "reparação" e dessincronizar o payload.
         PurposeSale.IsChecked = initialPurpose == "sale";
@@ -32,6 +48,11 @@ public partial class SendDialog : Window
         string.IsNullOrWhiteSpace(EmailBox.Text) ? null : EmailBox.Text.Trim();
     // "sale" — the customer wants a buy-quote for a used phone, not a repair.
     public string Purpose => PurposeSale.IsChecked == true ? "sale" : "repair";
+
+    private void MismatchConfirm_Click(object sender, RoutedEventArgs e)
+    {
+        if (_mismatch) SendBtn.IsEnabled = MismatchConfirm.IsChecked == true;
+    }
 
     private void ClearError() => ErrorText.Visibility = Visibility.Collapsed;
 

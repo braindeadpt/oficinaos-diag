@@ -24,6 +24,20 @@
                    Margin="0,0,0,4"/>
         <TextBlock x:Name="DescText" TextWrapping="Wrap" Margin="0,0,0,4"/>
 
+        <!-- identidade do relatório que vai mesmo sair: o técnico confirma
+             aqui que aparelho está no pedido antes de lhe juntar contactos -->
+        <Border x:Name="DeviceCard" BorderBrush="{DynamicResource LineBrush}" BorderThickness="1"
+                Padding="8,6" Margin="0,4,0,0">
+            <StackPanel>
+                <TextBlock x:Name="DeviceLine" TextWrapping="Wrap" Margin="0"
+                           Foreground="{DynamicResource FgBrush}" FontWeight="SemiBold"/>
+                <TextBlock x:Name="MismatchWarn" TextWrapping="Wrap" Margin="0,4,0,0"
+                           Foreground="{DynamicResource WarnBrush}" Visibility="Collapsed"/>
+                <CheckBox x:Name="MismatchConfirm" Margin="0,6,0,0" Visibility="Collapsed"
+                          Foreground="{DynamicResource FgBrush}" Click="MismatchConfirm_Click"/>
+            </StackPanel>
+        </Border>
+
         <TextBlock x:Name="CodeLabel"/>
         <TextBox x:Name="ShopCodeBox" MaxLength="8" CharacterCasing="Upper"/>
 
