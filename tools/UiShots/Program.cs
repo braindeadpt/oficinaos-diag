@@ -299,7 +299,7 @@ internal static class Program
             Capturar(() => new MainWindow(), Path.Combine(destino, $"main-{nome}-{tema}.png"), 1000, 740,
                 ajustar: w =>
                 {
-                    if (w.FindName(botao) is ToggleButton tb)
+                    if (w.FindName(botao) is ButtonBase tb)
                         tb.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
                 });
         }
