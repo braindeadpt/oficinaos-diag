@@ -107,6 +107,37 @@ public sealed class DeepReadingsTests
     }
 
     [Fact]
+    public void CaminhoColetor_RealLegivelBmsBloqueadoDesignAusente_NaoERoot()
+    {
+        // A combinação exata do review: valor lido no nó principal, nó
+        // alternativo da MESMA família bloqueado, design em falta. Sem o
+        // filtro «denied só conta se a família não produziu valor», isto
+        // sairia «requer root» — errado, porque nenhuma leitura necessária
+        // está bloqueada: a percentagem falta por falta do design.
+        const string probe = """
+            battery/charge_full:value:4385000
+            bms/charge_full:denied
+            max170xx_battery/charge_full:missing
+            battery/charge_full_design:missing
+            bms/charge_full_design:missing
+            max170xx_battery/charge_full_design:missing
+            battery/cycle_count:missing
+            battery/charge_counter:missing
+            """;
+        var (valores, estados) = ParseComoColetor(probe);
+        bool AnyDenied(string[] nodes) =>
+            nodes.Any(n => estados.TryGetValue(n, out var st) && st == "denied");
+        string[] realNodes = ["battery/charge_full", "bms/charge_full", "max170xx_battery/charge_full"];
+        string[] designNodes = ["battery/charge_full_design", "bms/charge_full_design", "max170xx_battery/charge_full_design"];
+        var realOk = realNodes.Any(n => valores.ContainsKey(n));
+        var designOk = designNodes.Any(n => valores.ContainsKey(n));
+        var fb = DeepReadingParsing.CapacityFallbackState(realOk, designOk,
+            !realOk && AnyDenied(realNodes), !designOk && AnyDenied(designNodes));
+        Assert.NotNull(fb);
+        Assert.Equal("não disponível neste aparelho", fb!.Value.state);
+    }
+
+    [Fact]
     public void CaminhoColetor_PixelDesignNegado()
     {
         var (valores, estados) = ParseComoColetor(Pixel7Sysfs);
