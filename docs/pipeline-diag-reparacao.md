@@ -137,7 +137,7 @@ para viciar, nunca para concluir o raciocínio.**
 |---|---|
 | bateria: corrente real, voltagem, ciclos | `/sys/class/power_supply/`, `dumpsys battery`/`batterystats` |
 | desgaste eMMC/UFS (% vida consumida) | `/sys/class/block/mmcblk0/device/life_time` (muitas marcas) |
-| crashes/reinícios | tombstones + logcat (kernel panic = hardware, app crash = software) |
+| crashes/reinícios | tombstones + logcat (kernel panic = indício de hardware — um erro de kernel/driver também causa panic; app crash = software) |
 | zonas térmicas | `/sys/class/thermal/` |
 | sensores | `dumpsys sensorservice` |
 | modem/sinal/SIM | `dumpsys telephony.registry` |
