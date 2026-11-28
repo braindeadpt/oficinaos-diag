@@ -34,10 +34,12 @@ certo com o runner `windows-2022` do CI:
    estraga nada (são iguais aos baselines), mas é trabalho perdido e
    esconde a falha verdadeira, que está noutro passo.
 
-   **Comparação verde não significa capturas idênticas.** Um pixel só
-   conta como diferente quando algum canal de cor se afasta mais de 16
-   (o anti-aliasing fica abaixo disso), e a captura só reprova quando
-   esses píxeis passam 0,5% do total — há margem real dentro do verde.
+   **Comparação verde não significa capturas idênticas.** A captura
+   reprova logo, sem contar píxeis, se a largura ou a altura mudar; com
+   as mesmas dimensões, um pixel só conta como diferente quando algum
+   canal de cor se afasta mais de 16 (o anti-aliasing fica abaixo
+   disso), e a captura só reprova quando esses píxeis passam 0,5% do
+   total — há margem real dentro do verde.
    E, sobretudo, **uma captura sem baseline não reprova nada**
    (`Program.cs` regista «sem baseline — captura nova» e segue). Por
    isso há dois fluxos distintos:
