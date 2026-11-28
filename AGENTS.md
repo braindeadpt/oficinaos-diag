@@ -34,20 +34,26 @@ certo com o runner `windows-2022` do CI:
    estraga nada (são iguais aos baselines), mas é trabalho perdido e
    esconde a falha verdadeira, que está noutro passo.
 
-   **Comparação verde não significa capturas idênticas.** A comparação
-   tolera até 0,5% de píxeis diferentes com diferença de canal até 16
-   (ruído de anti-aliasing) — e, sobretudo, **uma captura sem baseline
-   não reprova nada** (`Program.cs` regista «sem baseline — captura
-   nova» e segue). Por isso há dois fluxos distintos:
+   **Comparação verde não significa capturas idênticas.** Um pixel só
+   conta como diferente quando algum canal de cor se afasta mais de 16
+   (o anti-aliasing fica abaixo disso), e a captura só reprova quando
+   esses píxeis passam 0,5% do total — há margem real dentro do verde.
+   E, sobretudo, **uma captura sem baseline não reprova nada**
+   (`Program.cs` regista «sem baseline — captura nova» e segue). Por
+   isso há dois fluxos distintos:
 
    - **substituir baselines existentes**: a UI mudou intencionalmente e
      a comparação falhou — copiar as capturas do artifact, como acima;
    - **aprovar capturas novas** (adicionaste capturas no código): nenhuma
      comparação as validou — verde no CI só prova que o harness correu.
-     Abre cada PNG novo do artifact, revê-o visualmente (é a primeira
-     referência que fica para sempre) e só depois o copias para
-     `tools/UiShots/baselines/`. Sem este passo, um ecrã partido passa a
-     ser a referência «correta» de todas as comparações futuras.
+     E como a comparação não falha, a PR verde **não publica `ui-shots`**:
+     para teres os PNGs corre o workflow manualmente na branch da PR
+     (`gh workflow run ci.yml --ref <branch>` — o `workflow_dispatch`
+     publica mesmo com tudo verde) e descarrega o artifact **dessa**
+     execução, não da automática. Abre cada PNG novo, revê-o visualmente
+     (é a primeira referência que fica para sempre) e só depois o copias
+     para `tools/UiShots/baselines/`. Sem este passo, um ecrã partido
+     passa a ser a referência «correta» de todas as comparações futuras.
 
    Numa PR **verde** não há artifact nenhum — e também não precisas dele,
    porque os baselines já batem certo. O run ID está no link do check
