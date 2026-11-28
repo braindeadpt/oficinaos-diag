@@ -77,6 +77,41 @@ public sealed class DeepReadingsTests
         Assert.Equal("4900000", r.Value);
     }
 
+    private static (Dictionary<string, string> valores, Dictionary<string, string> estados) ParseComoColetor(string dump)
+    {
+        // O caminho exato do coletor — os fixtures de marcas cobrem o que a
+        // oficina recebe, não só o helper isolado.
+        var v = new Dictionary<string, string>(StringComparer.Ordinal);
+        var st = new Dictionary<string, string>(StringComparer.Ordinal);
+        DeepReadingParsing.ParseMarkedSysfs(dump, v, st);
+        return (v, st);
+    }
+
+    [Fact]
+    public void CaminhoColetor_PixelDesignNegado()
+    {
+        var (valores, estados) = ParseComoColetor(Pixel7Sysfs);
+        Assert.Equal("412", valores["battery/cycle_count"]);
+        Assert.False(valores.ContainsKey("battery/charge_full"));
+        Assert.Equal("denied", estados["battery/charge_full"]);
+    }
+
+    [Fact]
+    public void CaminhoColetor_SamsungEmFalta()
+    {
+        var (valores, estados) = ParseComoColetor(SamsungS21Sysfs);
+        Assert.Equal("4756000", valores["battery/charge_full"]);
+        Assert.Equal("missing", estados["battery/cycle_count"]);
+    }
+
+    [Fact]
+    public void CaminhoColetor_XiaomiBms()
+    {
+        var (valores, _) = ParseComoColetor(XiaomiRedmiSysfs);
+        Assert.Equal("4900000", valores["bms/charge_full"]);
+        Assert.False(valores.ContainsKey("battery/cycle_count"));
+    }
+
     [Fact]
     public void ProbeNulo_EmFalta()
     {

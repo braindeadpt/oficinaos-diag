@@ -70,6 +70,40 @@ public static class DeepReadingParsing
         return null;
     }
 
+    /// <summary>
+    /// Parse do dump do probe marcado (um nó por linha: «nó:value:X»,
+    /// «nó:denied» ou «nó:missing») para os dois dicionários que o coletor
+    /// consome. Shells antigas sem marcadores devolvem o resto como valor.
+    /// Caminho único — os testes de marcas cobrem exatamente o que o
+    /// coletor entrega à oficina.
+    /// </summary>
+    public static void ParseMarkedSysfs(string? dump,
+        IDictionary<string, string> values, IDictionary<string, string> states)
+    {
+        foreach (var line in (dump ?? "").Split('\n'))
+        {
+            var sep = line.IndexOf(':');
+            if (sep <= 0) continue;
+            var node = line[..sep].Trim();
+            if (values.ContainsKey(node) || states.ContainsKey(node)) continue;
+            var rest = line[(sep + 1)..].Trim();
+            if (rest.StartsWith("value:", StringComparison.Ordinal))
+            {
+                states[node] = "value";
+                values[node] = rest[6..].Trim();
+            }
+            else if (rest is "denied" or "missing")
+            {
+                states[node] = rest;
+            }
+            else if (rest.Length > 0)
+            {
+                states[node] = "value";
+                values[node] = rest;
+            }
+        }
+    }
+
     /// <summary>Classe de desgaste eMMC (hex «0xNN» de life_time) — pior classe presente.</summary>
     public static int? ParseEmmcLifeClass(string? output)
     {
