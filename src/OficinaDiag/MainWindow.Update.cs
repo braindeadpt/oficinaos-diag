@@ -78,6 +78,15 @@ public partial class MainWindow : Window
             Log(ok ? $"> {msg}" : L10n.F("log.update.fail", msg));
             if (ok)
             {
+                // A verificação antes do download não chega: o técnico pode ter
+                // aberto um teste durante a transferência. Revalidar aqui — a
+                // atualização já descarregada não se perde, fica para o próximo
+                // arranque da app.
+                if (HasInteractive)
+                {
+                    Log(L10n.T("log.update.interactive"));
+                    return;
+                }
                 // Antes a janela desaparecia sem explicação — a meio de uma sessão
                 // de bancada parecia uma falha da app.
                 MessageBox.Show(this, L10n.T("log.update.ready"), Title,
