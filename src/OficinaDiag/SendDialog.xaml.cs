@@ -158,12 +158,12 @@ public partial class SendDialog : Window
         // O foco desloca o formulário para o campo; sem isto, num ecrã baixo
         // o campo aparece mas a mensagem — lá em cima — sai da vista e o
         // técnico não percebe porque é que o envio não avançou. O foco fica
-        // no campo (é lá que se corrige), mas a rolagem volta ao erro.
-        // Adiado para depois do layout: a mensagem acabou de ficar visível
-        // e um BringIntoView síncrono media-a na posição velha (colapsada),
-        // sem deslocar nada — foi o que a captura envio-erro provou no CI.
-        Dispatcher.BeginInvoke(new System.Action(() => ErrorText.BringIntoView()),
-            System.Windows.Threading.DispatcherPriority.Background);
+        // no campo (é lá que se corrige), mas a rolagem volta ao topo, onde
+        // a mensagem está. ScrollToHome não depende do layout da mensagem
+        // (que acabou de ficar visível e ainda não tem posição medida —
+        // foi por isso que o BringIntoView não deslocava nada, provado
+        // pela captura envio-erro no CI).
+        Scroller.ScrollToHome();
     }
 
     private void Send_Click(object sender, RoutedEventArgs e)
