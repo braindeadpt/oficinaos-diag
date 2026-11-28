@@ -27,6 +27,13 @@ certo com o runner `windows-2022` do CI:
    - **run manual** (`workflow_dispatch`): publica mesmo com tudo verde —
      serve para pedir capturas de referência sem provocar falha nenhuma.
 
+   **Confirma no log que a falha foi mesmo na comparação** antes de
+   substituir baselines: os artifacts publicam-se no fim do job, por isso
+   uma falha posterior às capturas (testes jsdom, por exemplo) também
+   publica `ui-shots` — com a comparação verde. Copiar essas capturas não
+   estraga nada (são iguais aos baselines), mas é trabalho perdido e
+   esconde a falha verdadeira, que está noutro passo.
+
    Numa PR **verde** não há artifact nenhum — e também não precisas dele,
    porque os baselines já batem certo. O run ID está no link do check
    `build (windows-2022)` em `gh pr checks <PR>` — **não filtres só por
