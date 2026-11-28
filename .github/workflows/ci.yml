@@ -65,18 +65,6 @@ jobs:
         if: runner.os == 'Linux'
         run: node tools/coverage-check.mjs
 
-      # Artifacts: só em falha ou em execução manual, com retenção curta —
-      # guardados em todas as execuções (90 dias por omissão) enchiam a quota
-      # de artifacts partilhada por todos os repos da conta.
-      - name: Publicar cobertura
-        if: runner.os == 'Linux' && (failure() || github.event_name == 'workflow_dispatch')
-        uses: actions/upload-artifact@v7
-        with:
-          name: coverage
-          path: tests/OficinaDiag.Tests/TestResults
-          if-no-files-found: warn
-          retention-days: 5
-
       - name: Test
         if: runner.os == 'Windows'
         run: dotnet test tests/OficinaDiag.Tests -c Release
@@ -161,6 +149,29 @@ jobs:
         if: runner.os == 'Windows' && always()
         run: node tools/proofs-check.mjs out-store/ui-shots/provas.txt
 
+      # Corre nos dois braços: o harness já é EOL-agnóstico (a regressão do
+      # CRLF que o PR #11 corrigiu só aparecia no Windows), e correr lá é o que
+      # impede o `autocrlf` de voltar a esconder um problema.
+      - name: JS decisions (jsdom)
+        run: |
+          npm ci --prefix tests/device-test --no-audit --no-fund
+          node --test tests/device-test/device-test.test.mjs
+
+      # Artifacts: só em falha ou em execução manual, com retenção curta —
+      # guardados em todas as execuções (90 dias por omissão) enchiam a quota
+      # de artifacts partilhada por todos os repos da conta. No FIM do job:
+      # `failure()` avalia o estado no momento em que o passo é alcançado —
+      # mais cedo, uma falha posterior (build WPF, jsdom) deixava os artefactos
+      # já gerados por publicar.
+      - name: Publicar cobertura
+        if: runner.os == 'Linux' && (failure() || github.event_name == 'workflow_dispatch')
+        uses: actions/upload-artifact@v7
+        with:
+          name: coverage
+          path: tests/OficinaDiag.Tests/TestResults
+          if-no-files-found: warn
+          retention-days: 5
+
       - name: Publicar capturas
         if: runner.os == 'Windows' && (failure() || github.event_name == 'workflow_dispatch')
         uses: actions/upload-artifact@v7
@@ -169,14 +180,6 @@ jobs:
           path: out-store/ui-shots
           if-no-files-found: warn
           retention-days: 7
-
-      # Corre nos dois braços: o harness já é EOL-agnóstico (a regressão do
-      # CRLF que o PR #11 corrigiu só aparecia no Windows), e correr lá é o que
-      # impede o `autocrlf` de voltar a esconder um problema.
-      - name: JS decisions (jsdom)
-        run: |
-          npm ci --prefix tests/device-test --no-audit --no-fund
-          node --test tests/device-test/device-test.test.mjs
 
   # Os mutantes de UI provavam-se à mão, com sonda em `main` e revert — caro,
   # e por isso feito cada vez menos. Este job corre-os a pedido: aplica cada

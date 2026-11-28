@@ -17,12 +17,21 @@ certo com o runner `windows-2022` do CI:
 1. Abre a PR **antes** de esperar pelo CI — o workflow só corre em
    `pull_request`, por isso um push para uma branch sem PR não gera
    capturas nenhumas.
-2. Quando o job Windows terminar (pass ou fail — o artifact
-   `ui-shots` é publicado com `if: always()`), descarrega-o. O run ID
-   está no link do check `build (windows-2022)` em `gh pr checks <PR>`
-   — **não filtres só por branch**: o workflow também corre em
-   `schedule` e `workflow_dispatch`, e um run manual na mesma branch
-   não é o da PR.
+2. Quando o job Windows terminar **com falha**, descarrega o artifact
+   `ui-shots`. Atenção às duas situações em que ele existe — desde que
+   os artifacts passaram a publicar-se só em falha ou em execução
+   manual (retenção curta, quota partilhada da conta):
+
+   - **falha na comparação de baselines**: é o caso normal deste fluxo —
+     o harness correu, há PNGs, e o artifact tem as capturas para copiar;
+   - **run manual** (`workflow_dispatch`): publica mesmo com tudo verde —
+     serve para pedir capturas de referência sem provocar falha nenhuma.
+
+   Numa PR **verde** não há artifact nenhum — e também não precisas dele,
+   porque os baselines já batem certo. O run ID está no link do check
+   `build (windows-2022)` em `gh pr checks <PR>` — **não filtres só por
+   branch**: o workflow também corre em `schedule` e `workflow_dispatch`,
+   e um run manual na mesma branch não é o da PR.
 
    ```powershell
    gh run download <run-id> -R braindeadpt/oficinaos-diag -n ui-shots -D out\uishots-ci
@@ -46,7 +55,7 @@ certo com o runner `windows-2022` do CI:
 Notas:
 
 - Se o CI passa, os baselines já batem certo — não precisas de fazer
-  nada (o artifact existe na mesma, mas não há o que atualizar).
+  nada (e num run automático verde nem há artifact publicado).
 - **`tools/atualizar-baselines-ui.ps1` NUNCA é o caminho para atualizar
   baselines**: corre o harness local (que produz renders diferentes do
   CI em Win11) e, se correr sem falhas, **apaga os baselines
