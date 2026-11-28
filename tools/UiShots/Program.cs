@@ -293,8 +293,18 @@ internal static class Program
                 ajustar: w =>
                 {
                     // rolar até ao fim prova que o Enviar se alcança com área
-                    // curta — a imagem final mostra o botão, não o topo
-                    if (w.FindName("Scroller") is ScrollViewer sv) sv.ScrollToEnd();
+                    // curta — a imagem final mostra o botão, não o topo.
+                    // E a rolagem tem mesmo de existir: ScrollToEnd "funciona"
+                    // igualmente com conteúdo que cabe todo, por isso mede-se
+                    // a extensão contra o viewport.
+                    w.UpdateLayout();
+                    if (w.FindName("Scroller") is ScrollViewer sv)
+                    {
+                        Verificar($"envio-scroll-{tema}: conteúdo excede a janela útil " +
+                                  $"(extensão {sv.ExtentHeight:0} vs viewport {sv.ViewportHeight:0})",
+                            sv.ExtentHeight > sv.ViewportHeight + 1);
+                        sv.ScrollToEnd();
+                    }
                 },
                 acoes: ["SendBtn", "CancelBtn"]);
             Capturar(() => new TokenDialog(), Path.Combine(destino, $"token-{tema}.png"), 380, 320);
