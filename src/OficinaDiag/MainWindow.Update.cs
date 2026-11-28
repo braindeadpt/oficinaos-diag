@@ -103,7 +103,9 @@ public partial class MainWindow : Window
                 UpdateButton.IsEnabled = false;
                 if (HasInteractive)
                 {
-                    Log(L10n.T("log.update.interactive"));
+                    // O updater já está armado — a mensagem tem de dizer ao
+                    // técnico o que fazer: terminar o teste e fechar a app.
+                    Log(L10n.T("log.update.deferred"));
                     return;
                 }
                 // Antes a janela desaparecia sem explicação — a meio de uma sessão
