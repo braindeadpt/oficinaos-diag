@@ -13,7 +13,7 @@ namespace OficinaDiag;
 /// resistência interna) → 3) recuperação 25s.
 /// Em Android a carga é aplicada por ADB; em iOS é instrução manual.
 /// </summary>
-public sealed partial class BenchWindow : Window
+public sealed partial class BenchPanel : UserControl, IInteractiveSession
 {
     private const int BaseSec = 15;
     private const int LoadSec = 20;
@@ -34,12 +34,14 @@ public sealed partial class BenchWindow : Window
     /// <summary>Preenchido quando a sessão termina com dados suficientes.</summary>
     public PowerSessionResult? Result { get; private set; }
 
-    public BenchWindow(string deviceLabel, Func<Task<LiveTelemetry?>> probe,
+    public event EventHandler? CloseRequested;
+    public bool SavedAndDone { get; private set; }
+
+    public BenchPanel(string deviceLabel, Func<Task<LiveTelemetry?>> probe,
         Func<Task>? loadOn = null, Func<Task>? loadOff = null,
         Action? sessionStarted = null, Action? sessionEnded = null)
     {
         InitializeComponent();
-        Title = L10n.T("bench.title");
         HeaderText.Text = $"{(ThemeManager.IsTerminal ? "▓ " : "")}{L10n.T("bench.header")}";
         Instr.Text = L10n.T("bench.instr.idle");
         TempLegend.Text = L10n.T("bench.legend.temp");
@@ -47,16 +49,6 @@ public sealed partial class BenchWindow : Window
         StartBtn.Content = L10n.Btn("btn.start");
         DoneBtn.Content = L10n.Btn("btn.saveclose");
         CloseBtn.Content = L10n.Btn("btn.close");
-        Loaded += (_, _) =>
-        {
-            var wa = SystemParameters.WorkArea;
-            MaxWidth = wa.Width;
-            MaxHeight = wa.Height;
-            if (Width > wa.Width) Width = wa.Width;
-            if (Height > wa.Height) Height = wa.Height;
-            Left = wa.Left + Math.Max(0, (wa.Width - Width) / 2);
-            Top = wa.Top + Math.Max(0, (wa.Height - Height) / 2);
-        };
         _probe = probe;
         _loadOn = loadOn;
         _loadOff = loadOff;
@@ -211,33 +203,25 @@ public sealed partial class BenchWindow : Window
 
     private void Done_Click(object sender, RoutedEventArgs e)
     {
-        DialogResult = true;
-        Close();
+        SavedAndDone = true;
+        CloseRequested?.Invoke(this, EventArgs.Empty);
     }
 
-    private void Close_Click(object sender, RoutedEventArgs e)
-    {
-        // Só Close(): pôr DialogResult antes disparava o fecho e o OnClosing a
-        // seguir, o que podia abrir a confirmação de abandono duas vezes. Sem
-        // DialogResult, ShowDialog devolve false na mesma.
-        Close();
-    }
+    private void Close_Click(object sender, RoutedEventArgs e) => RequestClose();
 
-    protected override void OnClosing(CancelEventArgs e)
+    /// <summary>
+    /// O host pede o fecho. Com a sessão a correr confirma-se primeiro —
+    /// 60 s de medições não se deitam fora com um clique no voltar.
+    /// </summary>
+    public void RequestClose()
     {
-        // Só pergunta se há dados a perder; fechar no fim da sessão é direto.
-        if (_sessaoACorrer && MessageBox.Show(this, L10n.T("bench.confirm.abort"), Title,
+        if (_sessaoACorrer && MessageBox.Show(
+                Application.Current.MainWindow, L10n.T("bench.confirm.abort"),
+                L10n.T("bench.title"),
                 MessageBoxButton.YesNo, MessageBoxImage.Warning) != MessageBoxResult.Yes)
-        {
-            e.Cancel = true;
             return;
-        }
-        base.OnClosing(e);
+        _cts?.Cancel();
+        CloseRequested?.Invoke(this, EventArgs.Empty);
     }
 
-    protected override void OnClosed(EventArgs e)
-    {
-        _cts?.Cancel();
-        base.OnClosed(e);
-    }
 }

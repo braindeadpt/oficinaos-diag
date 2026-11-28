@@ -19,7 +19,7 @@ namespace OficinaDiag;
 /// O sinal perf-started da página alinha a amostragem com o stress real —
 /// no iOS o QR pode demorar a ser lido, por isso a espera é generosa.
 /// </summary>
-public sealed partial class PerfWindow : Window
+public sealed partial class PerfPanel : UserControl, IInteractiveSession
 {
     private const int BaseSec = 15;
     private const int RecoverSec = 20;
@@ -58,14 +58,16 @@ public sealed partial class PerfWindow : Window
     /// <summary>Preenchido quando a sessão termina com dados suficientes.</summary>
     public PerfProfileResult? Result { get; private set; }
 
-    public PerfWindow(string deviceLabel, Func<Task<LiveTelemetry?>> probe,
+    public event EventHandler? CloseRequested;
+    public bool SavedAndDone { get; private set; }
+
+    public PerfPanel(string deviceLabel, Func<Task<LiveTelemetry?>> probe,
         Func<int, Task>? openPage = null, Func<PerfPageStats?>? pageStats = null,
         Task? pageStarted = null, Func<Task>? loadOn = null, Func<Task>? loadOff = null,
         Action? sessionStarted = null, Action? sessionEnded = null,
         Func<int>? usbDropCount = null)
     {
         InitializeComponent();
-        Title = L10n.T("perf.title");
         HeaderText.Text = $"{(ThemeManager.IsTerminal ? "▓ " : "")}{L10n.T("perf.header")}";
         Instr.Text = L10n.T("perf.instr.idle");
         DurationLabel.Text = L10n.T("perf.duration");
@@ -77,16 +79,6 @@ public sealed partial class PerfWindow : Window
         StartBtn.Content = L10n.Btn("btn.start");
         DoneBtn.Content = L10n.Btn("btn.saveclose");
         CloseBtn.Content = L10n.Btn("btn.close");
-        Loaded += (_, _) =>
-        {
-            var wa = SystemParameters.WorkArea;
-            MaxWidth = wa.Width;
-            MaxHeight = wa.Height;
-            if (Width > wa.Width) Width = wa.Width;
-            if (Height > wa.Height) Height = wa.Height;
-            Left = wa.Left + Math.Max(0, (wa.Width - Width) / 2);
-            Top = wa.Top + Math.Max(0, (wa.Height - Height) / 2);
-        };
         _probe = probe;
         _openPage = openPage;
         _pageStats = pageStats;
@@ -299,31 +291,25 @@ public sealed partial class PerfWindow : Window
 
     private void Done_Click(object sender, RoutedEventArgs e)
     {
-        DialogResult = true;
-        Close();
+        SavedAndDone = true;
+        CloseRequested?.Invoke(this, EventArgs.Empty);
     }
 
-    private void Close_Click(object sender, RoutedEventArgs e)
-    {
-        // Só Close(): pôr DialogResult antes disparava o fecho e o OnClosing a
-        // seguir, o que podia abrir a confirmação de abandono duas vezes.
-        Close();
-    }
+    private void Close_Click(object sender, RoutedEventArgs e) => RequestClose();
 
-    protected override void OnClosing(CancelEventArgs e)
+    /// <summary>
+    /// O host pede o fecho. Com a sessão a correr confirma-se primeiro —
+    /// minutos de medições não se deitam fora com um clique no voltar.
+    /// </summary>
+    public void RequestClose()
     {
-        if (_sessaoACorrer && MessageBox.Show(this, L10n.T("perf.confirm.abort"), Title,
+        if (_sessaoACorrer && MessageBox.Show(
+                Application.Current.MainWindow, L10n.T("perf.confirm.abort"),
+                L10n.T("perf.title"),
                 MessageBoxButton.YesNo, MessageBoxImage.Warning) != MessageBoxResult.Yes)
-        {
-            e.Cancel = true;
             return;
-        }
-        base.OnClosing(e);
+        _cts?.Cancel();
+        CloseRequested?.Invoke(this, EventArgs.Empty);
     }
 
-    protected override void OnClosed(EventArgs e)
-    {
-        _cts?.Cancel();
-        base.OnClosed(e);
-    }
 }

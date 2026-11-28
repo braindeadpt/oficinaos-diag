@@ -159,36 +159,35 @@ public partial class MainWindow : Window
         var drops = new UsbDropCounter(d.Id);
         void OnDrop(DetectedDevice dd) => drops.OnDeviceDetached(dd.Id);
         _detector!.Detached += OnDrop;
-        bool saved;
-        Tests.PerfProfileResult? res;
-        try
+        var win = new PerfPanel(d.Label, probe, OpenPerfPage,
+            () => pageStats, pageStarted.Task, loadOn, loadOff,
+            drops.Begin, drops.End, () => drops.Count);
+        win.CloseRequested += (_, _) =>
         {
-            var win = new PerfWindow(d.Label, probe, OpenPerfPage,
-                () => pageStats, pageStarted.Task, loadOn, loadOff,
-                drops.Begin, drops.End, () => drops.Count) { Owner = this };
-            saved = win.ShowDialog() == true;
-            res = win.Result;
-        }
-        finally { _busy = false; _detector!.Detached -= OnDrop; }
-
-        if (!saved || res is null) return;
-        if (_report is not null && !DeviceIds.Same(_reportDeviceId, d.Id))
-        {
-            Log(L10n.T("log.test.wrongdev"));
-            return;
-        }
-        if (_report is null)
-        {
-            _report = new DeviceReport
+            CloseInteractive();
+            _busy = false;
+            _detector!.Detached -= OnDrop;
+            var res = win.Result;
+            if (!win.SavedAndDone || res is null) return;
+            if (_report is not null && !DeviceIds.Same(_reportDeviceId, d.Id))
             {
-                Platform = d.Kind == DeviceKind.Android ? "android" : "ios",
-                Device = { Serial = d.Id },
-            };
-            _reportDeviceId = d.Id;
-        }
-        res.ApplyTo(_report);
-        ApplyGrade();
-        SyncReportButtons();
-        Log(L10n.F("log.perf.saved", res.SampleCount, res.DurationSec));
+                Log(L10n.T("log.test.wrongdev"));
+                return;
+            }
+            if (_report is null)
+            {
+                _report = new DeviceReport
+                {
+                    Platform = d.Kind == DeviceKind.Android ? "android" : "ios",
+                    Device = { Serial = d.Id },
+                };
+                _reportDeviceId = d.Id;
+            }
+            res.ApplyTo(_report);
+            ApplyGrade();
+            SyncReportButtons();
+            Log(L10n.F("log.perf.saved", res.SampleCount, res.DurationSec));
+        };
+        OpenInteractive(win);
     }
 }

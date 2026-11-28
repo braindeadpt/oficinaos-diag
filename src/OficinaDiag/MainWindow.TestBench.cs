@@ -184,38 +184,39 @@ public partial class MainWindow : Window
         var drops = new UsbDropCounter(d.Id);
         void OnDrop(DetectedDevice dd) => drops.OnDeviceDetached(dd.Id);
         _detector!.Detached += OnDrop;
-        bool saved;
-        Devices.PowerSessionResult? res;
-        try
+        // A bancada é um painel embutido na etapa ①, não uma janela solta —
+        // o resultado aterra na sessão do aparelho quando o técnico grava.
+        var bench = new BenchPanel(d.Label, probe, loadOn, loadOff,
+            drops.Begin, drops.End);
+        bench.CloseRequested += (_, _) =>
         {
-            var bench = new BenchWindow(d.Label, probe, loadOn, loadOff,
-                drops.Begin, drops.End) { Owner = this };
-            saved = bench.ShowDialog() == true;
-            res = bench.Result;
-        }
-        finally { _busy = false; _detector!.Detached -= OnDrop; }
-
-        if (!saved || res is null) return;
-        if (_report is not null && !DeviceIds.Same(_reportDeviceId, d.Id))
-        {
-            // O bench correu no aparelho d mas o relatório aberto descreve
-            // outro — gravar aqui contaminava o diagnóstico desse cliente.
-            Log(L10n.T("log.test.wrongdev"));
-            return;
-        }
-        if (_report is null)
-        {
-            _report = new DeviceReport
+            CloseInteractive();
+            _busy = false;
+            _detector!.Detached -= OnDrop;
+            var res = bench.Result;
+            if (!bench.SavedAndDone || res is null) return;
+            if (_report is not null && !DeviceIds.Same(_reportDeviceId, d.Id))
             {
-                Platform = d.Kind == DeviceKind.Android ? "android" : "ios",
-                Device = { Serial = d.Id },
-            };
-            _reportDeviceId = d.Id;
-        }
-        res.UsbDrops = drops.Count;
-        res.ApplyTo(_report);
-        ApplyGrade();
-        SyncReportButtons();
-        Log(L10n.F("log.bench.saved", res.ChargeValue, res.SampleCount));
+                // O bench correu no aparelho d mas o relatório aberto descreve
+                // outro — gravar aqui contaminava o diagnóstico desse cliente.
+                Log(L10n.T("log.test.wrongdev"));
+                return;
+            }
+            if (_report is null)
+            {
+                _report = new DeviceReport
+                {
+                    Platform = d.Kind == DeviceKind.Android ? "android" : "ios",
+                    Device = { Serial = d.Id },
+                };
+                _reportDeviceId = d.Id;
+            }
+            res.UsbDrops = drops.Count;
+            res.ApplyTo(_report);
+            ApplyGrade();
+            SyncReportButtons();
+            Log(L10n.F("log.bench.saved", res.ChargeValue, res.SampleCount));
+        };
+        OpenInteractive(bench);
     }
 }

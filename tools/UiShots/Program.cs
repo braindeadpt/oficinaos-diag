@@ -286,9 +286,22 @@ internal static class Program
             // ecrã curto: força o scroll das Opções (o que o SizeToContent escondia)
             Capturar(() => new SettingsDialog(DiagConfig.Load()),
                 Path.Combine(destino, $"opcoes-{tema}-curta.png"), 420, 560, LimitarScroll);
-            Capturar(() => new BenchWindow("Pixel 8 · android",
-                    () => Task.FromResult<LiveTelemetry?>(null)),
+            Capturar(() => PainelEmJanela(new BenchPanel("Pixel 8 · android",
+                    () => Task.FromResult<LiveTelemetry?>(null))),
                 Path.Combine(destino, $"bench-{tema}.png"), 920, 620);
+            // as quatro etapas do pipeline: captura da MainWindow em cada uma
+            foreach (var (botao, nome) in new[]
+            {
+                ("StageRepararButton", "reparar"),
+                ("StageVerificarButton", "verificar"),
+                ("StageEntregarButton", "entregar"),
+            })
+            Capturar(() => new MainWindow(), Path.Combine(destino, $"main-{nome}-{tema}.png"), 1000, 740,
+                ajustar: w =>
+                {
+                    if (w.FindName(botao) is ToggleButton tb)
+                        tb.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                });
         }
 
         // O dropdown é um Popup — outra janela, fora do visual tree — por isso
@@ -339,7 +352,7 @@ internal static class Program
         Capturar(() => new InsuranceDialog(DiagConfig.Load()),
             Path.Combine(destino, "seguradora-400.png"), 480, 640,
             workArea: 400, acoes: ["GenerateBtn", "CancelBtn"]);
-        Capturar(() => new CompareWindow(relatorio, [anterior]),
+        Capturar(() => PainelEmJanela(new ComparePanel(relatorio, [anterior])),
             Path.Combine(destino, "comparar.png"), 780, 560);
         using (var gen = new QRCodeGenerator())
         {
@@ -641,6 +654,17 @@ internal static class Program
     /// num runner sem desktop interactivo isto impede que as janelas se roubem
     /// o foco umas às outras.
     /// </summary>
+    /// <summary>
+    /// Painel da etapa embrulhado numa janela vazia — só para a captura
+    /// medir o conteúdo como antes. Na app real os painéis vivem dentro
+    /// do MainWindow, nunca em janelas soltas.
+    /// </summary>
+    private static Window PainelEmJanela(UIElement painel) => new()
+    {
+        Content = painel,
+        Background = (Brush)Application.Current.FindResource("BgBrush"),
+    };
+
     private static T ForaDoEcra<T>(T janela) where T : Window
     {
         janela.WindowStartupLocation = WindowStartupLocation.Manual;
@@ -2098,7 +2122,8 @@ internal static class Program
         };
         relogio.Tick += (_, _) =>
         {
-            if (Application.Current.Windows.OfType<CompareWindow>().FirstOrDefault() is not { } cmp)
+            // O compare é um painel inline da etapa ③ — não há janela solta.
+            if ((janela.FindName("CompareHost") as ContentPresenter)?.Content is not ComparePanel cmp)
                 return;
             relogio.Stop();
             r.Abriu = true;
@@ -2110,7 +2135,6 @@ internal static class Program
             r.Antes = lista.FirstOrDefault(x => x.Key == "battery.health")?.Before;
             r.Agora = lista.FirstOrDefault(x => x.Key == "battery.health")?.Now;
             r.SemAntes = lista.FirstOrDefault(x => x.Key == "screen.deadpixels")?.Before;
-            Fechar(cmp);
         };
         relogio.Start();
         try
@@ -2556,15 +2580,24 @@ internal static class Program
         Console.WriteLine("== aviso ao fechar a bancada a meio da sessão ==");
         ThemeManager.Apply(ThemeManager.Terminal);
 
-        var janela = ForaDoEcra(new BenchWindow("Pixel 8 · android",
-            () => Task.FromResult<LiveTelemetry?>(null)));
+        // A bancada é um painel embutido na etapa — embrulha-se numa janela
+        // vazia só para a prova, e o fecho negocia-se pelo RequestClose:
+        // «Não» mantém a sessão, «Sim» dispara o CloseRequested que o host
+        // usaria para desmontar o painel.
+        var painel = new BenchPanel("Pixel 8 · android",
+            () => Task.FromResult<LiveTelemetry?>(null));
+        var janela = PainelEmJanela(painel);
         janela.Width = 920;
         janela.Height = 620;
+        janela.WindowStartupLocation = WindowStartupLocation.Manual;
+        janela.Left = -20_000;
         janela.Show();
         Respirar();
+        var fechou = 0;
+        painel.CloseRequested += (_, _) => fechou++;
         try
         {
-            var comecar = janela.FindName("StartBtn") as Button;
+            var comecar = painel.FindName("StartBtn") as Button;
             comecar!.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
             Verificar("bancada: sessão arrancou (SCAN+ desativado)",
                 EsperarPor("bancada: sessão arrancou", "o SCAN+ desativar depois do clique",
@@ -2573,7 +2606,7 @@ internal static class Program
             using var vigia = new CancellationTokenSource();
             var rede = VigiaDoMessageBox(vigia.Token);
             var primeira = ResponderMessageBoxDetalhado("nao");
-            janela.Close(); // bloqueia no MessageBox
+            painel.Dispatcher.Invoke(() => painel.RequestClose()); // bloqueia no MessageBox
             var (corpo, porque) = primeira.GetAwaiter().GetResult();
             vigia.Cancel();
             rede.Wait(500);
@@ -2582,17 +2615,17 @@ internal static class Program
             var esperado = SemEspacos(L10n.T("bench.confirm.abort"));
             Verificar($"bancada: o texto é o do L10n ('{corpo ?? porque}')",
                 corpo is not null && SemEspacos(corpo).Contains(esperado[..30]));
-            Verificar("bancada: responder Não mantém a janela aberta", janela.IsLoaded);
+            Verificar("bancada: responder Não mantém a sessão", fechou == 0);
 
             using var vigia2 = new CancellationTokenSource();
             var rede2 = VigiaDoMessageBox(vigia2.Token);
             var segunda = ResponderMessageBox("sim");
-            janela.Close();
+            painel.Dispatcher.Invoke(() => painel.RequestClose());
             var corpo2 = segunda.GetAwaiter().GetResult();
             vigia2.Cancel();
             rede2.Wait(500);
-            Verificar("bancada: responder Sim fecha a janela",
-                corpo2 is not null && Esperar(() => !janela.IsLoaded, 3000));
+            Verificar("bancada: responder Sim fecha a sessão",
+                corpo2 is not null && Esperar(() => fechou > 0, 3000));
         }
         finally
         {

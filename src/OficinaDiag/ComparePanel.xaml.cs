@@ -19,7 +19,7 @@ public sealed class DiffRow
 /// Antes/depois do mesmo serial — compara dois scans do histórico local.
 /// Prova para o cliente de que a peça nova ficou bem; munição para disputas.
 /// </summary>
-public sealed partial class CompareWindow : Window
+public sealed partial class ComparePanel : UserControl
 {
     private readonly DeviceReport _current;
     private readonly IReadOnlyList<DeviceReport> _previous;
@@ -35,20 +35,17 @@ public sealed partial class CompareWindow : Window
         public override string ToString() => Label;
     }
 
-    public CompareWindow(DeviceReport current, IReadOnlyList<DeviceReport> previous)
+    public ComparePanel(DeviceReport current, IReadOnlyList<DeviceReport> previous)
     {
         InitializeComponent();
         _current = current;
         _previous = previous;
 
-        Title = L10n.T("cmp.title");
         HeaderText.Text = L10n.T("cmp.header");
         DescText.Text = L10n.T("cmp.desc");
         ColCheck.Text = L10n.T("cmp.col.check");
         ColBefore.Text = L10n.T("cmp.col.before");
         ColNow.Text = L10n.T("cmp.col.now");
-        CloseBtn.Content = L10n.Btn("btn.close");
-
         foreach (var p in _previous)
         {
             var checks = p.Results.Count;
@@ -124,6 +121,4 @@ public sealed partial class CompareWindow : Window
         }
         DiffList.ItemsSource = rows;
     }
-
-    private void Close_Click(object sender, RoutedEventArgs e) => Close();
 }

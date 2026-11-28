@@ -221,9 +221,21 @@ public partial class MainWindow : Window
         LogButton.Content = L10n.Btn("btn.log");
         ConfigButton.Content = L10n.Btn("btn.settings");
         GroupDeviceText.Text = L10n.T("group.device");
-        GroupRecordsText.Text = L10n.T("group.records");
-        GroupDeliverText.Text = L10n.T("group.deliver");
         GroupSystemText.Text = L10n.T("group.system");
+        StageDiagButton.Content = L10n.T("stage.diag");
+        StageRepararButton.Content = L10n.T("stage.reparar");
+        StageVerificarButton.Content = L10n.T("stage.verificar");
+        StageEntregarButton.Content = L10n.T("stage.entregar");
+        RepararTitle.Text = L10n.T("reparar.title");
+        RepararDesc.Text = L10n.T("reparar.desc");
+        RepararFirmwareText.Text = L10n.T("reparar.firmware");
+        RepararActionsText.Text = L10n.T("reparar.actions");
+        VerificarTitle.Text = L10n.T("verificar.title");
+        VerificarDesc.Text = L10n.T("verificar.desc");
+        EntregarTitle.Text = L10n.T("entregar.title");
+        EntregarDesc.Text = L10n.T("entregar.desc");
+        RescanButton.Content = L10n.Btn("btn.rescan");
+        InteractiveBackButton.Content = L10n.Btn("btn.back");
         EmptyTitle.Text = L10n.T("empty.title");
         EmptyDesc.Text = L10n.T("empty.desc");
         EmptyStep1.Text = L10n.T("empty.step1");
@@ -235,7 +247,8 @@ public partial class MainWindow : Window
             ScanButton, BenchButton, PerfButton, TestButton, AppsButton, ChecklistButton,
             ServiceButton, MaintenanceButton, MirrorButton, CompareButton, LabelButton,
             ClientButton, ExportButton, SendButton, AiButton, MaintenanceAiButton,
-            InsuranceButton, LogButton, ConfigButton, BusyCancelButton,
+            InsuranceButton, LogButton, ConfigButton, BusyCancelButton, RescanButton,
+            InteractiveBackButton,
         })
             AutomationProperties.SetName(botao, botao.Content?.ToString() ?? "");
         AutomationProperties.SetName(ResultsList, ResultsHeader.Text);

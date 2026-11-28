@@ -171,7 +171,10 @@ public partial class MainWindow : Window
             Log(L10n.T("log.cmp.none"));
             return;
         }
-        new CompareWindow(_report, previous) { Owner = this }.ShowDialog();
+        // O compare é um painel da etapa ③ — a prova antes/depois fica na
+        // sessão, não numa janela descartável.
+        CompareHost.Content = new ComparePanel(_report, previous);
+        if (_stage != PipelineStage.Verificar) SelectStage(PipelineStage.Verificar);
     }
 
     private void RefreshResults()

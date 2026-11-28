@@ -144,6 +144,8 @@ public partial class MainWindow : Window
             AppsButton.Visibility = Visibility.Collapsed;
             MaintenanceButton.IsEnabled = false;
             ScanButton.IsEnabled = !busy; // permite tentar mesmo sem evento
+            RescanButton.IsEnabled = ScanButton.IsEnabled;
+            SyncStageVisibility();
             return;
         }
 
@@ -152,6 +154,7 @@ public partial class MainWindow : Window
         // scan, teste no ecrã nem bancada de potência — o resto continua vivo.
         var ready = d.State == "ready";
         ScanButton.IsEnabled = ready && !busy;
+        RescanButton.IsEnabled = ScanButton.IsEnabled;
         TestButton.IsEnabled = ready && !busy;
         BenchButton.IsEnabled = ready && !busy;
         // O perfil de desempenho serve Android e iOS — métricas que a
@@ -167,6 +170,7 @@ public partial class MainWindow : Window
         MaintenanceButton.IsEnabled = ready && !busy && d.Kind == DeviceKind.Android;
         if (ready) StartTelemetry(d);
         else { _telemetryCts?.Cancel(); TelemetryText.Text = ""; }
+        SyncStageVisibility();
     }
 
     /// <summary>
