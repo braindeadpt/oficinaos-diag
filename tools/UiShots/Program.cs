@@ -298,13 +298,17 @@ internal static class Program
                     // igualmente com conteúdo que cabe todo, por isso mede-se
                     // a extensão contra o viewport.
                     w.UpdateLayout();
-                    if (w.FindName("Scroller") is ScrollViewer sv)
+                    if (w.FindName("Scroller") is not ScrollViewer sv)
                     {
-                        Verificar($"envio-scroll-{tema}: conteúdo excede a janela útil " +
-                                  $"(extensão {sv.ExtentHeight:0} vs viewport {sv.ViewportHeight:0})",
-                            sv.ExtentHeight > sv.ViewportHeight + 1);
-                        sv.ScrollToEnd();
+                        // sem o controlo não há prova nenhuma — falhar alto em
+                        // vez de capturar uma imagem que não testa rolagem
+                        Verificar($"envio-scroll-{tema}: ScrollViewer 'Scroller' existe", false);
+                        return;
                     }
+                    Verificar($"envio-scroll-{tema}: conteúdo excede a janela útil " +
+                              $"(extensão {sv.ExtentHeight:0} vs viewport {sv.ViewportHeight:0})",
+                        sv.ExtentHeight > sv.ViewportHeight + 1);
+                    sv.ScrollToEnd();
                 },
                 acoes: ["SendBtn", "CancelBtn"]);
             Capturar(() => new TokenDialog(), Path.Combine(destino, $"token-{tema}.png"), 380, 320);
