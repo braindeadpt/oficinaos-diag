@@ -28,6 +28,8 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <Resource Include="Assets\Fonts\*.ttf" />
+    <Resource Include="Assets\Fonts\*.txt" />
     <ProjectReference Include="..\OficinaDiag.Core\OficinaDiag.Core.csproj" />
   </ItemGroup>
 
