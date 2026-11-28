@@ -39,7 +39,9 @@ public enum DeviceMode
 
     /// <summary>
     /// Qualcomm HS-USB QDLoader 9008 / Xiaomi FF18 / SPD-Unisoc — Emergency
-    /// Download.
+    /// Download. Um modo, vários chipsets: antes de selecionar a ferramenta
+    /// de restauro (etapa ②) há que distinguir Qualcomm de Unisoc — a
+    /// deteção VID/PID por si só não chega.
     /// </summary>
     QualcommEdl,
 
