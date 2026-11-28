@@ -155,6 +155,11 @@ public partial class SendDialog : Window
         ErrorText.Visibility = Visibility.Visible;
         field.Focus();
         field.SelectAll();
+        // O foco desloca o formulário para o campo; sem isto, num ecrã baixo
+        // o campo aparece mas a mensagem — lá em cima — sai da vista e o
+        // técnico não percebe porque é que o envio não avançou. O foco fica
+        // no campo (é lá que se corrige), mas a rolagem volta ao erro.
+        ErrorText.BringIntoView();
     }
 
     private void Send_Click(object sender, RoutedEventArgs e)

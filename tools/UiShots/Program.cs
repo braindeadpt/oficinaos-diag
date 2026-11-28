@@ -307,6 +307,35 @@ internal static class Program
                     sv.ScrollToEnd();
                 },
                 acoes: ["SendBtn", "CancelBtn"]);
+            // erro de validação em ecrã baixo: a mensagem fica no topo do
+            // formulário e a rolagem tem de voltar a ela mesmo com o foco
+            // num campo fundo (email) — a regressão do erro escondido
+            Capturar(() => new SendDialog(null, "Samsung Galaxy S21 — R5CT1234567"),
+                Path.Combine(destino, $"envio-erro-{tema}.png"), 420, 560, workArea: 380,
+                ajustar: w =>
+                {
+                    w.UpdateLayout();
+                    (w.FindName("ShopCodeBox") as TextBox)!.Text = "ABC123";
+                    (w.FindName("NameBox") as TextBox)!.Text = "João Silva";
+                    (w.FindName("PhoneBox") as TextBox)!.Text = "912345678";
+                    (w.FindName("EmailBox") as TextBox)!.Text = "isto-nao-e-email";
+                    var consentimento = w.FindName("PrivacyConsentBox") as CheckBox;
+                    Verificar($"envio-erro-{tema}: consentimento ativo com código preenchido",
+                        consentimento?.IsEnabled == true);
+                    if (consentimento?.IsEnabled == true) Clicar(consentimento);
+                    var sv = w.FindName("Scroller") as ScrollViewer;
+                    sv?.ScrollToEnd();
+                    if (w.FindName("SendBtn") is Button enviar) Clicar(enviar);
+                    w.UpdateLayout();
+                    var erro = w.FindName("ErrorText") as TextBlock;
+                    Verificar($"envio-erro-{tema}: erro de validação visível",
+                        erro?.Visibility == Visibility.Visible && erro.Text.Length > 0);
+                    // com o foco no campo do email (fundo do formulário), a
+                    // rolagem só está no topo se a validação a levou à mensagem
+                    Verificar($"envio-erro-{tema}: rolagem volta ao erro no topo " +
+                              $"(offset {sv?.VerticalOffset:0})",
+                        sv is not null && sv.VerticalOffset < 5);
+                });
             Capturar(() => new TokenDialog(), Path.Combine(destino, $"token-{tema}.png"), 380, 320);
             // ecrã curto: força o scroll das Opções (o que o SizeToContent escondia)
             Capturar(() => new SettingsDialog(DiagConfig.Load()),
