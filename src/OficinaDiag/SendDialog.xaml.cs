@@ -67,7 +67,7 @@ public partial class SendDialog : Window
         {
             MismatchWarn.Text = L10n.T("send.mismatch.warn");
             MismatchWarn.Visibility = Visibility.Visible;
-            MismatchConfirm.Content = L10n.T("send.mismatch.confirm");
+            MismatchConfirmText.Text = L10n.T("send.mismatch.confirm");
             MismatchConfirm.Visibility = Visibility.Visible;
             SendBtn.IsEnabled = false;
         }
