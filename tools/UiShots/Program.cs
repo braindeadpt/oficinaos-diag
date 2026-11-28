@@ -298,13 +298,9 @@ internal static class Program
                     // igualmente com conteúdo que cabe todo, por isso mede-se
                     // a extensão contra o viewport.
                     w.UpdateLayout();
-                    if (w.FindName("Scroller") is not ScrollViewer sv)
-                    {
-                        // sem o controlo não há prova nenhuma — falhar alto em
-                        // vez de capturar uma imagem que não testa rolagem
-                        Verificar($"envio-scroll-{tema}: ScrollViewer 'Scroller' existe", false);
-                        return;
-                    }
+                    var sv = w.FindName("Scroller") as ScrollViewer;
+                    Verificar($"envio-scroll-{tema}: ScrollViewer 'Scroller' existe", sv is not null);
+                    if (sv is null) return;
                     Verificar($"envio-scroll-{tema}: conteúdo excede a janela útil " +
                               $"(extensão {sv.ExtentHeight:0} vs viewport {sv.ViewportHeight:0})",
                         sv.ExtentHeight > sv.ViewportHeight + 1);
@@ -1237,6 +1233,14 @@ internal static class Program
                 throw new InvalidOperationException("PrivacyConsentBox em falta");
             Clicar(consentimento);
             Verificar("estado envio: aparelho igual com consentimento liga ENVIAR",
+                enviar is { IsEnabled: true });
+            var caixaLoja = (janela.FindName("ShopCodeBox") as TextBox)!;
+            caixaLoja.Text = "XYZ789";
+            Verificar("estado envio: trocar a loja invalida o consentimento",
+                consentimento.IsChecked != true && enviar is { IsEnabled: false });
+            caixaLoja.Text = "ABC123";
+            Clicar(consentimento);
+            Verificar("estado envio: consentimento renovado liga ENVIAR outra vez",
                 enviar is { IsEnabled: true });
             if (enviar is not null) Clicar(enviar);
         }, "commit: envio ENVIAR");
