@@ -1,5 +1,7 @@
+using System.Diagnostics;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Navigation;
 
 namespace OficinaDiag;
 
@@ -84,8 +86,16 @@ public partial class SendDialog : Window
         PurposeLabel.Text = L10n.T("send.purpose");
         PurposeRepair.Content = L10n.T("send.purpose.repair");
         PurposeSale.Content = L10n.T("send.purpose.sale");
+        PrivacyTitle.Text = L10n.T("send.privacy.title");
+        PrivacyConsentText.Text = L10n.T("send.privacy.consent");
+        PrivacyLink.Inlines.Clear();
+        PrivacyLink.Inlines.Add(L10n.T("send.privacy.link"));
+        UpdatePrivacyWarning();
         SendBtn.Content = L10n.Btn("btn.send.ok");
         CancelBtn.Content = L10n.Btn("btn.cancel");
+        SendBtn.IsEnabled = false;
+        PrivacyConsentBox.IsEnabled = false;
+        ShopCodeBox.TextChanged += (_, _) => ShopCodeChanged();
     }
 
     public string ShopCode => ShopCodeBox.Text.Trim();
@@ -96,9 +106,45 @@ public partial class SendDialog : Window
     // "sale" — the customer wants a buy-quote for a used phone, not a repair.
     public string Purpose => PurposeSale.IsChecked == true ? "sale" : "repair";
 
-    private void MismatchConfirm_Click(object sender, RoutedEventArgs e)
+    private string? _consentedShopCode;
+
+    private bool ConsentGiven => PrivacyConsentBox.IsChecked == true;
+    private bool MismatchConfirmed => !_mismatch || MismatchConfirm.IsChecked == true;
+    private string NormalizedShopCode => ShopCode.ToUpperInvariant();
+
+    private void UpdatePrivacyWarning()
     {
-        if (_mismatch) SendBtn.IsEnabled = MismatchConfirm.IsChecked == true;
+        var shop = ShopCode.Length > 0 ? ShopCode : L10n.T("send.privacy.shop.pending");
+        PrivacyText.Text = L10n.F("send.privacy.body", shop);
+        PrivacyConsentBox.IsEnabled = ShopCode.Length > 0;
+    }
+
+    private void UpdateSendState() =>
+        SendBtn.IsEnabled = ConsentGiven && MismatchConfirmed && ShopCode.Length > 0;
+
+    private void ShopCodeChanged()
+    {
+        if (_consentedShopCode != NormalizedShopCode)
+            PrivacyConsentBox.IsChecked = false;
+        UpdatePrivacyWarning();
+        UpdateSendState();
+    }
+
+    private void PrivacyConsent_Changed(object sender, RoutedEventArgs e)
+    {
+        if (PrivacyConsentBox.IsChecked == true && ShopCode.Length == 0)
+            PrivacyConsentBox.IsChecked = false;
+        _consentedShopCode = PrivacyConsentBox.IsChecked == true ? NormalizedShopCode : null;
+        UpdateSendState();
+    }
+
+    private void MismatchConfirm_Click(object sender, RoutedEventArgs e) => UpdateSendState();
+
+    private void PrivacyLink_RequestNavigate(object sender, RequestNavigateEventArgs e)
+    {
+        try { Process.Start(new ProcessStartInfo(e.Uri.AbsoluteUri) { UseShellExecute = true }); }
+        catch { }
+        e.Handled = true;
     }
 
     private void ClearError() => ErrorText.Visibility = Visibility.Collapsed;
@@ -109,11 +155,21 @@ public partial class SendDialog : Window
         ErrorText.Visibility = Visibility.Visible;
         field.Focus();
         field.SelectAll();
+        // O foco desloca o formulário para o campo; sem isto, num ecrã baixo
+        // o campo aparece mas a mensagem — lá em cima — sai da vista e o
+        // técnico não percebe porque é que o envio não avançou. O foco fica
+        // no campo (é lá que se corrige), mas a rolagem volta ao topo, onde
+        // a mensagem está. ScrollToHome não depende do layout da mensagem
+        // (que acabou de ficar visível e ainda não tem posição medida —
+        // foi por isso que o BringIntoView não deslocava nada, provado
+        // pela captura envio-erro no CI).
+        Scroller.ScrollToHome();
     }
 
     private void Send_Click(object sender, RoutedEventArgs e)
     {
         ClearError();
+        if (!MismatchConfirmed || !ConsentGiven) return;
         // a cloud gera códigos de loja com exatamente 6 caracteres
         if (ShopCode.Length < 6)
         {

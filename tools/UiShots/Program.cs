@@ -298,19 +298,48 @@ internal static class Program
                     // igualmente com conteúdo que cabe todo, por isso mede-se
                     // a extensão contra o viewport.
                     w.UpdateLayout();
-                    if (w.FindName("Scroller") is not ScrollViewer sv)
-                    {
-                        // sem o controlo não há prova nenhuma — falhar alto em
-                        // vez de capturar uma imagem que não testa rolagem
-                        Verificar($"envio-scroll-{tema}: ScrollViewer 'Scroller' existe", false);
-                        return;
-                    }
+                    var sv = w.FindName("Scroller") as ScrollViewer;
+                    Verificar($"envio-scroll-{tema}: ScrollViewer 'Scroller' existe", sv is not null);
+                    if (sv is null) return;
                     Verificar($"envio-scroll-{tema}: conteúdo excede a janela útil " +
                               $"(extensão {sv.ExtentHeight:0} vs viewport {sv.ViewportHeight:0})",
                         sv.ExtentHeight > sv.ViewportHeight + 1);
                     sv.ScrollToEnd();
                 },
                 acoes: ["SendBtn", "CancelBtn"]);
+            // erro de validação em ecrã baixo: a mensagem fica no topo do
+            // formulário e a rolagem tem de voltar a ela mesmo com o foco
+            // num campo fundo (email) — a regressão do erro escondido
+            Capturar(() => new SendDialog(null, "Samsung Galaxy S21 — R5CT1234567"),
+                Path.Combine(destino, $"envio-erro-{tema}.png"), 420, 560, workArea: 380,
+                ajustar: w =>
+                {
+                    w.UpdateLayout();
+                    (w.FindName("ShopCodeBox") as TextBox)!.Text = "ABC123";
+                    (w.FindName("NameBox") as TextBox)!.Text = "João Silva";
+                    (w.FindName("PhoneBox") as TextBox)!.Text = "912345678";
+                    (w.FindName("EmailBox") as TextBox)!.Text = "isto-nao-e-email";
+                    var consentimento = w.FindName("PrivacyConsentBox") as CheckBox;
+                    Verificar($"envio-erro-{tema}: consentimento ativo com código preenchido",
+                        consentimento?.IsEnabled == true);
+                    if (consentimento?.IsEnabled == true) Clicar(consentimento);
+                    var sv = w.FindName("Scroller") as ScrollViewer;
+                    sv?.ScrollToEnd();
+                    if (w.FindName("SendBtn") is Button enviar) Clicar(enviar);
+                    // a rolagem para o erro é adiada para depois do layout
+                    // (Dispatcher) — sem bombear a fila, a medição lia o
+                    // offset anterior à rolagem
+                    Respirar();
+                    w.UpdateLayout();
+                    var erro = w.FindName("ErrorText") as TextBlock;
+                    Verificar($"envio-erro-{tema}: erro de validação visível",
+                        erro?.Visibility == Visibility.Visible && erro.Text.Length > 0);
+                    // com o foco no campo do email (fundo do formulário), a
+                    // rolagem só está no topo se a validação a levou à mensagem
+                    Verificar($"envio-erro-{tema}: rolagem volta ao erro no topo " +
+                              $"(offset {sv?.VerticalOffset:0})",
+                        sv is not null && sv.VerticalOffset < 5);
+                });
             Capturar(() => new TokenDialog(), Path.Combine(destino, $"token-{tema}.png"), 380, 320);
             // ecrã curto: força o scroll das Opções (o que o SizeToContent escondia)
             Capturar(() => new SettingsDialog(DiagConfig.Load()),
@@ -1225,14 +1254,63 @@ internal static class Program
         var envio = new SendDialog();
         var enviou = AbrirModal(envio, janela =>
         {
+            var enviar = janela.FindName("SendBtn") as Button;
             (janela.FindName("ShopCodeBox") as TextBox)!.Text = "ABC123";
             (janela.FindName("NameBox") as TextBox)!.Text = "Ana Silva";
             (janela.FindName("PhoneBox") as TextBox)!.Text = "912345678";
-            if (janela.FindName("SendBtn") is Button enviar) Clicar(enviar);
+            Verificar("estado envio: aparelho igual sem consentimento desliga ENVIAR",
+                enviar is { IsEnabled: false });
+            if (enviar is not null) Clicar(enviar);
+            Verificar("estado envio: sem consentimento o handler não fecha", janela.IsVisible);
+            if (janela.FindName("PrivacyConsentBox") is not CheckBox consentimento)
+                throw new InvalidOperationException("PrivacyConsentBox em falta");
+            Clicar(consentimento);
+            Verificar("estado envio: aparelho igual com consentimento liga ENVIAR",
+                enviar is { IsEnabled: true });
+            var caixaLoja = (janela.FindName("ShopCodeBox") as TextBox)!;
+            caixaLoja.Text = "XYZ789";
+            Verificar("estado envio: trocar a loja invalida o consentimento",
+                consentimento.IsChecked != true && enviar is { IsEnabled: false });
+            Clicar(consentimento);
+            Verificar("estado envio: consentimento renovado para a nova loja liga ENVIAR",
+                enviar is { IsEnabled: true });
+            if (enviar is not null) Clicar(enviar);
         }, "commit: envio ENVIAR");
         Verificar("commit: envio ENVIAR devolveu OK", enviou == true);
         Verificar("commit: o código e o contacto leram-se",
-            envio.ShopCode == "ABC123" && envio.CustomerName == "Ana Silva");
+            envio.ShopCode == "XYZ789" && envio.CustomerName == "Ana Silva");
+
+        var envioOutro = new SendDialog(null, "Samsung Galaxy S21 — R5CT1234567", mismatch: true);
+        var enviouOutro = AbrirModal(envioOutro, janela =>
+        {
+            var enviar = janela.FindName("SendBtn") as Button;
+            if (janela.FindName("MismatchConfirm") is not CheckBox confirmacao)
+                throw new InvalidOperationException("MismatchConfirm em falta");
+            if (janela.FindName("PrivacyConsentBox") is not CheckBox consentimento)
+                throw new InvalidOperationException("PrivacyConsentBox em falta");
+            (janela.FindName("ShopCodeBox") as TextBox)!.Text = "ABC123";
+            (janela.FindName("NameBox") as TextBox)!.Text = "Ana Silva";
+            (janela.FindName("PhoneBox") as TextBox)!.Text = "912345678";
+            Verificar("estado envio: aparelho diferente nasce com ENVIAR desligado",
+                enviar is { IsEnabled: false });
+            Clicar(confirmacao);
+            Verificar("estado envio: aparelho diferente sem consentimento desliga ENVIAR",
+                enviar is { IsEnabled: false });
+            if (enviar is not null) Clicar(enviar);
+            Verificar("estado envio: diferente sem consentimento o handler não fecha", janela.IsVisible);
+            Clicar(confirmacao);
+            Clicar(consentimento);
+            Verificar("estado envio: consentimento sem confirmação do aparelho desliga ENVIAR",
+                enviar is { IsEnabled: false });
+            if (enviar is not null) Clicar(enviar);
+            Verificar("estado envio: sem confirmação do aparelho o handler não fecha", janela.IsVisible);
+            Clicar(confirmacao);
+            Verificar("estado envio: consentimento e confirmação ligam ENVIAR",
+                enviar is { IsEnabled: true });
+            if (enviar is not null) Clicar(enviar);
+        }, "commit: envio ENVIAR aparelho diferente");
+        Verificar("commit: envio aparelho diferente devolveu OK com as duas confirmações",
+            enviouOutro == true);
     }
 
     /// <summary>
@@ -2549,7 +2627,7 @@ internal static class Program
         var validacoes = new (string Nome, Func<Window> Criar, string Botao, string Chave, bool Inline)[]
         {
             ("seguro", () => new InsuranceDialog(DiagConfig.Load()), "GenerateBtn", "ins.err.insured", true),
-            ("envio", () => new SendDialog(), "SendBtn", "send.err.code", true),
+            ("envio", () => new SendDialog(), "SendBtn", "send.err.contact", true),
             ("token", () => new TokenDialog(), "OkBtn", "dlg.ai.token.empty", false),
         };
         foreach (var (nome, criar, botao, chave, inline) in validacoes)
@@ -2559,6 +2637,11 @@ internal static class Program
             Abrir(dialogo);
             try
             {
+                if (nome == "envio" && dialogo.FindName("PrivacyConsentBox") is CheckBox consentimento)
+                {
+                    (dialogo.FindName("ShopCodeBox") as TextBox)!.Text = "ABC123";
+                    Clicar(consentimento);
+                }
                 if (dialogo.FindName(botao) is not Button alvo)
                 {
                     Verificar($"clique: {nome} tem o botão {botao}", false);
