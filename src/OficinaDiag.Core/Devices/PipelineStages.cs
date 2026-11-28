@@ -20,6 +20,16 @@ public static class PipelineStages
     /// <summary>① Diagnosticar aparece neste modo?</summary>
     public static bool AllowsDiagnosticar(DeviceMode mode) => !IsFirmwareOnly(mode);
 
-    /// <summary>③ Verificar e ④ Entregar aparecem neste modo?</summary>
-    public static bool AllowsVerificarEntregar(DeviceMode mode) => !IsFirmwareOnly(mode);
+    /// <summary>③ Verificar aparece neste modo?</summary>
+    public static bool AllowsVerificar(DeviceMode mode) => !IsFirmwareOnly(mode);
+
+    /// <summary>
+    /// ④ Entregar aparece em todos os modos — mesmo EDL/BROM/DFU: o aparelho
+    /// chegou morto mas a sessão pode ter scans anteriores e o relatório da
+    /// reparação tem sempre de sair. Decisão do mentor na #76.
+    /// </summary>
+    public static bool AllowsEntregar(DeviceMode mode) => true;
+
+    /// <summary>forma nomeada da regra para os testes lerem como produto</summary>
+    public static bool EntregarEstaSempreVisivel(DeviceMode mode) => AllowsEntregar(mode);
 }

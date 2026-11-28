@@ -299,8 +299,14 @@ internal static class Program
             Capturar(() => new MainWindow(), Path.Combine(destino, $"main-{nome}-{tema}.png"), 1000, 740,
                 ajustar: w =>
                 {
+                    // RaiseEvent não move o foco — um clique de rato moveria.
+                    // Sem o Focus() a captura mostrava o vídeo inverso do foco
+                    // no botão errado (o ① fica focado no arranque da janela).
                     if (w.FindName(botao) is ButtonBase tb)
+                    {
+                        tb.Focus();
                         tb.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                    }
                 });
         }
 

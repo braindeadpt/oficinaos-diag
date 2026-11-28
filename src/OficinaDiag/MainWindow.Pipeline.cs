@@ -33,11 +33,31 @@ public partial class MainWindow : Window
         // As ações da etapa vivem dentro do respetivo painel de conteúdo;
         // na barra inferior só fica o grupo da etapa ① (o núcleo) e o sistema.
         ActionsDiag.Visibility = stage == PipelineStage.Diagnosticar ? Visibility.Visible : Visibility.Collapsed;
-        // A etapa ativa fica em negrito — o retro não tem pills nem tabs.
-        StageDiagButton.FontWeight = stage == PipelineStage.Diagnosticar ? FontWeights.Bold : FontWeights.Normal;
-        StageRepararButton.FontWeight = stage == PipelineStage.Reparar ? FontWeights.Bold : FontWeights.Normal;
-        StageVerificarButton.FontWeight = stage == PipelineStage.Verificar ? FontWeights.Bold : FontWeights.Normal;
-        StageEntregarButton.FontWeight = stage == PipelineStage.Entregar ? FontWeights.Bold : FontWeights.Normal;
+        // O realce da etapa vem do MESMO estado que escolhe o painel — nunca
+        // do foco do teclado. Sem isto o arranque da janela punha o vídeo
+        // inverso do foco no ① com outro painel aberto, e as capturas do
+        // UiShots (que não movem o foco) mostravam o botão errado aceso.
+        // Vídeo inverso no terminal; nos outros temas os mesmos brushes
+        // partilhados dão o contraste equivalente.
+        MarcarEtapa(StageDiagButton, stage == PipelineStage.Diagnosticar);
+        MarcarEtapa(StageRepararButton, stage == PipelineStage.Reparar);
+        MarcarEtapa(StageVerificarButton, stage == PipelineStage.Verificar);
+        MarcarEtapa(StageEntregarButton, stage == PipelineStage.Entregar);
+    }
+
+    private static void MarcarEtapa(Button botao, bool ativa)
+    {
+        botao.FontWeight = ativa ? FontWeights.Bold : FontWeights.Normal;
+        if (ativa)
+        {
+            botao.SetResourceReference(Control.BackgroundProperty, "FgBrush");
+            botao.SetResourceReference(Control.ForegroundProperty, "BgBrush");
+        }
+        else
+        {
+            botao.ClearValue(Control.BackgroundProperty);
+            botao.ClearValue(Control.ForegroundProperty);
+        }
     }
 
     /// <summary>
@@ -49,10 +69,10 @@ public partial class MainWindow : Window
     {
         var mode = _current?.Mode ?? DeviceMode.Unknown;
         var diag = PipelineStages.AllowsDiagnosticar(mode);
-        var verificarEntregar = PipelineStages.AllowsVerificarEntregar(mode);
+        var verificar = PipelineStages.AllowsVerificar(mode);
         StageDiagButton.Visibility = diag ? Visibility.Visible : Visibility.Collapsed;
-        StageVerificarButton.Visibility = verificarEntregar ? Visibility.Visible : Visibility.Collapsed;
-        StageEntregarButton.Visibility = verificarEntregar ? Visibility.Visible : Visibility.Collapsed;
+        StageVerificarButton.Visibility = verificar ? Visibility.Visible : Visibility.Collapsed;
+        StageEntregarButton.Visibility = PipelineStages.AllowsEntregar(mode) ? Visibility.Visible : Visibility.Collapsed;
         // Reparar é a única etapa que nunca se esconde: qualquer modo a pode
         // precisar — e nos modos de firmware é tudo o que existe.
         var firmwareOnly = !diag;
@@ -61,7 +81,7 @@ public partial class MainWindow : Window
         RepararActionsCard.Visibility = firmwareOnly || _current is null ? Visibility.Collapsed : Visibility.Visible;
         // Se a etapa atual deixou de existir para este modo, cai na válida.
         if ((!diag && _stage == PipelineStage.Diagnosticar)
-            || (!verificarEntregar && _stage is PipelineStage.Verificar or PipelineStage.Entregar))
+            || (!verificar && _stage == PipelineStage.Verificar))
             SelectStage(PipelineStage.Reparar);
     }
 

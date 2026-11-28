@@ -266,6 +266,14 @@
                         <TextBlock x:Name="EntregarDesc" FontFamily="{DynamicResource UiFont}"
                                    FontSize="12" TextWrapping="Wrap"
                                    Foreground="{DynamicResource DimBrush}" Margin="0,0,0,12"/>
+                        <!-- ESPAÇO RESERVADO — não preencher nesta PR: o próximo
+                             PR do Diag traz o aviso obrigatório antes de
+                             →LOJA (PRO) (achado C4 da auditoria: quem recebe,
+                             que campos incluindo o número de série, prazo e
+                             privacidade, com uma caixa a marcar). O painel já
+                             está estruturado em StackPanel vertical para o
+                             aviso entrar aqui sem reflow dos botões. -->
+                        <Border x:Name="EntregarAvisoHost" Visibility="Collapsed" Margin="0,0,0,12"/>
                         <WrapPanel>
                             <Button Style="{DynamicResource TermButton}" x:Name="ExportButton"
                                     Click="Export_Click" IsEnabled="False"/>
