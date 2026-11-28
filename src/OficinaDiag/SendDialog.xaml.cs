@@ -159,7 +159,11 @@ public partial class SendDialog : Window
         // o campo aparece mas a mensagem — lá em cima — sai da vista e o
         // técnico não percebe porque é que o envio não avançou. O foco fica
         // no campo (é lá que se corrige), mas a rolagem volta ao erro.
-        ErrorText.BringIntoView();
+        // Adiado para depois do layout: a mensagem acabou de ficar visível
+        // e um BringIntoView síncrono media-a na posição velha (colapsada),
+        // sem deslocar nada — foi o que a captura envio-erro provou no CI.
+        Dispatcher.BeginInvoke(new System.Action(() => ErrorText.BringIntoView()),
+            System.Windows.Threading.DispatcherPriority.Background);
     }
 
     private void Send_Click(object sender, RoutedEventArgs e)

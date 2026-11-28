@@ -326,6 +326,10 @@ internal static class Program
                     var sv = w.FindName("Scroller") as ScrollViewer;
                     sv?.ScrollToEnd();
                     if (w.FindName("SendBtn") is Button enviar) Clicar(enviar);
+                    // a rolagem para o erro é adiada para depois do layout
+                    // (Dispatcher) — sem bombear a fila, a medição lia o
+                    // offset anterior à rolagem
+                    Respirar();
                     w.UpdateLayout();
                     var erro = w.FindName("ErrorText") as TextBlock;
                     Verificar($"envio-erro-{tema}: erro de validação visível",
