@@ -104,6 +104,26 @@ public static class DeepReadingParsing
         }
     }
 
+    /// <summary>
+    /// Estado da leitura de capacidade da bateria quando o par real+design
+    /// não sai completo. A regra explícita: «requer root» só quando root
+    /// CHEGA para a percentagem — se a outra família está em falta no
+    /// aparelho, o root não resolve e a resposta honesta é «não
+    /// disponível» com nota do que existe.
+    /// </summary>
+    /// <returns>(estado, precisaDeNotaParcial) ou null quando o par sai.</returns>
+    public static (string state, bool partial)? CapacityFallbackState(
+        bool realOk, bool designOk, bool realDenied, bool designDenied)
+    {
+        if (realOk && designOk) return null;
+        var anyDenied = realDenied || designDenied;
+        var otherMissing = (realDenied && !designOk && !designDenied)
+            || (designDenied && !realOk && !realDenied);
+        if (anyDenied && !otherMissing) return ("requer root", false);
+        if (anyDenied) return ("não disponível neste aparelho", true);
+        return ("não disponível neste aparelho", false);
+    }
+
     /// <summary>Classe de desgaste eMMC (hex «0xNN» de life_time) — pior classe presente.</summary>
     public static int? ParseEmmcLifeClass(string? output)
     {

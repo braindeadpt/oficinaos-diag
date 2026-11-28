@@ -537,18 +537,21 @@ public sealed class AndroidCollector
         // que falta — um valor legível numa não esconde a falta da outra.
         string[] realNodes = ["battery/charge_full", "bms/charge_full", "max170xx_battery/charge_full"];
         string[] designNodes = ["battery/charge_full_design", "bms/charge_full_design", "max170xx_battery/charge_full_design"];
+        bool AnyDenied(string[] nodes) =>
+            nodes.Any(n => sysfsState.TryGetValue(n, out var st) && st == "denied");
         var realOk = realNodes.Any(n => sysfs.ContainsKey(n));
         var designOk = designNodes.Any(n => sysfs.ContainsKey(n));
-        var capState = !realOk ? DeepState(realNodes)
-            : !designOk ? DeepState(designNodes)
-            : null;
+        var fb = DeepReadingParsing.CapacityFallbackState(
+            realOk, designOk, AnyDenied(realNodes), AnyDenied(designNodes));
         if (!r.Results.ContainsKey("battery.capacity")
             && !r.Results.ContainsKey("battery.capacity_learned")
-            && capState is not null)
-            r.Set("battery.capacity", "skipped", capState,
-                realOk && !designOk
-                    ? "capacidade real legível mas sem o valor de fábrica — percentagem impossível"
-                    : "capacidade real de fábrica não medida neste aparelho");
+            && fb is { } capState)
+            r.Set("battery.capacity", "skipped", capState.state,
+                capState.partial
+                    ? "parte dos nós exige root mas o resto não existe no aparelho — root não chega"
+                    : realOk && !designOk
+                        ? "capacidade real legível mas sem o valor de fábrica — percentagem impossível"
+                        : "capacidade real de fábrica não medida neste aparelho");
     }
 
     /// <summary>

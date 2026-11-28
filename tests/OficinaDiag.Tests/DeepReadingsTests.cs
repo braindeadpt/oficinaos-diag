@@ -139,6 +139,28 @@ public sealed class DeepReadingsTests
         Assert.Equal(esperado, DeepReadingParsing.ParseEmmcLifeClass(output));
     }
 
+    // ── regra da capacidade: root só quando chega ─────────────────────
+
+    [Theory]
+    // par completo → sem estado alternativo
+    [InlineData(true, true, false, false, null)]
+    // real bloqueada, design legível → root resolve
+    [InlineData(false, true, true, false, "requer root")]
+    // design bloqueado, real legível → root resolve
+    [InlineData(true, false, false, true, "requer root")]
+    // real bloqueada MAS design em falta → root não chega
+    [InlineData(false, false, true, false, "não disponível neste aparelho")]
+    // design bloqueado MAS real em falta → idem
+    [InlineData(false, false, false, true, "não disponível neste aparelho")]
+    // tudo em falta → indisponível
+    [InlineData(false, false, false, false, "não disponível neste aparelho")]
+    public void CapacityFallback_RootSoQuandoChega(
+        bool realOk, bool designOk, bool realDenied, bool designDenied, string? esperado)
+    {
+        var r = DeepReadingParsing.CapacityFallbackState(realOk, designOk, realDenied, designDenied);
+        Assert.Equal(esperado, r?.state);
+    }
+
     // ── bugreport: contagens e tipos, nunca conteúdo ────────────────────
 
     [Theory]
