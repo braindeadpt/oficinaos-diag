@@ -67,13 +67,13 @@
             <Border Grid.Row="1" BorderBrush="{DynamicResource LineBrush}" BorderThickness="0,0,0,1"
                     Background="{DynamicResource HeaderBgBrush}" Padding="16,4">
                 <StackPanel Orientation="Horizontal">
-                    <Button x:Name="StageDiagButton" Style="{DynamicResource TermButton}"
+                    <Button x:Name="StageDiagButton" Style="{DynamicResource TermStageButton}"
                                   Click="StageDiag_Click"/>
-                    <Button x:Name="StageRepararButton" Style="{DynamicResource TermButton}"
+                    <Button x:Name="StageRepararButton" Style="{DynamicResource TermStageButton}"
                                   Click="StageReparar_Click" Margin="8,0,0,0"/>
-                    <Button x:Name="StageVerificarButton" Style="{DynamicResource TermButton}"
+                    <Button x:Name="StageVerificarButton" Style="{DynamicResource TermStageButton}"
                                   Click="StageVerificar_Click" Margin="8,0,0,0"/>
-                    <Button x:Name="StageEntregarButton" Style="{DynamicResource TermButton}"
+                    <Button x:Name="StageEntregarButton" Style="{DynamicResource TermStageButton}"
                                   Click="StageEntregar_Click" Margin="8,0,0,0"/>
                     <TextBlock x:Name="StageModeHint" VerticalAlignment="Center" Margin="20,0,0,0"
                                FontFamily="{DynamicResource UiFont}" FontSize="11"

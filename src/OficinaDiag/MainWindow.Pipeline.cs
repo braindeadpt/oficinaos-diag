@@ -48,16 +48,9 @@ public partial class MainWindow : Window
     private static void MarcarEtapa(Button botao, bool ativa)
     {
         botao.FontWeight = ativa ? FontWeights.Bold : FontWeights.Normal;
-        if (ativa)
-        {
-            botao.SetResourceReference(Control.BackgroundProperty, "FgBrush");
-            botao.SetResourceReference(Control.ForegroundProperty, "BgBrush");
-        }
-        else
-        {
-            botao.ClearValue(Control.BackgroundProperty);
-            botao.ClearValue(Control.ForegroundProperty);
-        }
+        // O visual do ativo vive no template (trigger Tag=ativo, depois de
+        // hover/pressed/foco) — hover ou clique nunca o tornam ilegível.
+        botao.Tag = ativa ? "ativo" : null;
     }
 
     /// <summary>

@@ -64,6 +64,41 @@
             </Setter.Value>
         </Setter>
     </Style>
+    <!-- Botões das etapas do pipeline: o ativo é a seleção clássica navy
+         decidida pelo estado da etapa (Tag=ativo), nunca pelo foco — o foco
+         do teclado é só um sublinhado, para nunca se confundir com seleção. -->
+    <Style x:Key="TermStageButton" TargetType="Button" BasedOn="{StaticResource TermButton}">
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="Button">
+                    <Border x:Name="shadow" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="0,0,1,1"
+                            Background="{TemplateBinding Background}">
+                        <Border x:Name="face" BorderBrush="#FFFFFF" BorderThickness="1,1,0,0"
+                                Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsPressed" Value="True">
+                            <Setter TargetName="face" Property="BorderBrush" Value="#808080"/>
+                            <Setter TargetName="shadow" Property="BorderBrush" Value="#FFFFFF"/>
+                        </Trigger>
+                        <Trigger Property="IsKeyboardFocused" Value="True">
+                            <Setter Property="TextElement.TextDecorations" Value="Underline"/>
+                            <Setter TargetName="shadow" Property="BorderBrush" Value="{DynamicResource AccentBrush}"/>
+                        </Trigger>
+                        <Trigger Property="IsEnabled" Value="False">
+                            <Setter Property="Foreground" Value="{DynamicResource DisabledBrush}"/>
+                        </Trigger>
+                        <Trigger Property="Tag" Value="ativo">
+                            <Setter TargetName="shadow" Property="Background" Value="{DynamicResource AccentBrush}"/>
+                            <Setter Property="Foreground" Value="#FFFFFF"/>
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
     <!-- Seletor de dispositivos ao estilo 95: cinza, bevel de 1px, com
          template próprio — só as cores deixava o dropdown e o botão nativos. -->
     <Style x:Key="TermCombo" TargetType="ComboBox">
