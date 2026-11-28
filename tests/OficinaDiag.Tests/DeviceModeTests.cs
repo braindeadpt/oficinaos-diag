@@ -99,9 +99,9 @@ public sealed class DeviceModeTests
     [InlineData(DeviceMode.IosDfu, false)]
     [InlineData(DeviceMode.IosRecovery, false)]
     // fastboot/recovery Android e os modos normais: ③ e ④ visíveis
-    [InlineData(DeviceMode.AndroidFastboot, true)]
+    [InlineData(DeviceMode.Fastboot, true)]
     [InlineData(DeviceMode.AndroidRecovery, true)]
-    [InlineData(DeviceMode.AndroidNormal, true)]
+    [InlineData(DeviceMode.AndroidReady, true)]
     [InlineData(DeviceMode.IosNormal, true)]
     [InlineData(DeviceMode.Unknown, true)]
     public void PipelineStages_EntregarNuncaSeEsconde(DeviceMode mode, bool verificarVisivel)
