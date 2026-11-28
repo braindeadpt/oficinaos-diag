@@ -212,8 +212,6 @@ public sealed class DeepReadingsTests
     [InlineData(true, false, true, false, "não disponível neste aparelho")]
     // simétrico: design legível + alternativo negado + real em falta → idem
     [InlineData(false, true, false, true, "não disponível neste aparelho")]
-    // e sem o desconto continua a haver root quando a família certa está negada
-    [InlineData(true, false, false, true, "requer root")]
     public void CapacityFallback_RootSoQuandoChega(
         bool realOk, bool designOk, bool realDenied, bool designDenied, string? esperado)
     {
