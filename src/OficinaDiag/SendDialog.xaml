@@ -66,6 +66,27 @@
         <RadioButton x:Name="PurposeSale" Foreground="{DynamicResource FgBrush}"
                      Margin="0,4,0,0"/>
 
+        <Border x:Name="PrivacyNotice" Margin="0,12,0,0" Padding="10"
+                Background="{DynamicResource PanelBrush}" BorderBrush="{DynamicResource LineBrush}"
+                BorderThickness="1">
+            <StackPanel>
+                <TextBlock x:Name="PrivacyTitle" Margin="0,0,0,4"
+                           Foreground="{DynamicResource FgBrush}" FontWeight="SemiBold"/>
+                <TextBlock x:Name="PrivacyText" Margin="0,0,0,6" TextWrapping="Wrap"
+                           Foreground="{DynamicResource FgBrush}"/>
+                <TextBlock Margin="0,0,0,8" TextWrapping="Wrap">
+                    <Hyperlink x:Name="PrivacyLink"
+                               NavigateUri="https://cloud.oficinaos.app/privacy"
+                               RequestNavigate="PrivacyLink_RequestNavigate"/>
+                </TextBlock>
+                <CheckBox x:Name="PrivacyConsentBox" Foreground="{DynamicResource FgBrush}"
+                          Checked="PrivacyConsent_Changed" Unchecked="PrivacyConsent_Changed">
+                    <TextBlock x:Name="PrivacyConsentText" Margin="0" TextWrapping="Wrap"
+                               Foreground="{DynamicResource FgBrush}"/>
+                </CheckBox>
+            </StackPanel>
+        </Border>
+
         <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,16,0,0">
             <Button x:Name="SendBtn" IsDefault="True" Click="Send_Click"/>
             <Button x:Name="CancelBtn" IsCancel="True" Margin="10,0,0,0"/>

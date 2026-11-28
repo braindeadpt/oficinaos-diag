@@ -381,6 +381,11 @@ public static class L10n
             ["send.purpose"] = "motivo do envio",
             ["send.purpose.repair"] = "Reparação — a loja avalia o problema",
             ["send.purpose.sale"] = "Vender o telemóvel — pedir orçamento à loja",
+            ["send.privacy.title"] = "ANTES DE ENVIAR — DADOS E PRIVACIDADE",
+            ["send.privacy.body"] = "Destinatário: a loja com o código {0}, através da OficinaOS Cloud.\nCampos enviados: o teu nome, telefone, email (se preenchido), motivo, dados do aparelho (marca, modelo, sistema operativo e número de série/IMEI), resultados do diagnóstico e notas; se existir, também o relatório IA.\nPrazo: a OficinaOS Cloud guarda o pedido durante 30 dias.",
+            ["send.privacy.shop.pending"] = "…",
+            ["send.privacy.link"] = "Ler a política de privacidade da OficinaOS Cloud",
+            ["send.privacy.consent"] = "Li o aviso e aceito enviar estes dados à loja através da OficinaOS Cloud.",
             ["btn.send.ok"] = "ENVIAR",
             ["btn.cancel"] = "cancelar",
             ["send.err.code"] = "Falta o código da loja (6 letras).",
@@ -933,6 +938,11 @@ public static class L10n
             ["send.purpose"] = "reason",
             ["send.purpose.repair"] = "Repair — the shop assesses the issue",
             ["send.purpose.sale"] = "Sell the phone — ask the shop for a quote",
+            ["send.privacy.title"] = "BEFORE SENDING — DATA AND PRIVACY",
+            ["send.privacy.body"] = "Recipient: the shop with code {0}, via OficinaOS Cloud.\nFields sent: your name, phone, email (if filled in), reason, device details (brand, model, operating system and serial number/IMEI), diagnostic results and notes; the AI report too, if present.\nRetention: OficinaOS Cloud keeps the request for 30 days.",
+            ["send.privacy.shop.pending"] = "…",
+            ["send.privacy.link"] = "Read the OficinaOS Cloud privacy policy",
+            ["send.privacy.consent"] = "I have read the notice and agree to send this data to the shop via OficinaOS Cloud.",
             ["btn.send.ok"] = "SEND",
             ["btn.cancel"] = "cancel",
             ["send.err.code"] = "Shop code missing (6 letters).",
@@ -1152,6 +1162,22 @@ public static class L10n
             ["theme.terminal"] = "Terminal (phosphor)",
             ["theme.win95"] = "Windows 95",
             ["theme.fluent"] = "Modern",
+        },
+        ["es"] = new()
+        {
+            ["send.privacy.title"] = "ANTES DE ENVIAR — DATOS Y PRIVACIDAD",
+            ["send.privacy.body"] = "Destinatario: la tienda con el código {0}, a través de OficinaOS Cloud.\nCampos enviados: tu nombre, teléfono, email (si lo indicas), motivo, datos del dispositivo (marca, modelo, sistema operativo y número de serie/IMEI), resultados del diagnóstico y notas; también el informe de IA, si existe.\nPlazo: OficinaOS Cloud conserva la solicitud durante 30 días.",
+            ["send.privacy.shop.pending"] = "…",
+            ["send.privacy.link"] = "Leer la política de privacidad de OficinaOS Cloud",
+            ["send.privacy.consent"] = "He leído el aviso y acepto enviar estos datos a la tienda a través de OficinaOS Cloud.",
+        },
+        ["fr"] = new()
+        {
+            ["send.privacy.title"] = "AVANT L'ENVOI — DONNÉES ET CONFIDENTIALITÉ",
+            ["send.privacy.body"] = "Destinataire : la boutique avec le code {0}, via OficinaOS Cloud.\nChamps envoyés : votre nom, téléphone, email (s'il est indiqué), motif, données de l'appareil (marque, modèle, système d'exploitation et numéro de série/IMEI), résultats du diagnostic et notes ; le rapport IA aussi, s'il existe.\nDurée : OficinaOS Cloud conserve la demande pendant 30 jours.",
+            ["send.privacy.shop.pending"] = "…",
+            ["send.privacy.link"] = "Lire la politique de confidentialité d'OficinaOS Cloud",
+            ["send.privacy.consent"] = "J'ai lu l'avis et j'accepte d'envoyer ces données à la boutique via OficinaOS Cloud.",
         },
     };
 }

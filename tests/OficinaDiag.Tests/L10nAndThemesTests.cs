@@ -54,6 +54,31 @@ public sealed class L10nAndThemesTests
     }
 
     [Fact]
+    public void AvisoDePrivacidadeDoEnvioExisteNasQuatroLinguas()
+    {
+        var d = Dicts();
+        var esperado = new Dictionary<string, (string Serial, string Retencao, string Destinatario)>
+        {
+            ["pt"] = ("número de série", "30 dias", "a loja com o código"),
+            ["en"] = ("serial number", "30 days", "the shop with code"),
+            ["es"] = ("número de serie", "30 días", "la tienda con el código"),
+            ["fr"] = ("numéro de série", "30 jours", "la boutique avec le code"),
+        };
+        foreach (var (lang, esperadoEm) in esperado)
+        {
+            Assert.True(d[lang].TryGetValue("send.privacy.body", out var corpo), lang);
+            Assert.Contains("{0}", corpo);
+            Assert.Contains("OficinaOS Cloud", corpo);
+            Assert.Contains(esperadoEm.Serial, corpo);
+            Assert.Contains(esperadoEm.Retencao, corpo);
+            Assert.Contains(esperadoEm.Destinatario, corpo);
+            Assert.False(string.IsNullOrWhiteSpace(d[lang]["send.privacy.title"]));
+            Assert.False(string.IsNullOrWhiteSpace(d[lang]["send.privacy.link"]));
+            Assert.False(string.IsNullOrWhiteSpace(d[lang]["send.privacy.consent"]));
+        }
+    }
+
+    [Fact]
     public void OsTresTemasDefinemOsMesmosXKey()
     {
         var themes = Path.Combine(RepoRoot(), "src", "OficinaDiag", "Themes");
