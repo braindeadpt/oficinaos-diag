@@ -541,8 +541,13 @@ public sealed class AndroidCollector
             nodes.Any(n => sysfsState.TryGetValue(n, out var st) && st == "denied");
         var realOk = realNodes.Any(n => sysfs.ContainsKey(n));
         var designOk = designNodes.Any(n => sysfs.ContainsKey(n));
+        // Um nó alternativo bloqueado só conta quando a família não produziu
+        // valor — com a capacidade real já lida no battery/, um bms/ negado
+        // é irrelevante e não pode puxar o diagnóstico para «requer root».
         var fb = DeepReadingParsing.CapacityFallbackState(
-            realOk, designOk, AnyDenied(realNodes), AnyDenied(designNodes));
+            realOk, designOk,
+            !realOk && AnyDenied(realNodes),
+            !designOk && AnyDenied(designNodes));
         if (!r.Results.ContainsKey("battery.capacity")
             && !r.Results.ContainsKey("battery.capacity_learned")
             && fb is { } capState)

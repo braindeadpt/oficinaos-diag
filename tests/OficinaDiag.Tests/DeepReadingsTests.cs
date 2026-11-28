@@ -88,6 +88,25 @@ public sealed class DeepReadingsTests
     }
 
     [Fact]
+    public void CapacidadeReal_LidaEmBatteryComBmsNegado_NaoPuxaRoot()
+    {
+        // A combinação do review: valor lido no nó principal, nó alternativo
+        // da MESMA família bloqueado. O «denied» efetivo é falso porque a
+        // família produziu valor — simula o que o coletor passa à regra pura.
+        var (valores, estados) = ParseComoColetor(SamsungS21Sysfs);
+        bool AnyDenied(string[] nodes) =>
+            nodes.Any(n => estados.TryGetValue(n, out var st) && st == "denied");
+        string[] realNodes = ["battery/charge_full", "bms/charge_full", "max170xx_battery/charge_full"];
+        string[] designNodes = ["battery/charge_full_design", "bms/charge_full_design", "max170xx_battery/charge_full_design"];
+        var realOk = realNodes.Any(n => valores.ContainsKey(n));
+        var designOk = designNodes.Any(n => valores.ContainsKey(n));
+        var fb = DeepReadingParsing.CapacityFallbackState(realOk, designOk,
+            !realOk && AnyDenied(realNodes), !designOk && AnyDenied(designNodes));
+        // Samsung S21: real+design legíveis → sem fallback nenhum.
+        Assert.Null(fb);
+    }
+
+    [Fact]
     public void CaminhoColetor_PixelDesignNegado()
     {
         var (valores, estados) = ParseComoColetor(Pixel7Sysfs);
