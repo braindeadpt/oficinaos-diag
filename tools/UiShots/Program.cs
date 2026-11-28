@@ -1238,15 +1238,14 @@ internal static class Program
             caixaLoja.Text = "XYZ789";
             Verificar("estado envio: trocar a loja invalida o consentimento",
                 consentimento.IsChecked != true && enviar is { IsEnabled: false });
-            caixaLoja.Text = "ABC123";
             Clicar(consentimento);
-            Verificar("estado envio: consentimento renovado liga ENVIAR outra vez",
+            Verificar("estado envio: consentimento renovado para a nova loja liga ENVIAR",
                 enviar is { IsEnabled: true });
             if (enviar is not null) Clicar(enviar);
         }, "commit: envio ENVIAR");
         Verificar("commit: envio ENVIAR devolveu OK", enviou == true);
         Verificar("commit: o código e o contacto leram-se",
-            envio.ShopCode == "ABC123" && envio.CustomerName == "Ana Silva");
+            envio.ShopCode == "XYZ789" && envio.CustomerName == "Ana Silva");
 
         var envioOutro = new SendDialog(null, "Samsung Galaxy S21 — R5CT1234567", mismatch: true);
         var enviouOutro = AbrirModal(envioOutro, janela =>
