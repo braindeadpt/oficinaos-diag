@@ -221,9 +221,21 @@ public partial class MainWindow : Window
         LogButton.Content = L10n.Btn("btn.log");
         ConfigButton.Content = L10n.Btn("btn.settings");
         GroupDeviceText.Text = L10n.T("group.device");
-        GroupRecordsText.Text = L10n.T("group.records");
-        GroupDeliverText.Text = L10n.T("group.deliver");
         GroupSystemText.Text = L10n.T("group.system");
+        StageDiagButton.Content = L10n.T("stage.diag");
+        StageRepararButton.Content = L10n.T("stage.reparar");
+        StageVerificarButton.Content = L10n.T("stage.verificar");
+        StageEntregarButton.Content = L10n.T("stage.entregar");
+        RepararTitle.Text = L10n.T("reparar.title");
+        RepararDesc.Text = L10n.T("reparar.desc");
+        RepararFirmwareText.Text = L10n.T("reparar.firmware");
+        RepararActionsText.Text = L10n.T("reparar.actions");
+        VerificarTitle.Text = L10n.T("verificar.title");
+        VerificarDesc.Text = L10n.T("verificar.desc");
+        EntregarTitle.Text = L10n.T("entregar.title");
+        EntregarDesc.Text = L10n.T("entregar.desc");
+        RescanButton.Content = L10n.Btn("btn.rescan");
+        InteractiveBackButton.Content = L10n.Btn("btn.back");
         EmptyTitle.Text = L10n.T("empty.title");
         EmptyDesc.Text = L10n.T("empty.desc");
         EmptyStep1.Text = L10n.T("empty.step1");
@@ -235,7 +247,8 @@ public partial class MainWindow : Window
             ScanButton, BenchButton, PerfButton, TestButton, AppsButton, ChecklistButton,
             ServiceButton, MaintenanceButton, MirrorButton, CompareButton, LabelButton,
             ClientButton, ExportButton, SendButton, AiButton, MaintenanceAiButton,
-            InsuranceButton, LogButton, ConfigButton, BusyCancelButton,
+            InsuranceButton, LogButton, ConfigButton, BusyCancelButton, RescanButton,
+            InteractiveBackButton,
         })
             AutomationProperties.SetName(botao, botao.Content?.ToString() ?? "");
         AutomationProperties.SetName(ResultsList, ResultsHeader.Text);
@@ -388,6 +401,32 @@ public partial class MainWindow : Window
 
     protected override void OnClosing(CancelEventArgs e)
     {
+        // Uma sessão interativa a medir não morre em silêncio com o X: em
+        // Android a fase de carga deixa brilho máximo e stay-on ligados no
+        // aparelho do cliente se ninguém os repuser. Confirma-se a saída e
+        // aborta-se a sessão — o cancelamento dispara o restauro no painel
+        // (catch OperationCanceledException → loadOff), e damos-lhe um
+        // momento de dispatcher para aterrar antes do processo sair.
+        if (_interactive is IInteractiveSession sessao)
+        {
+            if (MessageBox.Show(this, L10n.T("interactive.confirm.exit"),
+                    Title, MessageBoxButton.YesNo, MessageBoxImage.Warning) != MessageBoxResult.Yes)
+            {
+                e.Cancel = true;
+                return;
+            }
+            sessao.AbortForAppExit();
+            var limite = Environment.TickCount64 + 4000;
+            while (sessao.SessionRunning && Environment.TickCount64 < limite)
+            {
+                // Pump mínimo do dispatcher: a continuação async do painel
+                // precisa de voltar à UI para repor brilho/stay-on no Android.
+                System.Windows.Threading.Dispatcher.CurrentDispatcher.Invoke(
+                    () => { }, System.Windows.Threading.DispatcherPriority.Background);
+                System.Threading.Thread.Sleep(50);
+            }
+            CloseInteractive();
+        }
         // Sem estas saídas o MainWindow ficava refletido em L10n/ThemeManager
         // e continuava a ser notificado depois de fechado.
         ClearReverseBlocking(); // fechar a app não deixa o túnel adb montado

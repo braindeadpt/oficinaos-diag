@@ -10,6 +10,10 @@ public partial class MainWindow : Window
 {
     private async void Scan_Click(object sender, RoutedEventArgs e)
     {
+        // Um scan novo invalida o antes/depois aberto: a coluna «Agora» do
+        // painel continuaria a mostrar o scan anterior — a prova da reparação
+        // tinha dados viciados das duas colunas.
+        CompareHost.Content = null;
         if (BusyBar.Visibility == Visibility.Visible) return;
         if (_current is null)
         {
@@ -95,6 +99,10 @@ public partial class MainWindow : Window
             // histórico guarda o scan já com grau — o antes/depois mostra-o na lista
             _history.Add(_report);
             Log(L10n.F("log.scan.done", _report.Results.Count));
+            // O re-scan criou a referência que faltava — o aviso de «sem
+            // scans anteriores» na etapa ③ ficava desatualizado até ao
+            // próximo clique em Comparar.
+            VerificarStatus.Text = "";
         }
         catch (OperationCanceledException) { Log(L10n.T("busy.cancelled")); }
         catch (Exception ex) { Log(L10n.F("log.err", ex.Message)); }
@@ -169,9 +177,14 @@ public partial class MainWindow : Window
         if (previous.Count == 0)
         {
             Log(L10n.T("log.cmp.none"));
+            VerificarStatus.Text = L10n.T("verificar.noscans");
             return;
         }
-        new CompareWindow(_report, previous) { Owner = this }.ShowDialog();
+        VerificarStatus.Text = "";
+        // O compare é um painel da etapa ③ — a prova antes/depois fica na
+        // sessão, não numa janela descartável.
+        CompareHost.Content = new ComparePanel(_report, previous);
+        if (_stage != PipelineStage.Verificar) SelectStage(PipelineStage.Verificar);
     }
 
     private void RefreshResults()

@@ -19,10 +19,34 @@
         </Style>
         <Style TargetType="Button" BasedOn="{StaticResource TermButton}"/>
     </Window.Resources>
+    <!-- com o aviso de outro aparelho o conteúdo cresce — sem scroll o botão
+         Enviar saía da área útil em 1366×768 a 150% e a janela não redimensiona -->
+    <ScrollViewer x:Name="Scroller" VerticalScrollBarVisibility="Auto">
     <StackPanel Margin="20">
         <TextBlock x:Name="HeaderText" FontSize="14" Foreground="{DynamicResource FgBrush}"
                    Margin="0,0,0,4"/>
         <TextBlock x:Name="DescText" TextWrapping="Wrap" Margin="0,0,0,4"/>
+
+        <!-- identidade do relatório que vai mesmo sair: o técnico confirma
+             aqui que aparelho está no pedido antes de lhe juntar contactos -->
+        <Border x:Name="DeviceCard" BorderBrush="{DynamicResource LineBrush}" BorderThickness="1"
+                Padding="8,6" Margin="0,4,0,0">
+            <StackPanel>
+                <TextBlock x:Name="DeviceLine" TextWrapping="Wrap" Margin="0"
+                           Foreground="{DynamicResource FgBrush}" FontWeight="SemiBold"/>
+                <TextBlock x:Name="MismatchWarn" TextWrapping="Wrap" Margin="0,4,0,0"
+                           Foreground="{DynamicResource WarnBrush}" Visibility="Collapsed"/>
+                <CheckBox x:Name="MismatchConfirm" Margin="0,6,0,0" Visibility="Collapsed"
+                          Foreground="{DynamicResource FgBrush}" Click="MismatchConfirm_Click">
+                    <TextBlock x:Name="MismatchConfirmText" TextWrapping="Wrap"/>
+                </CheckBox>
+            </StackPanel>
+        </Border>
+
+        <!-- erros de validação aqui em cima: com scroll no formulário, um erro
+             no fundo ficava fora da vista e o envio parecia não responder -->
+        <TextBlock x:Name="ErrorText" Foreground="{DynamicResource WarnBrush}"
+                   TextWrapping="Wrap" Visibility="Collapsed" Margin="0,8,0,0"/>
 
         <TextBlock x:Name="CodeLabel"/>
         <TextBox x:Name="ShopCodeBox" MaxLength="8" CharacterCasing="Upper"/>
@@ -42,12 +66,10 @@
         <RadioButton x:Name="PurposeSale" Foreground="{DynamicResource FgBrush}"
                      Margin="0,4,0,0"/>
 
-        <TextBlock x:Name="ErrorText" Foreground="{DynamicResource WarnBrush}"
-                   TextWrapping="Wrap" Visibility="Collapsed" Margin="0,8,0,0"/>
-
         <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,16,0,0">
             <Button x:Name="SendBtn" IsDefault="True" Click="Send_Click"/>
             <Button x:Name="CancelBtn" IsCancel="True" Margin="10,0,0,0"/>
         </StackPanel>
     </StackPanel>
+    </ScrollViewer>
 </Window>

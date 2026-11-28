@@ -40,6 +40,7 @@ public partial class MainWindow
     private IEnumerable<Button> BusyBlockedButtons()
     {
         yield return ScanButton;
+        yield return RescanButton;
         yield return TestButton;
         yield return BenchButton;
         yield return PerfButton;

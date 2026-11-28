@@ -27,6 +27,7 @@
         <Grid>
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
                 <RowDefinition Height="*"/>
                 <RowDefinition Height="Auto"/>
             </Grid.RowDefinitions>
@@ -62,100 +63,239 @@
                 </StackPanel>
             </Border>
 
-            <Grid Grid.Row="1">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*"/>
-                    <ColumnDefinition Width="320"/>
-                </Grid.ColumnDefinitions>
+            <!-- barra de etapas: o pipeline da bancada — o modo do aparelho decide quais aparecem -->
+            <Border Grid.Row="1" BorderBrush="{DynamicResource LineBrush}" BorderThickness="0,0,0,1"
+                    Background="{DynamicResource HeaderBgBrush}" Padding="16,4">
+                <StackPanel Orientation="Horizontal">
+                    <Button x:Name="StageDiagButton" Style="{DynamicResource TermStageButton}"
+                                  Click="StageDiag_Click"/>
+                    <Button x:Name="StageRepararButton" Style="{DynamicResource TermStageButton}"
+                                  Click="StageReparar_Click" Margin="8,0,0,0"/>
+                    <Button x:Name="StageVerificarButton" Style="{DynamicResource TermStageButton}"
+                                  Click="StageVerificar_Click" Margin="8,0,0,0"/>
+                    <Button x:Name="StageEntregarButton" Style="{DynamicResource TermStageButton}"
+                                  Click="StageEntregar_Click" Margin="8,0,0,0"/>
+                    <TextBlock x:Name="StageModeHint" VerticalAlignment="Center" Margin="20,0,0,0"
+                               FontFamily="{DynamicResource UiFont}" FontSize="11"
+                               Foreground="{DynamicResource FaintBrush}" Text=""/>
+                </StackPanel>
+            </Border>
 
-                <!-- console -->
-                <Border BorderBrush="{DynamicResource LineBrush}" BorderThickness="0,0,1,0" Margin="0">
-                    <!-- TextWrapping: linhas longas do log ficavam cortadas à
-                         direita, sem forma de ler o fim -->
-                    <TextBox x:Name="Console" IsReadOnly="True" AcceptsReturn="True"
-                             TextWrapping="Wrap"
-                             HorizontalScrollBarVisibility="Disabled"
-                             VerticalScrollBarVisibility="Auto"
-                             Background="{DynamicResource PanelBrush}" BorderThickness="0"
-                             Foreground="{DynamicResource FgBrush}" CaretBrush="{DynamicResource FgBrush}"
-                             FontFamily="{DynamicResource MonoFont}" FontSize="12.5" Padding="14,10"
-                             Text="" />
-                </Border>
+            <!-- conteúdo da etapa ativa -->
+            <Grid Grid.Row="2">
+                <!-- ① DIAGNOSTICAR — console + resultados (tudo read-only) -->
+                <Grid x:Name="StageDiagContent">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="320"/>
+                    </Grid.ColumnDefinitions>
 
-                <!-- results -->
-                <ScrollViewer Grid.Column="1" VerticalScrollBarVisibility="Auto">
-                    <StackPanel Margin="14">
-                        <Border x:Name="EmptyState" Visibility="Visible" Margin="0,0,0,10"
-                                Background="{DynamicResource PanelBrush}"
-                                BorderBrush="{DynamicResource LineBrush}" BorderThickness="1" Padding="12">
-                            <StackPanel>
-                                <TextBlock x:Name="EmptyTitle" FontFamily="{DynamicResource UiFont}"
-                                           FontSize="15" FontWeight="SemiBold"
-                                           Foreground="{DynamicResource FgBrush}" Margin="0,0,0,4"/>
-                                <TextBlock x:Name="EmptyDesc" FontFamily="{DynamicResource UiFont}"
-                                           FontSize="12" TextWrapping="Wrap"
-                                           Foreground="{DynamicResource DimBrush}" Margin="0,0,0,8"/>
-                                <TextBlock x:Name="EmptyStep1" FontFamily="{DynamicResource UiFont}"
-                                           FontSize="12" TextWrapping="Wrap"
-                                           Foreground="{DynamicResource TextBrush}" Margin="0,0,0,3"/>
-                                <TextBlock x:Name="EmptyStep2" FontFamily="{DynamicResource UiFont}"
-                                           FontSize="12" TextWrapping="Wrap"
-                                           Foreground="{DynamicResource TextBrush}" Margin="0,0,0,3"/>
-                                <TextBlock x:Name="EmptyStep3" FontFamily="{DynamicResource UiFont}"
-                                           FontSize="12" TextWrapping="Wrap"
-                                           Foreground="{DynamicResource TextBrush}"/>
+                    <!-- console -->
+                    <Border BorderBrush="{DynamicResource LineBrush}" BorderThickness="0,0,1,0" Margin="0">
+                        <!-- TextWrapping: linhas longas do log ficavam cortadas à
+                             direita, sem forma de ler o fim -->
+                        <TextBox x:Name="Console" IsReadOnly="True" AcceptsReturn="True"
+                                 TextWrapping="Wrap"
+                                 HorizontalScrollBarVisibility="Disabled"
+                                 VerticalScrollBarVisibility="Auto"
+                                 Background="{DynamicResource PanelBrush}" BorderThickness="0"
+                                 Foreground="{DynamicResource FgBrush}" CaretBrush="{DynamicResource FgBrush}"
+                                 FontFamily="{DynamicResource MonoFont}" FontSize="12.5" Padding="14,10"
+                                 Text="" />
+                    </Border>
+
+                    <!-- results -->
+                    <ScrollViewer Grid.Column="1" VerticalScrollBarVisibility="Auto">
+                        <StackPanel Margin="14">
+                            <Border x:Name="EmptyState" Visibility="Visible" Margin="0,0,0,10"
+                                    Background="{DynamicResource PanelBrush}"
+                                    BorderBrush="{DynamicResource LineBrush}" BorderThickness="1" Padding="12">
+                                <StackPanel>
+                                    <TextBlock x:Name="EmptyTitle" FontFamily="{DynamicResource UiFont}"
+                                               FontSize="15" FontWeight="SemiBold"
+                                               Foreground="{DynamicResource FgBrush}" Margin="0,0,0,4"/>
+                                    <TextBlock x:Name="EmptyDesc" FontFamily="{DynamicResource UiFont}"
+                                               FontSize="12" TextWrapping="Wrap"
+                                               Foreground="{DynamicResource DimBrush}" Margin="0,0,0,8"/>
+                                    <TextBlock x:Name="EmptyStep1" FontFamily="{DynamicResource UiFont}"
+                                               FontSize="12" TextWrapping="Wrap"
+                                               Foreground="{DynamicResource TextBrush}" Margin="0,0,0,3"/>
+                                    <TextBlock x:Name="EmptyStep2" FontFamily="{DynamicResource UiFont}"
+                                               FontSize="12" TextWrapping="Wrap"
+                                               Foreground="{DynamicResource TextBrush}" Margin="0,0,0,3"/>
+                                    <TextBlock x:Name="EmptyStep3" FontFamily="{DynamicResource UiFont}"
+                                               FontSize="12" TextWrapping="Wrap"
+                                               Foreground="{DynamicResource TextBrush}"/>
+                                </StackPanel>
+                            </Border>
+                            <TextBlock x:Name="ResultsHeader" FontFamily="{DynamicResource MonoFont}"
+                                       Foreground="{DynamicResource DimBrush}" FontSize="11"
+                                       Margin="0,0,0,8"/>
+                            <!-- health score 0–100 — vitrine, ao lado do grau A–D -->
+                            <TextBlock x:Name="HealthText" FontFamily="{DynamicResource MonoFont}"
+                                       FontSize="12" Margin="0,0,0,8"
+                                       Foreground="{DynamicResource DimBrush}"
+                                       Visibility="Collapsed"/>
+                            <ItemsControl x:Name="ResultsList" FontFamily="{DynamicResource MonoFont}" FontSize="12">
+                                <ItemsControl.GroupStyle>
+                                    <GroupStyle>
+                                        <GroupStyle.HeaderTemplate>
+                                            <DataTemplate>
+                                                <TextBlock Text="{Binding Name}"
+                                                           FontFamily="{DynamicResource UiFont}"
+                                                           FontSize="12" FontWeight="SemiBold"
+                                                           Foreground="{DynamicResource DimBrush}"
+                                                           Margin="0,10,0,3"/>
+                                            </DataTemplate>
+                                        </GroupStyle.HeaderTemplate>
+                                    </GroupStyle>
+                                </ItemsControl.GroupStyle>
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <Grid Margin="0,2">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="92"/>
+                                                <ColumnDefinition Width="*"/>
+                                            </Grid.ColumnDefinitions>
+                                            <Border BorderBrush="{Binding Status, Converter={StaticResource StatusBrush}}"
+                                                    BorderThickness="1" Padding="4,0" Margin="0,0,6,0"
+                                                    VerticalAlignment="Center" HorizontalAlignment="Left">
+                                                <TextBlock Text="{Binding StatusLabel}"
+                                                           Foreground="{Binding Status, Converter={StaticResource StatusBrush}}"
+                                                           FontSize="11"/>
+                                            </Border>
+                                            <TextBlock Grid.Column="1" Foreground="{DynamicResource TextBrush}" TextWrapping="Wrap">
+                                                <Run Text="{Binding Key}"/><Run Text="  "/>
+                                                <Run Text="{Binding Display}" Foreground="{DynamicResource DimBrush}"/>
+                                            </TextBlock>
+                                        </Grid>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </StackPanel>
+                    </ScrollViewer>
+                </Grid>
+
+                <!-- painel embutido da sessão interativa (Bench/Perf) — cobre o console enquanto corre -->
+                <Border x:Name="InteractiveHost" Background="{DynamicResource BgBrush}"
+                        Visibility="Collapsed">
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="*"/>
+                        </Grid.RowDefinitions>
+                        <Border BorderBrush="{DynamicResource LineBrush}" BorderThickness="0,0,0,1" Padding="14,6">
+                            <StackPanel Orientation="Horizontal">
+                                <Button x:Name="InteractiveBackButton" Style="{DynamicResource TermButton}"
+                                        Click="InteractiveBack_Click"/>
                             </StackPanel>
                         </Border>
-                        <TextBlock x:Name="ResultsHeader" FontFamily="{DynamicResource MonoFont}"
-                                   Foreground="{DynamicResource DimBrush}" FontSize="11"
-                                   Margin="0,0,0,8"/>
-                        <!-- health score 0–100 — vitrine, ao lado do grau A–D -->
-                        <TextBlock x:Name="HealthText" FontFamily="{DynamicResource MonoFont}"
-                                   FontSize="12" Margin="0,0,0,8"
-                                   Foreground="{DynamicResource DimBrush}"
-                                   Visibility="Collapsed"/>
-                        <ItemsControl x:Name="ResultsList" FontFamily="{DynamicResource MonoFont}" FontSize="12">
-                            <ItemsControl.GroupStyle>
-                                <GroupStyle>
-                                    <GroupStyle.HeaderTemplate>
-                                        <DataTemplate>
-                                            <TextBlock Text="{Binding Name}"
-                                                       FontFamily="{DynamicResource UiFont}"
-                                                       FontSize="12" FontWeight="SemiBold"
-                                                       Foreground="{DynamicResource DimBrush}"
-                                                       Margin="0,10,0,3"/>
-                                        </DataTemplate>
-                                    </GroupStyle.HeaderTemplate>
-                                </GroupStyle>
-                            </ItemsControl.GroupStyle>
-                            <ItemsControl.ItemTemplate>
-                                <DataTemplate>
-                                    <Grid Margin="0,2">
-                                        <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="92"/>
-                                            <ColumnDefinition Width="*"/>
-                                        </Grid.ColumnDefinitions>
-                                        <Border BorderBrush="{Binding Status, Converter={StaticResource StatusBrush}}"
-                                                BorderThickness="1" Padding="4,0" Margin="0,0,6,0"
-                                                VerticalAlignment="Center" HorizontalAlignment="Left">
-                                            <TextBlock Text="{Binding StatusLabel}"
-                                                       Foreground="{Binding Status, Converter={StaticResource StatusBrush}}"
-                                                       FontSize="11"/>
-                                        </Border>
-                                        <TextBlock Grid.Column="1" Foreground="{DynamicResource TextBrush}" TextWrapping="Wrap">
-                                            <Run Text="{Binding Key}"/><Run Text="  "/>
-                                            <Run Text="{Binding Display}" Foreground="{DynamicResource DimBrush}"/>
-                                        </TextBlock>
-                                    </Grid>
-                                </DataTemplate>
-                            </ItemsControl.ItemTemplate>
-                        </ItemsControl>
+                        <ContentPresenter x:Name="InteractiveContent" Grid.Row="1"/>
+                    </Grid>
+                </Border>
+
+                <!-- ② REPARAR — tudo o que escreve no aparelho -->
+                <ScrollViewer x:Name="StageRepararContent" Visibility="Collapsed"
+                              VerticalScrollBarVisibility="Auto">
+                    <StackPanel Margin="16">
+                        <TextBlock x:Name="RepararTitle" FontFamily="{DynamicResource UiFont}"
+                                   FontSize="15" FontWeight="SemiBold"
+                                   Foreground="{DynamicResource FgBrush}" Margin="0,0,0,6"/>
+                        <TextBlock x:Name="RepararDesc" FontFamily="{DynamicResource UiFont}"
+                                   FontSize="12" TextWrapping="Wrap"
+                                   Foreground="{DynamicResource DimBrush}" Margin="0,0,0,12"/>
+                        <Border x:Name="RepararFirmwareHint" Padding="12" Margin="0,0,0,12"
+                                Background="{DynamicResource PanelBrush}"
+                                BorderBrush="{DynamicResource WarnBrush}" BorderThickness="1"
+                                Visibility="Collapsed">
+                            <TextBlock x:Name="RepararFirmwareText" FontFamily="{DynamicResource UiFont}"
+                                       FontSize="12" TextWrapping="Wrap"
+                                       Foreground="{DynamicResource WarnBrush}"/>
+                        </Border>
+                        <Border x:Name="RepararActionsCard" Padding="12"
+                                Background="{DynamicResource PanelBrush}"
+                                BorderBrush="{DynamicResource LineBrush}" BorderThickness="1">
+                            <StackPanel>
+                                <TextBlock x:Name="RepararActionsText" FontFamily="{DynamicResource UiFont}"
+                                           FontSize="12" TextWrapping="Wrap"
+                                           Foreground="{DynamicResource TextBrush}" Margin="0,0,0,8"/>
+                                <WrapPanel>
+                                    <Button Style="{DynamicResource TermButton}" x:Name="MaintenanceButton"
+                                            Click="Maintenance_Click" IsEnabled="False"/>
+                                    <Button Style="{DynamicResource TermButton}" x:Name="AppsButton"
+                                            Click="Apps_Click" IsEnabled="False" Visibility="Collapsed"
+                                            Margin="8,0,0,0"/>
+                                </WrapPanel>
+                            </StackPanel>
+                        </Border>
+                    </StackPanel>
+                </ScrollViewer>
+
+                <!-- ③ VERIFICAR — re-scan pós-reparação + compare antes/depois -->
+                <ScrollViewer x:Name="StageVerificarContent" Visibility="Collapsed"
+                              VerticalScrollBarVisibility="Auto">
+                    <StackPanel Margin="16">
+                        <TextBlock x:Name="VerificarTitle" FontFamily="{DynamicResource UiFont}"
+                                   FontSize="15" FontWeight="SemiBold"
+                                   Foreground="{DynamicResource FgBrush}" Margin="0,0,0,6"/>
+                        <TextBlock x:Name="VerificarDesc" FontFamily="{DynamicResource UiFont}"
+                                   FontSize="12" TextWrapping="Wrap"
+                                   Foreground="{DynamicResource DimBrush}" Margin="0,0,0,12"/>
+                        <WrapPanel Margin="0,0,0,4">
+                            <Button Style="{DynamicResource TermButton}" x:Name="RescanButton"
+                                    Click="Scan_Click" FontWeight="Bold"/>
+                            <Button Style="{DynamicResource TermButton}" x:Name="CompareButton"
+                                    Click="Compare_Click" IsEnabled="False" Margin="8,0,0,0"/>
+                        </WrapPanel>
+                        <!-- o motivo de um compare que não abre aparece aqui —
+                             ir só para a consola da etapa ① era invisível daqui -->
+                        <TextBlock x:Name="VerificarStatus" FontFamily="{DynamicResource UiFont}"
+                                   FontSize="12" TextWrapping="Wrap"
+                                   Foreground="{DynamicResource WarnBrush}" Margin="0,0,0,8" Text=""/>
+                        <ContentPresenter x:Name="CompareHost"/>
+                    </StackPanel>
+                </ScrollViewer>
+
+                <!-- ④ ENTREGAR — relatório, etiqueta, envio cliente/Cloud -->
+                <ScrollViewer x:Name="StageEntregarContent" Visibility="Collapsed"
+                              VerticalScrollBarVisibility="Auto">
+                    <StackPanel Margin="16">
+                        <TextBlock x:Name="EntregarTitle" FontFamily="{DynamicResource UiFont}"
+                                   FontSize="15" FontWeight="SemiBold"
+                                   Foreground="{DynamicResource FgBrush}" Margin="0,0,0,6"/>
+                        <TextBlock x:Name="EntregarDesc" FontFamily="{DynamicResource UiFont}"
+                                   FontSize="12" TextWrapping="Wrap"
+                                   Foreground="{DynamicResource DimBrush}" Margin="0,0,0,12"/>
+                        <!-- ESPAÇO RESERVADO — não preencher nesta PR: o próximo
+                             PR do Diag traz o aviso obrigatório antes de
+                             →LOJA (PRO) (achado C4 da auditoria: quem recebe,
+                             que campos incluindo o número de série, prazo e
+                             privacidade, com uma caixa a marcar). O painel já
+                             está estruturado em StackPanel vertical para o
+                             aviso entrar aqui sem reflow dos botões. -->
+                        <Border x:Name="EntregarAvisoHost" Visibility="Collapsed" Margin="0,0,0,12"/>
+                        <WrapPanel>
+                            <Button Style="{DynamicResource TermButton}" x:Name="ExportButton"
+                                    Click="Export_Click" IsEnabled="False"/>
+                            <Button Style="{DynamicResource TermButton}" x:Name="SendButton"
+                                    Click="Send_Click" IsEnabled="False" Margin="8,0,0,0"/>
+                            <Button Style="{DynamicResource TermButton}" x:Name="AiButton"
+                                    Click="Ai_Click" IsEnabled="False" Margin="8,0,0,0"/>
+                            <Button Style="{DynamicResource TermButton}" x:Name="MaintenanceAiButton"
+                                    Click="MaintenanceAi_Click" IsEnabled="False" Margin="8,0,0,0"/>
+                            <Button Style="{DynamicResource TermButton}" x:Name="LabelButton"
+                                    Click="Label_Click" IsEnabled="False" Margin="8,0,0,0"/>
+                            <Button Style="{DynamicResource TermButton}" x:Name="ClientButton"
+                                    Click="Client_Click" IsEnabled="False" Margin="8,0,0,0"/>
+                            <Button Style="{DynamicResource TermButton}" x:Name="InsuranceButton"
+                                    Click="Insurance_Click" IsEnabled="False" Margin="8,0,0,0"/>
+                        </WrapPanel>
                     </StackPanel>
                 </ScrollViewer>
             </Grid>
 
             <!-- actions -->
-            <Border Grid.Row="2" BorderBrush="{DynamicResource LineBrush}" BorderThickness="0,1,0,0" Padding="16,10">
+            <Border Grid.Row="3" BorderBrush="{DynamicResource LineBrush}" BorderThickness="0,1,0,0" Padding="16,10">
                 <StackPanel>
                     <Border x:Name="BusyBar" Visibility="Collapsed" Margin="0,0,0,8"
                             Background="{DynamicResource PanelBrush}"
@@ -180,7 +320,7 @@
                     </Border>
                     <!-- WrapPanel: os grupos que não couberem passam para baixo em vez de cortar -->
                     <WrapPanel>
-                        <Border Padding="10,6" Margin="0,0,10,4"
+                        <Border x:Name="ActionsDiag" Padding="10,6" Margin="0,0,10,4"
                                 BorderBrush="{DynamicResource LineBrush}" BorderThickness="1" VerticalAlignment="Top">
                             <StackPanel>
                                 <TextBlock x:Name="GroupDeviceText" FontFamily="{DynamicResource UiFont}"
@@ -197,54 +337,10 @@
                                             Click="Perf_Click" IsEnabled="False"/>
                                     <Button Style="{DynamicResource TermButton}" x:Name="MirrorButton"
                                             Click="Mirror_Click" IsEnabled="False"/>
-                                    <Button Style="{DynamicResource TermButton}" x:Name="AppsButton"
-                                            Click="Apps_Click" IsEnabled="False" Visibility="Collapsed"/>
-                                    <Button Style="{DynamicResource TermButton}" x:Name="MaintenanceButton"
-                                            Click="Maintenance_Click" IsEnabled="False"/>
-                                </WrapPanel>
-                            </StackPanel>
-                        </Border>
-                        <Border Padding="10,6" Margin="0,0,10,4"
-                                BorderBrush="{DynamicResource LineBrush}" BorderThickness="1" VerticalAlignment="Top">
-                            <StackPanel>
-                                <TextBlock x:Name="GroupRecordsText" FontFamily="{DynamicResource UiFont}"
-                                           FontSize="10" FontWeight="Bold"
-                                           Foreground="{DynamicResource DimBrush}" Margin="0,0,0,4"/>
-                                <WrapPanel>
                                     <Button Style="{DynamicResource TermButton}" x:Name="ChecklistButton"
                                             Click="Checklist_Click"/>
                                     <Button Style="{DynamicResource TermButton}" x:Name="ServiceButton"
                                             Click="Service_Click"/>
-                                    <Button Style="{DynamicResource TermButton}" x:Name="CompareButton"
-                                            Click="Compare_Click" IsEnabled="False"/>
-                                    <Button Style="{DynamicResource TermButton}" x:Name="LabelButton"
-                                            Click="Label_Click" IsEnabled="False"/>
-                                    <Button Style="{DynamicResource TermButton}" x:Name="ClientButton"
-                                            Click="Client_Click" IsEnabled="False"/>
-                                </WrapPanel>
-                            </StackPanel>
-                        </Border>
-                        <Border Padding="10,6" Margin="0,0,10,4"
-                                BorderBrush="{DynamicResource LineBrush}" BorderThickness="1" VerticalAlignment="Top">
-                            <StackPanel>
-                                <TextBlock x:Name="GroupDeliverText" FontFamily="{DynamicResource UiFont}"
-                                           FontSize="10" FontWeight="Bold"
-                                           Foreground="{DynamicResource DimBrush}" Margin="0,0,0,4"/>
-                                <WrapPanel>
-                                    <Button Style="{DynamicResource TermButton}" x:Name="ExportButton"
-                                            Click="Export_Click" IsEnabled="False"/>
-                                    <Button Style="{DynamicResource TermButton}" x:Name="SendButton"
-                                            Click="Send_Click" IsEnabled="False"/>
-                                    <Button Style="{DynamicResource TermButton}" x:Name="AiButton"
-                                            Click="Ai_Click" IsEnabled="False"/>
-                                    <Button Style="{DynamicResource TermButton}" x:Name="MaintenanceAiButton"
-                                            Click="MaintenanceAi_Click" IsEnabled="False"/>
-                                    <Button Style="{DynamicResource TermButton}" x:Name="InsuranceButton"
-                                            Click="Insurance_Click" IsEnabled="False"/>
-                                    <Button Style="{DynamicResource TermButton}" x:Name="UpdateButton"
-                                            Click="Update_Click" Visibility="Collapsed"
-                                            Foreground="{DynamicResource WarnBrush}"
-                                            BorderBrush="{DynamicResource WarnBrush}"/>
                                 </WrapPanel>
                             </StackPanel>
                         </Border>
@@ -259,6 +355,10 @@
                                             Click="LogSend_Click"/>
                                     <Button Style="{DynamicResource TermButton}" x:Name="ConfigButton"
                                             Click="Config_Click"/>
+                                    <Button Style="{DynamicResource TermButton}" x:Name="UpdateButton"
+                                            Click="Update_Click" Visibility="Collapsed"
+                                            Foreground="{DynamicResource WarnBrush}"
+                                            BorderBrush="{DynamicResource WarnBrush}"/>
                                 </WrapPanel>
                             </StackPanel>
                         </Border>

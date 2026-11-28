@@ -61,6 +61,39 @@
             </Setter.Value>
         </Setter>
     </Style>
+    <!-- Botões das etapas do pipeline: o ativo é vídeo inverso decidido
+         pelo estado da etapa (Tag=ativo), nunca pelo foco — o foco do
+         teclado é só um itálico, para nunca se confundir com seleção. -->
+    <Style x:Key="TermStageButton" TargetType="Button" BasedOn="{StaticResource TermButton}">
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="Button">
+                    <Border x:Name="bd" Background="{TemplateBinding Background}"
+                            BorderBrush="{TemplateBinding BorderBrush}"
+                            BorderThickness="{TemplateBinding BorderThickness}"
+                            Padding="{TemplateBinding Padding}">
+                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="bd" Property="Background" Value="{DynamicResource HoverBrush}"/>
+                        </Trigger>
+                        <Trigger Property="IsKeyboardFocused" Value="True">
+                            <Setter Property="FontStyle" Value="Italic"/>
+                        </Trigger>
+                        <Trigger Property="IsEnabled" Value="False">
+                            <Setter Property="Foreground" Value="{DynamicResource DisabledBrush}"/>
+                            <Setter Property="BorderBrush" Value="{DynamicResource DisabledBrush}"/>
+                        </Trigger>
+                        <Trigger Property="Tag" Value="ativo">
+                            <Setter TargetName="bd" Property="Background" Value="{DynamicResource FgBrush}"/>
+                            <Setter Property="Foreground" Value="{DynamicResource BgBrush}"/>
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
     <!-- Seletor de dispositivos: mesma linguagem do botão, altura fixa para
          não esticar o header quando há dois telemóveis na bancada.
          Template próprio porque o nativo trazia o cinza do sistema para dentro

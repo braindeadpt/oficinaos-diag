@@ -5,9 +5,72 @@ namespace OficinaDiag;
 
 public partial class SendDialog : Window
 {
-    public SendDialog(string? initialPurpose = null)
+    private readonly bool _mismatch;
+
+    protected override void OnSourceInitialized(EventArgs e)
+    {
+        base.OnSourceInitialized(e);
+        // teto da área útil do monitor ONDE o diálogo abre — um secundário
+        // mais baixo que o principal não pode deixar o Enviar fora do ecrã
+        var (_, h) = WorkAreaDoMonitor();
+        Scroller.MaxHeight = Math.Max(320, h - 120);
+    }
+
+    // mesmo padrão do AppManagerDialog/IosAppDialog — SystemParameters.WorkArea
+    // é sempre o monitor principal e aqui não serve
+    private struct RectNativo { public int Left, Top, Right, Bottom; }
+
+    private struct MonitorInfo
+    {
+        public int cbSize;
+        public RectNativo rcMonitor;
+        public RectNativo rcWork;
+        public uint dwFlags;
+    }
+
+    [System.Runtime.InteropServices.DllImport("user32.dll")]
+    private static extern IntPtr MonitorFromWindow(IntPtr hwnd, uint flags);
+
+    [System.Runtime.InteropServices.DllImport("user32.dll")]
+    private static extern bool GetMonitorInfo(IntPtr monitor, ref MonitorInfo info);
+
+    private (double Width, double Height) WorkAreaDoMonitor()
+    {
+        var wa = SystemParameters.WorkArea;
+        try
+        {
+            var hwnd = new System.Windows.Interop.WindowInteropHelper(this).Handle;
+            if (hwnd == IntPtr.Zero) return (wa.Width, wa.Height);
+            var info = new MonitorInfo { cbSize = System.Runtime.InteropServices.Marshal.SizeOf<MonitorInfo>() };
+            const uint MonitorDefaultToNearest = 2;
+            if (!GetMonitorInfo(MonitorFromWindow(hwnd, MonitorDefaultToNearest), ref info))
+                return (wa.Width, wa.Height);
+            var escala = PresentationSource.FromVisual(this)?.CompositionTarget?.TransformToDevice.M11 ?? 1.0;
+            if (!(escala > 0)) escala = 1.0;
+            var dpi = 96 * escala;
+            var r = info.rcWork;
+            return ((r.Right - r.Left) * 96.0 / dpi, (r.Bottom - r.Top) * 96.0 / dpi);
+        }
+        catch { return (wa.Width, wa.Height); }
+    }
+
+    /// <param name="reportIdentity">modelo + série do relatório que vai ser enviado.</param>
+    /// <param name="mismatch">true quando o relatório não pertence ao aparelho
+    /// ativo — o envio fica bloqueado até à confirmação explícita.</param>
+    public SendDialog(string? initialPurpose = null, string? reportIdentity = null, bool mismatch = false)
     {
         InitializeComponent();
+        _mismatch = mismatch;
+        if (reportIdentity is not null)
+            DeviceLine.Text = L10n.F("send.device.line", reportIdentity);
+        if (mismatch)
+        {
+            MismatchWarn.Text = L10n.T("send.mismatch.warn");
+            MismatchWarn.Visibility = Visibility.Visible;
+            MismatchConfirmText.Text = L10n.T("send.mismatch.confirm");
+            MismatchConfirm.Visibility = Visibility.Visible;
+            SendBtn.IsEnabled = false;
+        }
         // O checklist pode já ter marcado "venda" — o radio reflete isso em
         // vez de voltar sempre a "reparação" e dessincronizar o payload.
         PurposeSale.IsChecked = initialPurpose == "sale";
@@ -32,6 +95,11 @@ public partial class SendDialog : Window
         string.IsNullOrWhiteSpace(EmailBox.Text) ? null : EmailBox.Text.Trim();
     // "sale" — the customer wants a buy-quote for a used phone, not a repair.
     public string Purpose => PurposeSale.IsChecked == true ? "sale" : "repair";
+
+    private void MismatchConfirm_Click(object sender, RoutedEventArgs e)
+    {
+        if (_mismatch) SendBtn.IsEnabled = MismatchConfirm.IsChecked == true;
+    }
 
     private void ClearError() => ErrorText.Visibility = Visibility.Collapsed;
 

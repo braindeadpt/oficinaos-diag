@@ -69,4 +69,44 @@ public sealed class DeviceModeTests
 
         Assert.Equal(DeviceMode.IosNormal, d.Mode);
     }
+
+    [Theory]
+    // modos de firmware morto: só a reparação se aplica (plano §2)
+    [InlineData(DeviceMode.MtkBrom, false)]
+    [InlineData(DeviceMode.QualcommEdl, false)]
+    [InlineData(DeviceMode.SamsungOdin, false)]
+    [InlineData(DeviceMode.IosDfu, false)]
+    [InlineData(DeviceMode.IosRecovery, false)]
+    // fastboot/recovery Android: diagnóstico limitado + reparação — aparece
+    [InlineData(DeviceMode.Fastboot, true)]
+    [InlineData(DeviceMode.AndroidRecovery, true)]
+    [InlineData(DeviceMode.AndroidSideload, true)]
+    // modos normais e incógnito: tudo visível
+    [InlineData(DeviceMode.AndroidReady, true)]
+    [InlineData(DeviceMode.IosNormal, true)]
+    [InlineData(DeviceMode.Unknown, true)]
+    public void PipelineStages_ModoGovernaEtapas(DeviceMode mode, bool diagVisivel)
+    {
+        Assert.Equal(diagVisivel, PipelineStages.AllowsDiagnosticar(mode));
+        Assert.Equal(diagVisivel, PipelineStages.AllowsVerificar(mode));
+    }
+
+    [Theory]
+    // firmware-only: ③ esconde, ④ fica — o relatório da sessão exporta-se sempre
+    [InlineData(DeviceMode.MtkBrom, false)]
+    [InlineData(DeviceMode.QualcommEdl, false)]
+    [InlineData(DeviceMode.SamsungOdin, false)]
+    [InlineData(DeviceMode.IosDfu, false)]
+    [InlineData(DeviceMode.IosRecovery, false)]
+    // fastboot/recovery Android e os modos normais: ③ e ④ visíveis
+    [InlineData(DeviceMode.Fastboot, true)]
+    [InlineData(DeviceMode.AndroidRecovery, true)]
+    [InlineData(DeviceMode.AndroidReady, true)]
+    [InlineData(DeviceMode.IosNormal, true)]
+    [InlineData(DeviceMode.Unknown, true)]
+    public void PipelineStages_EntregarNuncaSeEsconde(DeviceMode mode, bool verificarVisivel)
+    {
+        Assert.Equal(verificarVisivel, PipelineStages.AllowsVerificar(mode));
+        Assert.True(PipelineStages.EntregarEstaSempreVisivel(mode));
+    }
 }

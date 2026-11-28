@@ -7,6 +7,15 @@ public partial class MainWindow : Window
     private Cloud.UpdateChecker.UpdateInfo? _update;
 
     /// <summary>
+    /// O updater PowerShell arranca no fim do download e fica à espera que
+    /// este processo saia — «adiar» por causa de uma sessão de teste não o
+    /// desarma. Sem esta guarda, um segundo clique descarregava outra vez e
+    /// lançava um segundo updater: dois scripts a extrair sobre a mesma
+    /// pasta de instalação em corrida.
+    /// </summary>
+    private bool _updateArmado;
+
+    /// <summary>
     /// Os dois passos de uma atualização que uma prova de UI tem de substituir:
     /// descarregar a release a sério gasta 100 MB de rede, e o
     /// `Application.Current.Shutdown()` mata o processo do harness a meio. Foi
@@ -59,6 +68,20 @@ public partial class MainWindow : Window
     private async void Update_Click(object sender, RoutedEventArgs e)
     {
         if (_update is null) return;
+        if (_updateArmado)
+        {
+            Log(L10n.T("log.update.armed"));
+            return;
+        }
+        // Aplicar a atualização encerra a app à força — o shutdown do updater
+        // não respeita o cancelamento do OnClosing. Com uma sessão de teste
+        // aberta isso perdia as medições e deixava o Android em modo de
+        // carga: recusar até o técnico gravar ou fechar a sessão.
+        if (HasInteractive)
+        {
+            Log(L10n.T("log.update.interactive"));
+            return;
+        }
         UpdateButton.IsEnabled = false;
         Log(L10n.F("log.update.dl", _update.Tag));
         try
@@ -69,6 +92,22 @@ public partial class MainWindow : Window
             Log(ok ? $"> {msg}" : L10n.F("log.update.fail", msg));
             if (ok)
             {
+                // A verificação antes do download não chega: o técnico pode ter
+                // aberto um teste durante a transferência. Revalidar aqui — a
+                // atualização já descarregada não se perde, fica para o próximo
+                // arranque da app.
+                // Armado a partir daqui: o updater já corre em segundo plano
+                // e aplica-se quando a app sair — mesmo que o técnico adie
+                // por causa do teste, nunca pode haver um segundo download.
+                _updateArmado = true;
+                UpdateButton.IsEnabled = false;
+                if (HasInteractive)
+                {
+                    // O updater já está armado — a mensagem tem de dizer ao
+                    // técnico o que fazer: terminar o teste e fechar a app.
+                    Log(L10n.T("log.update.deferred"));
+                    return;
+                }
                 // Antes a janela desaparecia sem explicação — a meio de uma sessão
                 // de bancada parecia uma falha da app.
                 MessageBox.Show(this, L10n.T("log.update.ready"), Title,
@@ -77,6 +116,6 @@ public partial class MainWindow : Window
             }
         }
         catch (Exception ex) { Log(L10n.F("log.err", ex.Message)); }
-        finally { UpdateButton.IsEnabled = true; }
+        finally { UpdateButton.IsEnabled = !_updateArmado; }
     }
 }
