@@ -35,16 +35,30 @@ pmd3/  (diretoria separada no instalador)
 Regras que a mantêm GPL-compliant:
 
 1. **Processo separado, comunicação por CLI/stdout.** O Diag invoca
-   `pymobiledevice3.exe <subcomando>` e lê a saída — exatamente o que a GPL FAQ
-   da FSF descreve como «at arm's length»: dois programas a comunicar por
-   pipes/sockets são obras separadas. O MIT do Diag não é contaminado.
+   `pymobiledevice3.exe <subcomando>` e lê a saída. Atenção à nuance que a
+   primeira versão desta nota simplificou de mais: a GPLv3 §5 distingue obras
+   independentes pelo **grau de integração efetivo**, e processos separados com
+   CLI *favorecem* a independência mas não a *demonstram* automaticamente. O
+   que a sustenta aqui é a comunicação ser genuinamente «at arm's length»:
+   saídas genéricas de texto/JSON, sem estruturas de dados partilhadas, sem
+   dependência de formato interno — o Diag tem de conseguir viver com qualquer
+   outra implementação do mesmo comando. **A conclusão «o MIT não é
+   contaminado» fica condicionada a manter essa disciplina** — se um dia a
+   integração apertar (parsers profundos de formatos internos do pmd3,
+   coordenação íntima de estado), a análise tem de ser refeita.
 2. **O bundle é o projeto original, não um fork.** Se algum dia tivermos de
    o alterar, as alterações publicam-se (são GPL por natureza).
-3. **Licença + oferta de fonte no instalador**, ao lado do binário, e menção
-   no ecrã «Sobre»/licenças de terceiros. GPL-3.0 §6 exige «Corresponding
-   Source» ou oferta escrita válida 3 anos — a nota acima cobre-o, e convém
-   espelhar o tarball da tag exata num release asset nosso para não depender
-   do upstream.
+3. **Fonte correspondente por download, não oferta escrita.** A primeira
+   versão desta nota propunha a oferta escrita de 3 anos — errado para o nosso
+   caso: a GPLv3 §6(b) reserva essa via à distribuição **física**. Para
+   distribuição por download, a §6(d) exige acesso equivalente à fonte
+   correspondente **pelo mesmo meio e sem custo adicional**. Na prática:
+   espelhamos o tarball da tag exata (e os nossos scripts de empacotamento
+   PyInstaller, que também fazem parte da «Corresponding Source» do bundle)
+   como release asset no mesmo sítio onde o instalador se descarrega, e o
+   ficheiro `OFERTA-CODIGO-FONTE.txt` aponta para esse download. A tag
+   upstream sozinha não chega — não cobre os scripts de empacotamento e
+   podemos ficar dependentes de terceiros.
 4. **Instalador**: o componente é opcional e identificado («diagnóstico iOS
    avançado — software GPL-3.0 de terceiros»). Não é escondido.
 
@@ -99,43 +113,46 @@ zero-fricção, mas é uma decisão de setup da bancada, não do cliente.
 
 ## 5. O que nos compra (e o que já temos sem ele)
 
-Já distribuímos **libimobiledevice** (ideviceinfo, idevicebackup2, etc.) e o
-`IosCollector` atual cobre identificação, bateria básica e estado. O que o
-pymobiledevice3 acrescenta de relevante para o pipeline:
+Já distribuímos **libimobiledevice** e o `IosCollector` atual cobre
+identificação, bateria básica e estado — **e já recolhe relatórios de crash e
+panic** (`CollectCrashLogs`, com `idevicecrashreport -e -k`, sem apagar nada
+do telefone). A primeira versão desta nota apresentava os panic logs como
+valor novo do pmd3 — errado: esse trabalho já existe. O que o pymobiledevice3
+acrescentaria de facto:
 
-- **syslog/crash reports**: listar e extrair `com.apple.crashreport` — panics,
-  resets — diretamente do aparelho (sem isto, leituras de crash iOS ficam
-  dependentes do pairing e de AFC parcial, que o libimobiledevice já oferece
-  em parte);
+- **syslog em streaming** e leituras de diagnóstico mais profundas;
 - **diagnostics relays** (mobileactivation, misagent, lockdown completo);
+- **suporte do emparelhamento moderno do iOS 17+** — o libimobiledevice tem
+  atrasos conhecidos nesse suporte e o pmd3 (mantido ativamente, 11.x em
+  2025) cobre os protocolos novos. Este é, em rigor, o único argumento de
+  peso;
 - perfis, provisionamento, springboard — quase tudo fora do nosso âmbito.
-
-Honestamente: **boa parte do valor (panic logs) já é alcançável com o
-libimobiledevice que embutimos** (`idevicecrashreport`/`afc` lêem
-`/var/mobile/Library/Logs/CrashReporter` após pairing). A diferença real do
-pmd3 é o acesso mais completo aos serviços lockdown modernos (iOS 17+ mudou o
-emparelhamento e o libimobiledevice tem atrasos nesse suporte — o pmd3,
-mantido ativamente — 11.x em 2025 — cobre os protocolos novos).
 
 ## 6. Recomendação
 
-1. **Não embutir já.** Fase 1: implementar primeiro o que o libimobiledevice
-   existente já permite (panic/crash logs via AFC + syslog relay), com os
-   mesmos estados «não disponível/requer pairing». Custo: nenhum licenciamento
-   novo, nenhum MB novo.
+1. **Não embutir já.** O que o libimobiledevice existente já permite —
+   incluindo os crash/panic logs, que já estão implementados — cobre a
+   necessidade atual. O trabalho útil imediato é validar essa cobertura em
+   aparelhos reais e acrescentar syslog se fizer falta, não trocar de motor.
 2. **Adiar o pymobiledevice3 para quando iOS 17+ o exigir de facto** (pareamento
    moderno a falhar no libimobiledevice nas bancadas reais — a medir com
    aparelhos reais, não agora).
 3. Quando entrar, entrar como **componente GPL separado, opcional, de download
    sob demanda** (secção 2), com nota no instalador e oferta de fonte — nunca
    importado em-processo nem compilado para dentro do executável principal.
-4. Em Windows, documentar o pré-requisito **app Apple Devices** na máquina da
-   bancada (uma vez, por bancada), porque «sem drivers extra» não é
-   alcançável para iOS moderno — nem com pmd3 nem sem ele.
+4. Em Windows, o pré-requisito **já existe hoje**: o README do Diag exige o
+   driver Apple USB (iTunes ou app Apple Devices) para qualquer diagnóstico
+   de iPhone, com ou sem pmd3 — o libimobiledevice depende do mesmo driver.
+   A primeira versão desta nota apresentava «bancadas limpas» como argumento
+   a favor do libimobiledevice — errado: **os dois caminhos partilham exatamente
+   o mesmo pré-requisito**. A recomendação de adiar assenta no tamanho do
+   bundle e na cobertura atual já ser suficiente, não em drivers.
 
 ## 7. Pergunta que fica para o mentor
 
-A bancada-alvo costuma ter iTunes/Apple Devices instalado? Se sim, o custo do
-pré-requisito é nulo e o caminho do pmd3 fica mais barato; se a política for
-bancadas limpas, o libimobiledevice (que já controlamos) é o único caminho
-coerente até segunda ordem.
+A pergunta original («a bancada tem software Apple?») caducou com a correção
+da secção 4: o driver Apple é pré-requisito do diagnóstico iOS **hoje**, qualquer
+que seja o caminho. A pergunta que sobra é a de produto: **quanto nos pesa
+não suportar bem iOS 17+ até medirmos a falha em aparelhos reais?** Se houver
+queixas de emparelhamento com iPhones recentes nas bancadas, o pmd3 sobe de
+prioridade; se não houver, adiar é a decisão certa.
