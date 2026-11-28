@@ -26,8 +26,8 @@
     <SolidColorBrush x:Key="HeaderDimBrush" Color="#4A5468"/>
     <!-- Tipografia do design system: Inter (UI) e JetBrains Mono, embutidas
          como recursos (OFL) — os fallbacks cobrem instalação falhada. -->
-    <FontFamily x:Key="UiFont">./Assets/Fonts/#Inter Variable, Segoe UI Variable Text, Segoe UI</FontFamily>
-    <FontFamily x:Key="MonoFont">./Assets/Fonts/#JetBrains Mono, Cascadia Mono, Consolas</FontFamily>
+    <FontFamily x:Key="UiFont">/OficinaDiag;component/Assets/Fonts/#Inter Variable, Segoe UI Variable Text, Segoe UI</FontFamily>
+    <FontFamily x:Key="MonoFont">/OficinaDiag;component/Assets/Fonts/#JetBrains Mono, Cascadia Mono, Consolas</FontFamily>
     <sys:Double x:Key="ScanlineOpacity">0</sys:Double>
 
     <Style x:Key="TermButton" TargetType="Button">
