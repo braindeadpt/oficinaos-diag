@@ -37,7 +37,7 @@ public sealed class ServiceModeUsbTests
     }
 
     [Fact]
-    public void MediaTekPreloader_DetetaAndroidEmEdl()
+    public void MediaTekPreloader_DetetaAndroidEmBrom()
     {
         var m = ServiceModeUsb.MatchServiceMode(
             "MediaTek USB Port (COM4)",
@@ -45,11 +45,11 @@ public sealed class ServiceModeUsbTests
 
         Assert.NotNull(m);
         Assert.Equal(DeviceKind.Android, m.Kind);
-        Assert.Equal("edl", m.State);
+        Assert.Equal("brom", m.State);
     }
 
     [Fact]
-    public void MediaTekPreloader2000_DetetaAndroidEmEdl()
+    public void MediaTekPreloader2000_DetetaAndroidEmBrom()
     {
         // MT65xx PreLoader enumera como PID_2000 (usb.ids), não só 0003.
         var m = ServiceModeUsb.MatchServiceMode(
@@ -58,7 +58,7 @@ public sealed class ServiceModeUsbTests
 
         Assert.NotNull(m);
         Assert.Equal(DeviceKind.Android, m.Kind);
-        Assert.Equal("edl", m.State);
+        Assert.Equal("brom", m.State);
     }
 
     [Fact]
@@ -70,7 +70,7 @@ public sealed class ServiceModeUsbTests
             @"USB\VID_0E8D&PID_2000\6&2A1B3C4D&0&9");
 
         Assert.NotNull(m);
-        Assert.Equal("edl", m.State);
+        Assert.Equal("brom", m.State);
     }
 
     [Fact]
@@ -82,7 +82,7 @@ public sealed class ServiceModeUsbTests
             @"USB\VID_0E8D&PID_6000\6&2A1B3C4D&0&A");
 
         Assert.NotNull(m);
-        Assert.Equal("edl", m.State);
+        Assert.Equal("brom", m.State);
     }
 
     [Fact]

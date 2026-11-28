@@ -70,16 +70,17 @@ public partial class MainWindow : Window
     }
 
     /// <summary>Texto do header por estado — recovery/fastboot não são "detetado".</summary>
-    private static string StatusFor(Devices.DetectedDevice d) => d.State switch
+    private static string StatusFor(Devices.DetectedDevice d) => d.Mode switch
     {
-        "unauthorized" => L10n.F("status.unauthorized", d.Label),
-        "recovery" => L10n.F("status.recovery", d.Label),
-        "sideload" => L10n.F("status.sideload", d.Label),
-        "fastboot" => L10n.F("status.fastboot", d.Label),
-        "edl" => L10n.F("status.edl", d.Label),
-        "odin" => L10n.F("status.odin", d.Label),
-        "dfu" => L10n.F("status.dfu", d.Label),
-        "iosrecovery" => L10n.F("status.iosrecovery", d.Label),
+        Devices.DeviceMode.AndroidUnauthorized => L10n.F("status.unauthorized", d.Label),
+        Devices.DeviceMode.AndroidRecovery => L10n.F("status.recovery", d.Label),
+        Devices.DeviceMode.AndroidSideload => L10n.F("status.sideload", d.Label),
+        Devices.DeviceMode.Fastboot => L10n.F("status.fastboot", d.Label),
+        Devices.DeviceMode.MtkBrom => L10n.F("status.brom", d.Label),
+        Devices.DeviceMode.QualcommEdl => L10n.F("status.edl", d.Label),
+        Devices.DeviceMode.SamsungOdin => L10n.F("status.odin", d.Label),
+        Devices.DeviceMode.IosDfu => L10n.F("status.dfu", d.Label),
+        Devices.DeviceMode.IosRecovery => L10n.F("status.iosrecovery", d.Label),
         _ => L10n.F("status.detected", d.Label),
     };
 
