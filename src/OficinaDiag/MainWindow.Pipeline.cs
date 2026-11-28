@@ -33,10 +33,11 @@ public partial class MainWindow : Window
         // As ações da etapa vivem dentro do respetivo painel de conteúdo;
         // na barra inferior só fica o grupo da etapa ① (o núcleo) e o sistema.
         ActionsDiag.Visibility = stage == PipelineStage.Diagnosticar ? Visibility.Visible : Visibility.Collapsed;
-        StageDiagButton.IsChecked = stage == PipelineStage.Diagnosticar;
-        StageRepararButton.IsChecked = stage == PipelineStage.Reparar;
-        StageVerificarButton.IsChecked = stage == PipelineStage.Verificar;
-        StageEntregarButton.IsChecked = stage == PipelineStage.Entregar;
+        // A etapa ativa fica em negrito — o retro não tem pills nem tabs.
+        StageDiagButton.FontWeight = stage == PipelineStage.Diagnosticar ? FontWeights.Bold : FontWeights.Normal;
+        StageRepararButton.FontWeight = stage == PipelineStage.Reparar ? FontWeights.Bold : FontWeights.Normal;
+        StageVerificarButton.FontWeight = stage == PipelineStage.Verificar ? FontWeights.Bold : FontWeights.Normal;
+        StageEntregarButton.FontWeight = stage == PipelineStage.Entregar ? FontWeights.Bold : FontWeights.Normal;
     }
 
     /// <summary>
