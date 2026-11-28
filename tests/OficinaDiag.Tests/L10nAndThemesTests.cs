@@ -59,10 +59,10 @@ public sealed class L10nAndThemesTests
         var d = Dicts();
         var esperado = new Dictionary<string, (string Serial, string Retencao, string Destinatario)>
         {
-            ["pt"] = ("número de série", "30 dias", "a loja com o código"),
-            ["en"] = ("serial number", "30 days", "the shop with code"),
-            ["es"] = ("número de serie", "30 días", "la tienda con el código"),
-            ["fr"] = ("numéro de série", "30 jours", "la boutique avec le code"),
+            ["pt"] = ("número de série", "até 90 dias", "a loja com o código"),
+            ["en"] = ("serial number", "up to 90 days", "the shop with code"),
+            ["es"] = ("número de serie", "hasta 90 días", "la tienda con el código"),
+            ["fr"] = ("numéro de série", "jusqu'à 90 jours", "la boutique avec le code"),
         };
         foreach (var (lang, esperadoEm) in esperado)
         {
