@@ -16,3 +16,4 @@ release-signing-key.pem
 # Vídeo promocional: material alheio ao build, nunca versionado.
 promo-video/
 TestResults/
+__pycache__/
