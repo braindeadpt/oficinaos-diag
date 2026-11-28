@@ -111,11 +111,19 @@ public static class DeepReadingParsing
     /// aparelho, o root não resolve e a resposta honesta é «não
     /// disponível» com nota do que existe.
     /// </summary>
+    /// <param name="realDenied">algum nó da família real bloqueado — valor bruto,
+    /// sem filtrar: a função ignora-o quando a família já produziu valor.</param>
+    /// <param name="designDenied">idem para a família de fábrica.</param>
     /// <returns>(estado, precisaDeNotaParcial) ou null quando o par sai.</returns>
     public static (string state, bool partial)? CapacityFallbackState(
         bool realOk, bool designOk, bool realDenied, bool designDenied)
     {
         if (realOk && designOk) return null;
+        // Um nó alternativo bloqueado só conta quando a família não produziu
+        // valor — com a capacidade real já lida no battery/, um bms/ negado
+        // é irrelevante e não pode puxar o diagnóstico para «requer root».
+        realDenied = realDenied && !realOk;
+        designDenied = designDenied && !designOk;
         var anyDenied = realDenied || designDenied;
         var otherMissing = (realDenied && !designOk && !designDenied)
             || (designDenied && !realOk && !realDenied);

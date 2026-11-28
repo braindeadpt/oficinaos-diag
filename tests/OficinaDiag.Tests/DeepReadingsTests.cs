@@ -101,7 +101,7 @@ public sealed class DeepReadingsTests
         var realOk = realNodes.Any(n => valores.ContainsKey(n));
         var designOk = designNodes.Any(n => valores.ContainsKey(n));
         var fb = DeepReadingParsing.CapacityFallbackState(realOk, designOk,
-            !realOk && AnyDenied(realNodes), !designOk && AnyDenied(designNodes));
+            AnyDenied(realNodes), AnyDenied(designNodes));
         // Samsung S21: real+design legíveis → sem fallback nenhum.
         Assert.Null(fb);
     }
@@ -132,9 +132,12 @@ public sealed class DeepReadingsTests
         var realOk = realNodes.Any(n => valores.ContainsKey(n));
         var designOk = designNodes.Any(n => valores.ContainsKey(n));
         var fb = DeepReadingParsing.CapacityFallbackState(realOk, designOk,
-            !realOk && AnyDenied(realNodes), !designOk && AnyDenied(designNodes));
+            AnyDenied(realNodes), AnyDenied(designNodes));
         Assert.NotNull(fb);
         Assert.Equal("não disponível neste aparelho", fb!.Value.state);
+        // E a nota de produção para este cenário não pode mencionar root:
+        // o que falta é o valor de fábrica, não uma permissão.
+        Assert.True(realOk && !designOk);
     }
 
     [Fact]
@@ -204,6 +207,13 @@ public sealed class DeepReadingsTests
     [InlineData(false, false, false, true, "não disponível neste aparelho")]
     // tudo em falta → indisponível
     [InlineData(false, false, false, false, "não disponível neste aparelho")]
+    // flags BRUTOS: nó alternativo negado com a família já lida não conta —
+    // real legível + bms negado + design em falta → indisponível, nunca root
+    [InlineData(true, false, true, false, "não disponível neste aparelho")]
+    // simétrico: design legível + alternativo negado + real em falta → idem
+    [InlineData(false, true, false, true, "não disponível neste aparelho")]
+    // e sem o desconto continua a haver root quando a família certa está negada
+    [InlineData(true, false, false, true, "requer root")]
     public void CapacityFallback_RootSoQuandoChega(
         bool realOk, bool designOk, bool realDenied, bool designDenied, string? esperado)
     {
