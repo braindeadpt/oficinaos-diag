@@ -79,7 +79,7 @@
                             <Setter TargetName="bd" Property="Background" Value="{DynamicResource HoverBrush}"/>
                         </Trigger>
                         <Trigger Property="IsKeyboardFocused" Value="True">
-                            <Setter Property="TextElement.TextDecorations" Value="Underline"/>
+                            <Setter Property="FontStyle" Value="Italic"/>
                         </Trigger>
                         <Trigger Property="IsEnabled" Value="False">
                             <Setter Property="Foreground" Value="{DynamicResource DisabledBrush}"/>

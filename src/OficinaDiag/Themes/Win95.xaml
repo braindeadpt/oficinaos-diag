@@ -84,7 +84,7 @@
                             <Setter TargetName="shadow" Property="BorderBrush" Value="#FFFFFF"/>
                         </Trigger>
                         <Trigger Property="IsKeyboardFocused" Value="True">
-                            <Setter Property="TextElement.TextDecorations" Value="Underline"/>
+                            <Setter Property="FontStyle" Value="Italic"/>
                             <Setter TargetName="shadow" Property="BorderBrush" Value="{DynamicResource AccentBrush}"/>
                         </Trigger>
                         <Trigger Property="IsEnabled" Value="False">
