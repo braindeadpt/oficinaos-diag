@@ -24,6 +24,11 @@ public partial class MainWindow : Window
             // Task.Run cada chamada adb bloqueava a UI thread e a janela
             // congelava durante o scan inteiro.
             var scannedId = _current.Id;
+            // O kind é capturado com o id: se o aparelho mudar durante o
+            // pedido de consentimento (Android desligado, iPhone passa a
+            // ativo), o scan continua a recolher o aparelho CERTO — ler o
+            // _current depois do prompt recolhia iOS com serial Android.
+            var scannedKind = _current.Kind;
             // Auditoria de segurança das apps é Pro (decisão do dono): sem
             // token Pro na máquina o scan gratuito não a corre.
             var securityAudit = _config.GetShopToken() is not null;
@@ -31,11 +36,11 @@ public partial class MainWindow : Window
             // Consentimento explícito por scan: o bugreport tem dados
             // pessoais do dono do telefone — só com um "sim" claro é que a
             // contagem profunda de crashes corre (e daí saem só contagens).
-            var bugreportConsent = _current.Kind == DeviceKind.Android
+            var bugreportConsent = scannedKind == DeviceKind.Android
                 && MessageBox.Show(this, L10n.T("scan.bugreport.prompt"),
                     L10n.T("scan.bugreport.title"),
                     MessageBoxButton.YesNo, MessageBoxImage.Question) == MessageBoxResult.Yes;
-            var fresh = _current.Kind == DeviceKind.Android
+            var fresh = scannedKind == DeviceKind.Android
                 ? await Task.Run(() => new AndroidCollector(_adbPath, securityAudit, bugreportConsent).CollectAsync(scannedId.TrimEnd('!'), ct))
                 : await Task.Run(() => new IosCollector().CollectAsync(scannedId, ct));
             // O scan substitui o relatório mas há resultados que ele não

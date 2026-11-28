@@ -456,29 +456,7 @@ public sealed class AndroidCollector
             "else echo \"$f:missing\"; fi; done");
         var sysfs = new Dictionary<string, string>(StringComparer.Ordinal);
         var sysfsState = new Dictionary<string, string>(StringComparer.Ordinal);
-        foreach (var line in (sysfsDump ?? "").Split('\n'))
-        {
-            var sep = line.IndexOf(':');
-            if (sep <= 0) continue;
-            var node = line[..sep].Trim();
-            if (sysfs.ContainsKey(node)) continue;
-            var rest = line[(sep + 1)..].Trim();
-            if (rest.StartsWith("value:", StringComparison.Ordinal))
-            {
-                sysfsState[node] = "value";
-                sysfs[node] = rest[6..].Trim();
-            }
-            else if (rest is "denied" or "missing")
-            {
-                sysfsState[node] = rest;
-            }
-            else if (rest.Length > 0)
-            {
-                // Aparelho com shell antiga sem os marcadores: valor direto.
-                sysfsState[node] = "value";
-                sysfs[node] = rest;
-            }
-        }
+        DeepReadingParsing.ParseMarkedSysfs(sysfsDump, sysfs, sysfsState);
         string? Sysfs(string node)
             => sysfs.TryGetValue(node, out var v) && v.Length > 0 ? v : null;
         // «requer root» se ALGUM nó da família existe mas está bloqueado;
@@ -552,10 +530,15 @@ public sealed class AndroidCollector
         // Nem sysfs, nem asoc, nem estimativa: a leitura declara-se
         // explicitamente — «requer root» quando o nó existe mas está
         // bloqueado, «não disponível» quando o aparelho não o expõe.
+        // O cálculo precisa do par real+design: uma capacidade real legível
+        // com o design em falta/bloqueado também fica sem percentagem — o
+        // estado olha para as duas famílias de nós.
         if (!r.Results.ContainsKey("battery.capacity")
             && !r.Results.ContainsKey("battery.capacity_learned")
             && DeepState("battery/charge_full", "bms/charge_full",
-                "max170xx_battery/charge_full") is { } capState)
+                "max170xx_battery/charge_full",
+                "battery/charge_full_design", "bms/charge_full_design",
+                "max170xx_battery/charge_full_design") is { } capState)
             r.Set("battery.capacity", "skipped", capState,
                 "capacidade real de fábrica não medida neste aparelho");
     }
@@ -795,7 +778,18 @@ public sealed class AndroidCollector
     /// </summary>
     private async Task CollectBugreportCountsAsync(DeviceReport r, string serial)
     {
-        var tmp = Path.Combine(Path.GetTempPath(), $"oficinadiag-br-{Guid.NewGuid():N}.zip");
+        // Pasta dedicada: se a app morrer a meio da recolha, o zip com dados
+        // pessoais não fica esquecido no temp comum — a recolha seguinte
+        // purga qualquer resíduo antes de produzir o seu.
+        var dir = Path.Combine(Path.GetTempPath(), "oficinadiag-bugreport");
+        try
+        {
+            Directory.CreateDirectory(dir);
+            foreach (var stale in Directory.GetFiles(dir, "*.zip"))
+                try { File.Delete(stale); } catch { }
+        }
+        catch { }
+        var tmp = Path.Combine(dir, $"br-{Guid.NewGuid():N}.zip");
         try
         {
             // Processo dedicado: o caminho local pode ter espaços e o
@@ -818,8 +812,16 @@ public sealed class AndroidCollector
                 {
                     var drainOut = p.StandardOutput.ReadToEndAsync();
                     var drainErr = p.StandardError.ReadToEndAsync();
-                    // O bugreport demora minutos — 4 min de teto, kill limpo.
-                    if (!p.WaitForExit(240000))
+                    // O bugreport demora minutos — 4 min de teto. A espera é
+                    // cancelável: um Cancel do operador mata o adb já, em vez
+                    // de o scan ficar preso e gravar um relatório cancelado.
+                    var sw = Stopwatch.StartNew();
+                    while (!p.HasExited && sw.ElapsedMilliseconds < 240000)
+                    {
+                        _ct.ThrowIfCancellationRequested();
+                        await Task.Delay(250, _ct);
+                    }
+                    if (!p.HasExited)
                         try { p.Kill(entireProcessTree: true); } catch { }
                 }
             }
