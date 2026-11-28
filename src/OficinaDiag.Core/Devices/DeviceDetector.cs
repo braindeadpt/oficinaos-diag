@@ -7,8 +7,20 @@ namespace OficinaDiag.Devices;
 
 public enum DeviceKind { Android, Ios }
 
-/// <param name="State">ready | unauthorized | recovery | sideload | fastboot | offline | edl | odin | dfu | iosrecovery</param>
-public sealed record DetectedDevice(DeviceKind Kind, string Id, string Label, string State = "ready");
+/// <param name="State">ready | unauthorized | recovery | sideload | fastboot | offline | brom | edl | odin | dfu | iosrecovery</param>
+public sealed record DetectedDevice(DeviceKind Kind, string Id, string Label, string State = "ready")
+{
+    /// <summary>
+    /// O modo tipado (Fase 1 do pipeline): derivado de <see cref="Kind"/> +
+    /// <see cref="State"/> — "ready" significa Android normal num Android e
+    /// iOS normal num iPhone (o estado vem de fontes diferentes: adb vs
+    /// usbmux).
+    /// </summary>
+    public DeviceMode Mode =>
+        State is "ready" or "device"
+            ? (Kind == DeviceKind.Ios ? DeviceMode.IosNormal : DeviceMode.AndroidReady)
+            : DeviceModeMapping.FromState(State);
+}
 
 /// <summary>
 /// Polls adb and libimobiledevice for connected devices and raises events on

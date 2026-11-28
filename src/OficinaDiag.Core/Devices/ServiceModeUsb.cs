@@ -43,7 +43,9 @@ internal static class ServiceModeUsb
             ["vid_2717&pid_ff18"]),
         // MediaTek bootrom/preloader — "MediaTek USB Port"/"PreLoader".
         // O MT65xx PreLoader enumera como PID_0003 ou PID_2000 (usb.ids).
-        new("edl", DeviceKind.Android, "Android em modo download (preloader)",
+        // Modo próprio ("brom") desde a Fase 1 do pipeline: as ferramentas e
+        // o procedimento de restauro MediaTek são diferentes do EDL Qualcomm.
+        new("brom", DeviceKind.Android, "Android em bootrom/preloader (MediaTek)",
             ["vid_0e8d&pid_0003", "vid_0e8d&pid_2000", "preloader usb vcom"]),
         // SPD/Unisoc download — "SCI USB2Serial".
         new("edl", DeviceKind.Android, "Android em modo download (preloader)",
