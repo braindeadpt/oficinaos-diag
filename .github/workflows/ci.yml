@@ -65,13 +65,17 @@ jobs:
         if: runner.os == 'Linux'
         run: node tools/coverage-check.mjs
 
+      # Artifacts: só em falha ou em execução manual, com retenção curta —
+      # guardados em todas as execuções (90 dias por omissão) enchiam a quota
+      # de artifacts partilhada por todos os repos da conta.
       - name: Publicar cobertura
-        if: runner.os == 'Linux' && always()
+        if: runner.os == 'Linux' && (failure() || github.event_name == 'workflow_dispatch')
         uses: actions/upload-artifact@v7
         with:
           name: coverage
           path: tests/OficinaDiag.Tests/TestResults
           if-no-files-found: warn
+          retention-days: 5
 
       - name: Test
         if: runner.os == 'Windows'
@@ -158,12 +162,13 @@ jobs:
         run: node tools/proofs-check.mjs out-store/ui-shots/provas.txt
 
       - name: Publicar capturas
-        if: runner.os == 'Windows' && always()
+        if: runner.os == 'Windows' && (failure() || github.event_name == 'workflow_dispatch')
         uses: actions/upload-artifact@v7
         with:
           name: ui-shots
           path: out-store/ui-shots
           if-no-files-found: warn
+          retention-days: 7
 
       # Corre nos dois braços: o harness já é EOL-agnóstico (a regressão do
       # CRLF que o PR #11 corrigiu só aparecia no Windows), e correr lá é o que
