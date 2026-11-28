@@ -533,14 +533,22 @@ public sealed class AndroidCollector
         // O cálculo precisa do par real+design: uma capacidade real legível
         // com o design em falta/bloqueado também fica sem percentagem — o
         // estado olha para as duas famílias de nós.
+        // A percentagem exige o PAR real+design: o estado vem da família
+        // que falta — um valor legível numa não esconde a falta da outra.
+        string[] realNodes = ["battery/charge_full", "bms/charge_full", "max170xx_battery/charge_full"];
+        string[] designNodes = ["battery/charge_full_design", "bms/charge_full_design", "max170xx_battery/charge_full_design"];
+        var realOk = realNodes.Any(n => sysfs.ContainsKey(n));
+        var designOk = designNodes.Any(n => sysfs.ContainsKey(n));
+        var capState = !realOk ? DeepState(realNodes)
+            : !designOk ? DeepState(designNodes)
+            : null;
         if (!r.Results.ContainsKey("battery.capacity")
             && !r.Results.ContainsKey("battery.capacity_learned")
-            && DeepState("battery/charge_full", "bms/charge_full",
-                "max170xx_battery/charge_full",
-                "battery/charge_full_design", "bms/charge_full_design",
-                "max170xx_battery/charge_full_design") is { } capState)
+            && capState is not null)
             r.Set("battery.capacity", "skipped", capState,
-                "capacidade real de fábrica não medida neste aparelho");
+                realOk && !designOk
+                    ? "capacidade real legível mas sem o valor de fábrica — percentagem impossível"
+                    : "capacidade real de fábrica não medida neste aparelho");
     }
 
     /// <summary>
@@ -835,7 +843,7 @@ public sealed class AndroidCollector
             var counts = BugreportCrashes.CountEntries(zip);
             r.Set("logs.bugreport", BugreportCrashes.Status(counts),
                 BugreportCrashes.Summarize(counts),
-                "contagens do bugreport (com consentimento) — tipos e quantidades, sem conteúdo; " +
+                "contagens do bugreport (com consentimento) — tipos e quantidades; conteúdo nunca extraído/guardado; " +
                 "tombstones/panics repetidos são indício de hardware, não prova");
         }
         catch (Exception)

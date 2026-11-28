@@ -6,9 +6,10 @@ namespace OficinaDiag.Devices;
 /// <summary>
 /// Contagens de crashes extraídas do `adb bugreport` — pipeline fase 2.
 /// O bugreport contém dados pessoais do dono do telefone (mensagens,
-/// contas, localização): por isso exige consentimento explícito do operador
-/// e daqui saem APENAS contagens e tipos — nomes de ficheiros tombstone/
-/// dropbox e tags, nunca conteúdo. O zip é apagado depois da contagem.
+/// contas, localização): por isso exige consentimento explícito do operador.
+/// O texto principal é percorrido em memória para contar tags dropbox, mas
+/// daí saem APENAS contagens e tipos para o relatório — nenhum conteúdo é
+/// extraído, guardado ou enviado. O zip é apagado depois da contagem.
 /// </summary>
 public static class BugreportCrashes
 {
